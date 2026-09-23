@@ -1,4 +1,3 @@
-<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1"><style>:root{color-scheme:light}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
@@ -257,6 +256,19 @@ tbody tr:hover{background:var(--surface-2);}
   padding:4px 0 16px; position:sticky; top:0; background:var(--bg); z-index:20;
   font-size:12.5px; color:var(--text-dim);
 }
+
+.sync-pill{font-size:11.5px; padding:3px 10px; border-radius:999px; border:1px solid var(--border); white-space:nowrap;}
+.sync-saved{color:var(--good);}
+.sync-saving{color:var(--warn);}
+.sync-offline{color:var(--bad); border-color:var(--bad);}
+#toastBox{position:fixed; bottom:18px; left:50%; transform:translateX(-50%); z-index:9999; display:flex; flex-direction:column; gap:8px; width:min(92vw,460px);}
+.toast{background:var(--surface); border:1px solid var(--border); border-right:4px solid var(--accent); color:var(--text); padding:12px 14px; border-radius:8px; font-size:13px; box-shadow:0 6px 24px rgba(0,0,0,.35); transition:opacity .35s;}
+.toast.bad{border-right-color:var(--bad);}
+.toast.good{border-right-color:var(--good);}
+.toast.hide{opacity:0;}
+.spinner{width:34px; height:34px; margin:0 auto; border:3px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:spin 0.9s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+@media(max-width:560px){ .user-bar{flex-wrap:wrap; gap:8px;} }
 </style>
 </head>
 <body>
@@ -273,13 +285,14 @@ tbody tr:hover{background:var(--surface-2);}
     </div>
     <nav id="navList"></nav>
     <div class="sidebar-foot">
-      <span>تخزين محلي في المتصفح</span>
+      <span>☁ متصل بقاعدة البيانات السحابية</span>
       <button class="theme-btn" onclick="toggleTheme()">الوضع الداكن/الفاتح</button>
     </div>
   </aside>
 
   <main>
     <div class="user-bar">
+      <span id="syncStatus" class="sync-pill sync-saved">✓ محفوظ</span>
       <span id="userBarName"></span>
       <button class="btn secondary small" onclick="logout()">تسجيل الخروج</button>
     </div>
@@ -830,6 +843,604 @@ tbody tr:hover{background:var(--surface-2);}
 </div>
 
 <script>
+/* =====================================================================
+   الاتصال بقاعدة البيانات السحابية (Supabase)
+   ===================================================================== */
+const CLOUD = {
+  url: 'https://uespjkoveejwzozqvhkd.supabase.co',
+  key: 'sb_publishable_it326Ii5yFVfkkoyTslKTA_Zsn5v0Nx',
+};
+const AUTH_STORE = 'erpCloudSession';
+const POLL_MS = 15000;
+
+class CloudError extends Error{
+  constructor(msg, status, code){ super(msg); this.status = status; this.code = code; }
+}
+
+/* ---------- الجلسة ---------- */
+let cloudSession = null;
+function cloudLoadSession(){
+  try{ cloudSession = JSON.parse(localStorage.getItem(AUTH_STORE) || 'null'); }catch(e){ cloudSession = null; }
+}
+function cloudStoreSession(s){
+  cloudSession = s;
+  try{ s ? localStorage.setItem(AUTH_STORE, JSON.stringify(s)) : localStorage.removeItem(AUTH_STORE); }catch(e){}
+}
+function usernameToEmail(u){
+  const bytes = new TextEncoder().encode(String(u||'').trim().toLowerCase());
+  return 'u' + Array.from(bytes).map(b=>b.toString(16).padStart(2,'0')).join('') + '@erp.local';
+}
+async function authRequest(path, body){
+  let res;
+  try{
+    res = await fetch(CLOUD.url + '/auth/v1/' + path, {
+      method:'POST',
+      headers:{ 'apikey':CLOUD.key, 'Content-Type':'application/json' },
+      body: JSON.stringify(body),
+    });
+  }catch(e){ throw new CloudError('تعذّر الاتصال بالإنترنت', 0, 'network'); }
+  const json = await res.json().catch(()=>({}));
+  if(!res.ok) throw new CloudError(json.error_description || json.msg || json.message || 'فشل تسجيل الدخول', res.status, json.error_code || json.error);
+  return json;
+}
+function sessionFromAuth(j){
+  return {
+    access_token: j.access_token,
+    refresh_token: j.refresh_token,
+    expires_at: j.expires_at || (Math.floor(Date.now()/1000) + (j.expires_in || 3600)),
+    user_id: j.user && j.user.id,
+  };
+}
+async function cloudSignIn(username, password){
+  const j = await authRequest('token?grant_type=password', { email: usernameToEmail(username), password });
+  cloudStoreSession(sessionFromAuth(j));
+}
+let refreshing = null;
+function cloudRefresh(){
+  if(!cloudSession || !cloudSession.refresh_token) return Promise.reject(new CloudError('انتهت الجلسة', 401, 'session'));
+  if(!refreshing){
+    refreshing = authRequest('token?grant_type=refresh_token', { refresh_token: cloudSession.refresh_token })
+      .then(j=>{ cloudStoreSession(sessionFromAuth(j)); })
+      .catch(e=>{ if(e.code!=='network') handleSessionExpired(); throw e; })
+      .finally(()=>{ refreshing = null; });
+  }
+  return refreshing;
+}
+async function cloudSignOut(){
+  const s = cloudSession;
+  cloudStoreSession(null);
+  if(s){
+    try{ await fetch(CLOUD.url + '/auth/v1/logout', { method:'POST', headers:{ 'apikey':CLOUD.key, 'Authorization':'Bearer '+s.access_token } }); }catch(e){}
+  }
+}
+
+/* ---------- طلبات قاعدة البيانات ---------- */
+async function api(method, path, body, extraHeaders, _retried){
+  if(cloudSession && cloudSession.expires_at - 60 < Date.now()/1000){ await cloudRefresh(); }
+  const headers = Object.assign({ 'apikey':CLOUD.key, 'Content-Type':'application/json' }, extraHeaders || {});
+  if(cloudSession) headers['Authorization'] = 'Bearer ' + cloudSession.access_token;
+  let res;
+  try{
+    res = await fetch(CLOUD.url + '/rest/v1/' + path, { method, headers, body: body===undefined ? undefined : JSON.stringify(body) });
+  }catch(e){ throw new CloudError('تعذّر الاتصال بالإنترنت', 0, 'network'); }
+  if(res.status===401 && cloudSession && !_retried){
+    await cloudRefresh();
+    return api(method, path, body, extraHeaders, true);
+  }
+  const text = await res.text();
+  let json = null;
+  try{ json = text ? JSON.parse(text) : null; }catch(e){}
+  if(!res.ok) throw new CloudError((json && (json.message || json.hint)) || ('خطأ من السيرفر (' + res.status + ')'), res.status, json && json.code);
+  return json;
+}
+const rpc = (fn, args)=>api('POST', 'rpc/' + fn, args || {});
+const q = v=>encodeURIComponent(v);
+
+/* ---------- تحميل ومزامنة البيانات ---------- */
+const SYNC_COLLECTIONS = ['projects','hr','finance','contracts','assets','subs','ledger','generalExpenses','collections','purchases','materials'];
+const SYNC_SETTINGS = ['revenueAccounts','expenseAccounts','capital','overheadAllocationBasis','projectStatuses','procedureTypes','contractTypes','materialCategories','alertRules','alertLog'];
+// إعدادات حساسة (زي رمز واتساب) — بتتخزن في جدول المدير بس يقدر يقراه
+const ADMIN_SETTINGS = ['whatsappSettings'];
+function settingsTable(key){ return ADMIN_SETTINGS.includes(key) ? 'erp_admin_settings' : 'erp_settings'; }
+function settingsKeysForMe(){ return isAdmin() ? SYNC_SETTINGS.concat(ADMIN_SETTINGS) : SYNC_SETTINGS; }
+let syncedRecords = new Map();   // "collection|id" -> {json, rev}
+let syncedSettings = new Map();  // key -> {json, rev}
+let syncQueue = [];
+let syncRunning = false;
+let retryTimer = null;
+let lastSeenUpdatedAt = null;
+let pollTimer = null;
+let pollCount = 0;
+let pendingRender = false;
+
+function isSyncable(col, item){
+  return !!(item && item._id && !(col==='ledger' && item.source));
+}
+function trackUpdatedAt(ts){
+  if(ts && (!lastSeenUpdatedAt || ts > lastSeenUpdatedAt)) lastSeenUpdatedAt = ts;
+}
+async function fetchAllRecords(select, filter){
+  const rows = [];
+  const page = 1000;
+  for(let off=0; ; off+=page){
+    const chunk = await api('GET', `erp_records?select=${select}${filter||''}&order=created_at.asc,id.asc&limit=${page}&offset=${off}`);
+    rows.push(...chunk);
+    if(chunk.length < page) break;
+  }
+  return rows;
+}
+function sortCollection(col){
+  if(!Array.isArray(DATA[col])) return;
+  DATA[col].sort((a,b)=>((a._n||0)-(b._n||0)));
+}
+async function loadCloudData(){
+  const [rows, settings1, settings2] = await Promise.all([
+    fetchAllRecords('collection,id,data,rev,updated_at'),
+    api('GET', 'erp_settings?select=key,value,rev,updated_at'),
+    api('GET', 'erp_admin_settings?select=key,value,rev,updated_at'),
+  ]);
+  const settings = settings1.concat(settings2);
+  DATA = {};
+  SYNC_COLLECTIONS.forEach(c=>DATA[c] = []);
+  syncedRecords = new Map();
+  syncedSettings = new Map();
+  syncQueue = [];
+  lastSeenUpdatedAt = null;
+  rows.forEach(r=>{
+    if(!Array.isArray(DATA[r.collection])) DATA[r.collection] = [];
+    DATA[r.collection].push(r.data);
+    syncedRecords.set(r.collection + '|' + r.id, { json: JSON.stringify(r.data), rev: r.rev });
+    trackUpdatedAt(r.updated_at);
+  });
+  SYNC_COLLECTIONS.forEach(sortCollection);
+  settings.forEach(s=>{
+    DATA[s.key] = s.value;
+    syncedSettings.set(s.key, { json: JSON.stringify(s.value), rev: s.rev });
+  });
+  normalizeData();
+  generateAutoEntries();
+}
+
+/* بعد أي تعديل: بنقارن البيانات بآخر نسخة اتحفظت ونبعت الفرق بس للسيرفر */
+function saveData(){
+  if(!currentUser) return;
+  const ops = [];
+  SYNC_COLLECTIONS.forEach(col=>{
+    const seen = new Set();
+    (DATA[col] || []).forEach(item=>{
+      if(!isSyncable(col, item)) return;
+      const k = col + '|' + item._id;
+      if(seen.has(k)) return;
+      seen.add(k);
+      const json = JSON.stringify(item);
+      const prev = syncedRecords.get(k);
+      if(!prev){
+        ops.push({ t:'ins', col, id:item._id, json });
+        syncedRecords.set(k, { json, rev:null });
+      }else if(prev.json !== json){
+        ops.push({ t:'upd', col, id:item._id, json });
+        prev.json = json;
+      }
+    });
+    Array.from(syncedRecords.keys()).forEach(k=>{
+      if(k.startsWith(col + '|') && !seen.has(k)){
+        ops.push({ t:'del', col, id:k.slice(col.length + 1) });
+        syncedRecords.delete(k);
+      }
+    });
+  });
+  settingsKeysForMe().forEach(key=>{
+    if(DATA[key]===undefined) return;
+    const json = JSON.stringify(DATA[key]);
+    const prev = syncedSettings.get(key);
+    if(!prev){
+      ops.push({ t:'sins', key, json });
+      syncedSettings.set(key, { json, rev:null });
+    }else if(prev.json !== json){
+      ops.push({ t:'supd', key, json });
+      prev.json = json;
+    }
+  });
+  if(ops.length){
+    syncQueue.push(...ops);
+    runSync();
+  }
+}
+
+async function execOp(op){
+  if(op.t==='ins' || op.t==='upd' || op.t==='del'){
+    const k = op.col + '|' + op.id;
+    const where = `collection=eq.${q(op.col)}&id=eq.${q(op.id)}`;
+    if(op.t==='ins'){
+      const r = await api('POST', 'erp_records', { collection:op.col, id:op.id, data:JSON.parse(op.json) }, { 'Prefer':'return=representation' });
+      const s = syncedRecords.get(k);
+      if(s) s.rev = r[0].rev;
+      trackUpdatedAt(r[0].updated_at);
+    }else if(op.t==='upd'){
+      const s = syncedRecords.get(k);
+      const rev = s ? s.rev : null;
+      if(rev==null) throw new CloudError('conflict', 409, 'conflict');
+      const r = await api('PATCH', `erp_records?${where}&rev=eq.${rev}`, { data:JSON.parse(op.json) }, { 'Prefer':'return=representation' });
+      if(!r.length) throw new CloudError('conflict', 409, 'conflict');
+      if(s) s.rev = r[0].rev;
+      trackUpdatedAt(r[0].updated_at);
+    }else{
+      const r = await api('DELETE', `erp_records?${where}`, undefined, { 'Prefer':'return=representation' });
+      if(!r.length) throw new CloudError('delete denied', 403, 'delete_denied');
+    }
+  }else{
+    const where = `key=eq.${q(op.key)}`;
+    const tbl = settingsTable(op.key);
+    if(op.t==='sins'){
+      const r = await api('POST', tbl, { key:op.key, value:JSON.parse(op.json) }, { 'Prefer':'return=representation' });
+      const s = syncedSettings.get(op.key);
+      if(s) s.rev = r[0].rev;
+    }else{
+      const s = syncedSettings.get(op.key);
+      const rev = s ? s.rev : null;
+      if(rev==null) throw new CloudError('conflict', 409, 'conflict');
+      const r = await api('PATCH', `${tbl}?${where}&rev=eq.${rev}`, { value:JSON.parse(op.json) }, { 'Prefer':'return=representation' });
+      if(!r.length) throw new CloudError('conflict', 409, 'conflict');
+      if(s) s.rev = r[0].rev;
+    }
+  }
+}
+
+function isTransient(e){ return e.code==='network' || e.status===0 || e.status>=500 || e.status===429; }
+
+async function runSync(){
+  if(syncRunning) return;
+  syncRunning = true;
+  setSyncStatus('saving');
+  while(syncQueue.length){
+    const op = syncQueue[0];
+    try{
+      await execOp(op);
+      syncQueue.shift();
+    }catch(e){
+      if(isTransient(e)){
+        syncRunning = false;
+        setSyncStatus('offline');
+        clearTimeout(retryTimer);
+        retryTimer = setTimeout(runSync, 5000);
+        return;
+      }
+      if(e.status===401){ syncRunning = false; setSyncStatus('offline'); return; }
+      syncQueue.shift();
+      await handleOpFailure(op, e);
+    }
+  }
+  syncRunning = false;
+  setSyncStatus('saved');
+}
+
+/* لو التعديل اترفض (تعارض مع مستخدم تاني أو حذف مش مسموح) بنرجّع آخر نسخة من السيرفر */
+async function handleOpFailure(op, e){
+  const isRecord = !!op.col;
+  const key = isRecord ? op.col + '|' + op.id : op.key;
+  syncQueue = syncQueue.filter(o=> (o.col ? o.col + '|' + o.id : o.key) !== key);
+  let row = null;
+  try{
+    const rows = isRecord
+      ? await api('GET', `erp_records?select=collection,id,data,rev,updated_at&collection=eq.${q(op.col)}&id=eq.${q(op.id)}`)
+      : await api('GET', `${settingsTable(op.key)}?select=key,value,rev&key=eq.${q(op.key)}`);
+    row = rows[0] || null;
+  }catch(err){}
+  if(isRecord){
+    applyServerRecord(op.col, op.id, row);
+  }else if(row){
+    DATA[op.key] = row.value;
+    syncedSettings.set(op.key, { json:JSON.stringify(row.value), rev:row.rev });
+  }else{
+    syncedSettings.delete(op.key);
+  }
+  let msg;
+  if(e.code==='delete_denied' || e.code==='42501' || e.status===403){
+    msg = row ? 'الحذف مسموح للمدير بس — البيان رجع زي ما كان.' : '';
+  }else if(e.code==='23505'){
+    msg = 'مستخدم تاني أضاف سجل بنفس الرقم في نفس اللحظة. تم تحميل آخر البيانات — من فضلك أعد إدخال آخر إضافة.';
+  }else if(e.code==='conflict'){
+    msg = 'البيان ده اتعدّل من مستخدم تاني في نفس الوقت. تم تحميل آخر نسخة — راجعه وأعد تعديلك لو محتاج.';
+  }else{
+    msg = 'تعذّر حفظ آخر تعديل: ' + e.message;
+  }
+  generateAutoEntries();
+  softRender(true);
+  if(msg) showToast(msg, 'bad');
+}
+function applyServerRecord(col, id, row){
+  const k = col + '|' + id;
+  if(!Array.isArray(DATA[col])) DATA[col] = [];
+  const idx = DATA[col].findIndex(x=>x && x._id===id);
+  if(row){
+    if(idx>=0) DATA[col][idx] = row.data; else { DATA[col].push(row.data); sortCollection(col); }
+    syncedRecords.set(k, { json:JSON.stringify(row.data), rev:row.rev });
+    trackUpdatedAt(row.updated_at);
+  }else{
+    if(idx>=0) DATA[col].splice(idx, 1);
+    syncedRecords.delete(k);
+  }
+}
+
+/* ---------- متابعة تعديلات المستخدمين التانيين ---------- */
+async function pollChanges(){
+  if(!currentUser || syncRunning || syncQueue.length || document.hidden) return;
+  pollCount++;
+  let changed = false;
+  try{
+    let since = '1970-01-01T00:00:00Z';
+    if(lastSeenUpdatedAt){ since = new Date(new Date(lastSeenUpdatedAt).getTime() - 120000).toISOString(); }
+    const rows = await fetchAllRecords('collection,id,data,rev,updated_at', `&updated_at=gte.${q(since)}`);
+    if(syncRunning || syncQueue.length) return;
+    rows.forEach(r=>{
+      const k = r.collection + '|' + r.id;
+      const s = syncedRecords.get(k);
+      trackUpdatedAt(r.updated_at);
+      if(s && s.rev!=null && s.rev >= r.rev) return;
+      applyServerRecord(r.collection, r.id, r);
+      changed = true;
+    });
+    let settings = await api('GET', 'erp_settings?select=key,value,rev');
+    if(isAdmin()) settings = settings.concat(await api('GET', 'erp_admin_settings?select=key,value,rev'));
+    if(syncRunning || syncQueue.length) return;
+    settings.forEach(s=>{
+      const cur = syncedSettings.get(s.key);
+      if(cur && cur.rev!=null && cur.rev >= s.rev) return;
+      DATA[s.key] = s.value;
+      syncedSettings.set(s.key, { json:JSON.stringify(s.value), rev:s.rev });
+      changed = true;
+    });
+    if(pollCount % 4 === 0){
+      const ids = await fetchAllRecords('collection,id');
+      if(syncRunning || syncQueue.length) return;
+      const onServer = new Set(ids.map(r=>r.collection + '|' + r.id));
+      Array.from(syncedRecords.entries()).forEach(([k, s])=>{
+        if(s.rev!=null && !onServer.has(k)){
+          const i = k.indexOf('|');
+          applyServerRecord(k.slice(0, i), k.slice(i + 1), null);
+          changed = true;
+        }
+      });
+    }
+  }catch(e){
+    if(isTransient(e)) setSyncStatus('offline');
+    return;
+  }
+  if(changed){
+    normalizeData();
+    generateAutoEntries();
+    softRender(false);
+  }
+  if(!syncQueue.length) setSyncStatus('saved');
+}
+function startPolling(){
+  stopPolling();
+  pollCount = 0;
+  pollTimer = setInterval(pollChanges, POLL_MS);
+}
+function stopPolling(){ if(pollTimer){ clearInterval(pollTimer); pollTimer = null; } }
+
+/* إعادة رسم الصفحة من غير ما نقاطع المستخدم وهو بيكتب */
+function softRender(force){
+  if(!currentUser) return;
+  const a = document.activeElement;
+  const typing = a && pagesEl.contains(a) && /^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName);
+  if(typing && !force){ pendingRender = true; return; }
+  pendingRender = false;
+  const y = window.scrollY;
+  buildNav();
+  renderPage();
+  window.scrollTo(0, y);
+}
+document.addEventListener('focusout', ()=>{ setTimeout(()=>{ if(pendingRender) softRender(false); }, 200); });
+document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) pollChanges(); });
+window.addEventListener('online', ()=>{ if(syncQueue.length) runSync(); });
+window.addEventListener('beforeunload', e=>{
+  if(syncQueue.length || syncRunning){ e.preventDefault(); e.returnValue = ''; }
+});
+
+/* ---------- مؤشر الحفظ والرسائل ---------- */
+function setSyncStatus(state){
+  const el = document.getElementById('syncStatus');
+  if(!el) return;
+  const map = {
+    saving:  ['جارِ الحفظ…', 'sync-saving'],
+    saved:   ['✓ محفوظ', 'sync-saved'],
+    offline: ['⚠ غير متصل — هيتحفظ تلقائي أول ما النت يرجع', 'sync-offline'],
+  };
+  const [txt, cls] = map[state] || map.saved;
+  el.textContent = txt;
+  el.className = 'sync-pill ' + cls;
+}
+function showToast(msg, kind){
+  let box = document.getElementById('toastBox');
+  if(!box){ box = document.createElement('div'); box.id = 'toastBox'; document.body.appendChild(box); }
+  const t = document.createElement('div');
+  t.className = 'toast ' + (kind || '');
+  t.textContent = msg;
+  box.appendChild(t);
+  setTimeout(()=>{ t.classList.add('hide'); setTimeout(()=>t.remove(), 400); }, 7000);
+}
+function renderLoading(msg){
+  document.getElementById('appRoot').style.display = 'none';
+  const el = document.getElementById('authScreen');
+  el.style.display = 'flex';
+  el.innerHTML = `<div class="auth-card" style="text-align:center;"><div class="spinner"></div><div class="page-desc" style="margin-top:14px;">${msg}</div></div>`;
+}
+function renderConnError(err){
+  document.getElementById('appRoot').style.display = 'none';
+  const el = document.getElementById('authScreen');
+  el.style.display = 'flex';
+  el.innerHTML = `
+    <div class="auth-card" style="text-align:center;">
+      <div class="brand-title" style="margin-bottom:8px;">تعذّر الاتصال بالسيرفر</div>
+      <div class="page-desc" style="margin-bottom:16px;">اتأكد إن الجهاز متصل بالإنترنت وحاول تاني.<br><span style="font-size:11.5px;">${escapeHtmlCloud(err && err.message || '')}</span></div>
+      <button class="btn" style="width:100%;" onclick="bootApp()">إعادة المحاولة</button>
+    </div>`;
+}
+function escapeHtmlCloud(s){ return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+/* ---------- المستخدمين ---------- */
+async function loadUsers(){
+  const rows = await api('GET', 'app_users?select=id,username,name,role,permissions&order=created_at.asc');
+  DATA.users = rows.map(u=>({ _id:u.id, name:u.name, username:u.username, role:u.role, permissions:u.permissions || {} }));
+}
+
+/* ---------- تشغيل السيستم ---------- */
+let sessionExpiredShown = false;
+function handleSessionExpired(){
+  if(!currentUser || sessionExpiredShown) return;
+  sessionExpiredShown = true;
+  stopPolling();
+  currentUser = null;
+  cloudStoreSession(null);
+  renderLogin();
+  const err = document.getElementById('loginError');
+  if(err){ err.textContent = 'انتهت الجلسة — من فضلك سجّل الدخول تاني'; err.style.display = 'block'; }
+}
+async function startSession(){
+  renderLoading('جارِ تحميل البيانات…');
+  await loadCloudData();
+  await loadUsers();
+  const me = DATA.users.find(u=>u._id===cloudSession.user_id);
+  if(!me){
+    await cloudSignOut();
+    renderLogin();
+    const err = document.getElementById('loginError');
+    if(err){ err.textContent = 'الحساب ده مش مسجّل في السيستم — كلّم المدير'; err.style.display = 'block'; }
+    return;
+  }
+  currentUser = me;
+  sessionExpiredShown = false;
+  showApp();
+  setSyncStatus('saved');
+  startPolling();
+  saveData(); // يرفع أي إعدادات افتراضية لسه مش موجودة على السيرفر
+  setTimeout(checkLegacyLocalData, 600);
+}
+async function bootApp(){
+  renderLoading('جارِ الاتصال بالسيرفر…');
+  cloudLoadSession();
+  try{
+    if(cloudSession && cloudSession.user_id){
+      try{ await startSession(); return; }
+      catch(e){
+        if(isTransient(e)) throw e;
+        cloudStoreSession(null);
+      }
+    }
+    const has = await rpc('app_has_users');
+    if(!has) renderBootstrap(); else renderLogin();
+  }catch(e){
+    renderConnError(e);
+  }
+}
+
+/* ---------- نسخة احتياطية ---------- */
+function downloadBackup(){
+  if(!isAdmin()) return;
+  const out = {};
+  SYNC_COLLECTIONS.forEach(c=>out[c] = (DATA[c]||[]).filter(it=>isSyncable(c, it)));
+  settingsKeysForMe().forEach(k=>{ if(DATA[k]!==undefined) out[k] = DATA[k]; });
+  const blob = new Blob([JSON.stringify(out, null, 1)], { type:'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'erp-backup-' + new Date().toISOString().slice(0,10) + '.json';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 2000);
+}
+function pickBackupFile(){
+  if(!isAdmin()) return;
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = '.json,application/json';
+  inp.onchange = ()=>{
+    const f = inp.files && inp.files[0];
+    if(!f) return;
+    const reader = new FileReader();
+    reader.onload = ()=>{
+      let data;
+      try{ data = JSON.parse(reader.result); }catch(e){ alert('الملف ده مش نسخة احتياطية صحيحة'); return; }
+      if(!data || typeof data!=='object' || !SYNC_COLLECTIONS.some(c=>Array.isArray(data[c]))){ alert('الملف ده مش نسخة احتياطية صحيحة'); return; }
+      const count = countImportable(data);
+      if(!confirm('هيتم استبدال كل البيانات الحالية بمحتوى الملف (' + count + ' سجل). متأكد؟')) return;
+      applyImportedData(data);
+    };
+    reader.readAsText(f);
+  };
+  inp.click();
+}
+
+function countImportable(data){
+  return SYNC_COLLECTIONS.reduce((n,c)=>n + (Array.isArray(data[c]) ? data[c].filter(it=>isSyncable(c, it)).length : 0), 0);
+}
+function applyImportedData(data){
+  SYNC_COLLECTIONS.forEach(c=>{ DATA[c] = Array.isArray(data[c]) ? data[c].filter(it=>isSyncable(c, it)) : []; });
+  settingsKeysForMe().forEach(k=>{ if(data[k]!==undefined) DATA[k] = data[k]; });
+  normalizeData();
+  generateAutoEntries();
+  saveData();
+  buildNav();
+  renderPage();
+  showToast('جارِ رفع البيانات للسيرفر… سيب الصفحة مفتوحة لحد ما يظهر "✓ محفوظ"', 'good');
+}
+
+/* ---------- نقل بيانات النسخة القديمة (المحفوظة على الجهاز) للسيرفر ---------- */
+const LEGACY_FLAG = 'erpLegacyMigrated';
+function readLegacyLocalData(){
+  try{
+    if(localStorage.getItem(LEGACY_FLAG)) return null;
+    const raw = localStorage.getItem('erpData');
+    if(!raw) return null;
+    const data = JSON.parse(raw);
+    if(!data || typeof data!=='object') return null;
+    return countImportable(data) > 0 ? data : null;
+  }catch(e){ return null; }
+}
+function checkLegacyLocalData(){
+  if(!isAdmin()) return;
+  const data = readLegacyLocalData();
+  if(!data) return;
+  const labels = {projects:'مشاريع', subs:'مقاولين باطن', materials:'أصناف مخزون', purchases:'فواتير شراء', hr:'موظفين', finance:'فواتير عملاء', ledger:'قيود يدوية', generalExpenses:'مصروفات عامة', collections:'دفعات محصّلة', contracts:'عقود', assets:'أصول'};
+  const rows = SYNC_COLLECTIONS.map(c=>{
+    const local = Array.isArray(data[c]) ? data[c].filter(it=>isSyncable(c, it)).length : 0;
+    const server = (DATA[c]||[]).filter(it=>isSyncable(c, it)).length;
+    return (local || server) ? `<tr><td>${labels[c]||c}</td><td style="text-align:center;">${local}</td><td style="text-align:center;">${server}</td></tr>` : '';
+  }).join('');
+  let ov = document.getElementById('legacyOverlay');
+  if(!ov){ ov = document.createElement('div'); ov.id = 'legacyOverlay'; ov.className = 'overlay'; document.body.appendChild(ov); }
+  ov.innerHTML = `
+    <div class="modal">
+      <div class="modal-head"><h3>لقينا بيانات محفوظة على الجهاز ده</h3></div>
+      <div class="modal-body">
+        <div class="page-desc">دي بيانات اتسجلت على الجهاز ده بالنسخة القديمة من السيستم (اللي كانت بتحفظ على المتصفح بس)، ولسه مش موجودة على السيرفر. تقدر ترفعها دلوقتي عشان تبقى متاحة لكل المستخدمين.</div>
+        <div class="table-wrap"><div class="table-scroll"><table>
+          <thead><tr><th>البيان</th><th>على الجهاز</th><th>على السيرفر</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table></div></div>
+        <div class="page-desc" style="color:var(--warn);">⚠ الرفع هيستبدل بيانات السيرفر الحالية ببيانات الجهاز. قبل الرفع هيتنزّل تلقائيًا ملف نسخة احتياطية من بيانات السيرفر الحالية للأمان. حسابات المستخدمين مش هتتأثر.</div>
+        <button class="btn" id="legacyUploadBtn">⬆ رفع بيانات الجهاز للسيرفر</button>
+        <button class="btn secondary" id="legacyLaterBtn">مش دلوقتي</button>
+        <button class="btn secondary small" id="legacyIgnoreBtn" style="color:var(--text-dim);">تجاهل البيانات دي نهائيًا</button>
+      </div>
+    </div>`;
+  ov.classList.add('open');
+  const close = ()=>ov.classList.remove('open');
+  document.getElementById('legacyLaterBtn').onclick = close;
+  document.getElementById('legacyIgnoreBtn').onclick = ()=>{
+    if(!confirm('متأكد؟ البيانات دي هتفضل على الجهاز بس ومش هنسألك عنها تاني.')) return;
+    try{ localStorage.setItem(LEGACY_FLAG, 'ignored-' + new Date().toISOString()); }catch(e){}
+    close();
+  };
+  document.getElementById('legacyUploadBtn').onclick = ()=>{
+    if(!confirm('هيتم استبدال بيانات السيرفر ببيانات الجهاز ده. متأكد؟')) return;
+    if(countImportable(DATA) > 0) downloadBackup();
+    applyImportedData(data);
+    try{ localStorage.setItem(LEGACY_FLAG, 'uploaded-' + new Date().toISOString()); }catch(e){}
+    close();
+  };
+}
+</script>
+<script>
 /* ================= Icons ================= */
 const ICONS = {
   dashboard:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="5" rx="1.5"/><rect x="13" y="12" width="8" height="9" rx="1.5"/><rect x="3" y="14" width="8" height="7" rx="1.5"/></svg>',
@@ -935,11 +1546,7 @@ Object.values(MODULES).forEach(m=>m.fields.forEach(f=>COL_LABELS[f.key]=f.label)
 
 /* ================= Data layer ================= */
 let DATA = {};
-function loadData(){
-  try{
-    const raw = localStorage.getItem('erpData');
-    DATA = raw ? JSON.parse(raw) : {};
-  }catch(e){ DATA = {}; }
+function normalizeData(){
   Object.keys(MODULES).forEach(k=>{ if(!Array.isArray(DATA[k])) DATA[k]=[]; });
   if(!Array.isArray(DATA.subs)) DATA.subs = [];
   if(!Array.isArray(DATA.ledger)) DATA.ledger = [];
@@ -997,10 +1604,7 @@ function loadData(){
   DATA.alertRules.forEach(r=>{ if(r.enabled===undefined) r.enabled=false; });
   if(!Array.isArray(DATA.alertLog)) DATA.alertLog = [];
 }
-function saveData(){
-  try{ localStorage.setItem('erpData', JSON.stringify(DATA)); }
-  catch(e){ console.error('تعذر الحفظ محليًا', e); }
-}
+/* saveData() موجودة في جزء الاتصال بالسحابة */
 function nextId(moduleKey){
   const cfg = MODULES[moduleKey];
   const n = (DATA[moduleKey].length ? Math.max(...DATA[moduleKey].map(r=>r._n||0)) : 0) + 1;
@@ -1558,7 +2162,7 @@ function renderDashboard(){
       </div>
       <div style="display:flex; gap:8px; flex-wrap:wrap;">
         ${hasAnyData ? '' : '<button class="btn secondary" onclick="loadDemoData()">تحميل بيانات تجريبية</button>'}
-        ${(currentUser && currentUser.role==='مدير') ? `<button class="btn secondary small" id="resetDataBtn" onclick="requestFactoryReset()">مسح كل البيانات (إعادة تعيين)</button>` : ''}
+        ${(currentUser && currentUser.role==='مدير') ? `<button class="btn secondary small" onclick="downloadBackup()">⬇ تنزيل نسخة احتياطية</button><button class="btn secondary small" onclick="pickBackupFile()">⬆ استيراد بيانات</button><button class="btn secondary small" id="resetDataBtn" onclick="requestFactoryReset()">مسح كل البيانات (إعادة تعيين)</button>` : ''}
       </div>
     </div>
 
@@ -1642,7 +2246,6 @@ function renderModulePage(moduleKey){
           <button class="btn secondary" onclick="openExpenseForm()">+ إضافة مصروف</button>
         ` : ''}
         ${isHr && canRecordAttendance() ? `<button class="btn secondary" onclick="openAttendanceEmployeePicker()">✓ إثبات حضور</button>` : ''}
-        ${isHr && canRecordAttendance() ? `<button class="btn secondary" id="syncAttendanceBtn" onclick="syncAttendance()">🔄 مزامنة الحضور (تسجيل الموبايل)</button>` : ''}
         ${isFinance ? `<button class="btn secondary" onclick="printFinanceList()">🖨 طباعة قائمة الفواتير</button>` : ''}
         ${editable ? `<button class="btn" onclick="openForm('${moduleKey}')">+ إضافة</button>` : ''}
       </div>
@@ -2642,8 +3245,7 @@ function generateAutoEntries(){
     let e = DATA.ledger.find(x=>x.source===source);
     if(e){ Object.assign(e, data); }
     else{
-      const n = (DATA.ledger.length ? Math.max(...DATA.ledger.map(r=>r._n||0)) : 0)+1;
-      DATA.ledger.push(Object.assign({_id:'LED-'+String(n).padStart(3,'0'), _n:n, source}, data));
+      DATA.ledger.push(Object.assign({_id:'AUTO:'+source, _n:0, source}, data));
     }
   }
   DATA.finance.filter(inv=>invoicePaidTotal(inv)>0).forEach(inv=>{
@@ -2913,7 +3515,6 @@ function renderEmployeeDetail(id){
       </div>
       <div style="display:flex; gap:8px; flex-wrap:wrap;">
         ${canModify ? `<button class="btn secondary" onclick="openForm('hr','${h._id}')">تعديل بيانات الموظف</button>` : ''}
-        ${attEdit ? `<button class="btn secondary" id="syncAttendanceBtn" onclick="syncAttendance()">🔄 مزامنة الحضور</button>` : ''}
         ${!attOnly ? `<button class="btn secondary" onclick="printEmployeeStatement('${h._id}')">🖨 طباعة كشف حساب</button>` : ''}
       </div>
     </div>
@@ -4952,44 +5553,43 @@ function openUserForm(editId){
 function closeUserModal(){
   document.getElementById('userOverlay').classList.remove('open');
 }
-function saveUserRecord(){
+async function saveUserRecord(){
   if(!isAdmin()) return;
   const name = document.getElementById('user-name').value.trim();
   const username = document.getElementById('user-username').value.trim();
   const password = document.getElementById('user-password').value;
   const role = document.getElementById('user-role').value;
   if(!name || !username){ alert('من فضلك أدخل الاسم واسم المستخدم'); return; }
-  const dup = DATA.users.find(u=>u.username===username && u._id!==userFormState.editId);
+  const dup = DATA.users.find(u=>u.username.toLowerCase()===username.toLowerCase() && u._id!==userFormState.editId);
   if(dup){ alert('اسم المستخدم ده مُستخدم بالفعل، من فضلك اختر اسم تاني'); return; }
+  if(password && password.length<6){ alert('كلمة المرور لازم تكون 6 حروف أو أرقام على الأقل'); return; }
   const permissions = {};
   document.querySelectorAll('.perm-select').forEach(el=>{ permissions[el.dataset.perm] = el.value; });
-
-  if(userFormState.editId){
-    const rec = DATA.users.find(u=>u._id===userFormState.editId);
-    const wasCurrentUser = currentUser && rec.username===currentUser.username;
-    rec.name = name; rec.username = username; rec.role = role; rec.permissions = permissions;
-    if(password) rec.password = password;
-    if(wasCurrentUser){
-      currentUser = rec;
-      try{ localStorage.setItem('erpSession', username); }catch(e){}
+  try{
+    if(userFormState.editId){
+      await rpc('admin_update_user', {p_id:userFormState.editId, p_username:username, p_name:name, p_role:role, p_permissions:permissions, p_password:password||null});
+    }else{
+      if(!password){ alert('من فضلك أدخل كلمة مرور للمستخدم الجديد'); return; }
+      await rpc('admin_create_user', {p_username:username, p_password:password, p_name:name, p_role:role, p_permissions:permissions});
     }
-  }else{
-    if(!password){ alert('من فضلك أدخل كلمة مرور للمستخدم الجديد'); return; }
-    const n = (DATA.users.length ? Math.max(...DATA.users.map(r=>r._n||0)) : 0)+1;
-    DATA.users.push({_id:'USR-'+String(n).padStart(3,'0'), _n:n, name, username, password, role, permissions});
-  }
-  saveData();
+    await loadUsers();
+  }catch(e){ alert(e.message); return; }
+  const me = DATA.users.find(u=>currentUser && u._id===currentUser._id);
+  if(me){ currentUser = me; document.getElementById('userBarName').textContent = `${me.name} (${me.role})`; }
   closeUserModal();
   renderPage();
   buildNav();
+  showToast('تم حفظ المستخدم ✓', 'good');
 }
-function deleteUserRecord(id){
+async function deleteUserRecord(id){
   if(!isAdmin()) return;
   const target = DATA.users.find(u=>u._id===id);
-  if(target && currentUser && target.username===currentUser.username){ alert('لا يمكنك حذف حسابك الحالي وأنت مسجّل دخول به'); return; }
+  if(target && currentUser && target._id===currentUser._id){ alert('لا يمكنك حذف حسابك الحالي وأنت مسجّل دخول به'); return; }
   if(!confirm('هل أنت متأكد من حذف هذا المستخدم؟')) return;
-  DATA.users = DATA.users.filter(u=>u._id!==id);
-  saveData();
+  try{
+    await rpc('admin_delete_user', {p_id:id});
+    await loadUsers();
+  }catch(e){ alert(e.message); return; }
   renderPage();
 }
 
@@ -5026,19 +5626,21 @@ function renderBootstrap(){
     </div>
   `;
 }
-function createAdminAccount(){
+async function createAdminAccount(){
   const name = document.getElementById('boot-name').value.trim();
   const username = document.getElementById('boot-username').value.trim();
   const password = document.getElementById('boot-password').value;
   if(!name || !username || !password){ alert('من فضلك املأ كل الحقول'); return; }
-  const perms = {};
-  PERM_MODULE_KEYS.forEach(k=>perms[k]='كامل');
-  const user = {_id:'USR-001', _n:1, name, username, password, role:'مدير', permissions:perms};
-  DATA.users.push(user);
-  saveData();
-  currentUser = user;
-  try{ localStorage.setItem('erpSession', username); }catch(e){}
-  showApp();
+  if(password.length<6){ alert('كلمة المرور لازم تكون 6 حروف أو أرقام على الأقل'); return; }
+  try{
+    renderLoading('جارِ إنشاء حساب المدير…');
+    await rpc('bootstrap_first_admin', {p_username:username, p_password:password, p_name:name});
+    await cloudSignIn(username, password);
+    await startSession();
+  }catch(e){
+    alert(e.message);
+    bootApp();
+  }
 }
 function renderLogin(){
   document.getElementById('appRoot').style.display = 'none';
@@ -5052,61 +5654,47 @@ function renderLogin(){
       <div class="field"><label>كلمة المرور</label><input id="login-password" type="password"></div>
       <div id="loginError" style="color:var(--bad); font-size:12.5px; margin-top:2px; display:none;">اسم المستخدم أو كلمة المرور غير صحيحة</div>
       <button class="btn" style="width:100%; margin-top:12px;" onclick="attemptLogin()">دخول</button>
-      <button type="button" style="width:100%; margin-top:10px; background:none; border:none; color:var(--accent); font:inherit; font-size:13px; cursor:pointer; text-decoration:underline;" onclick="renderRecover()">نسيت اسم المستخدم أو كلمة المرور؟</button>
+      <div style="margin-top:14px; font-size:12px; color:var(--text-dim); text-align:center;">نسيت كلمة المرور؟ اطلب من مدير النظام يغيّرها لك من شاشة المستخدمين.</div>
     </div>
   `;
   document.getElementById('login-password').addEventListener('keydown', e=>{ if(e.key==='Enter') attemptLogin(); });
+  document.getElementById('login-username').addEventListener('keydown', e=>{ if(e.key==='Enter') document.getElementById('login-password').focus(); });
 }
-function renderRecover(){
-  const el = document.getElementById('authScreen');
-  const admins = DATA.users.filter(u=>u.role==='مدير');
-  const list = admins.length ? admins : DATA.users;
-  const opts = list.map(u=>`<option value="${u._id}">${u.username} — ${u.name||''}</option>`).join('');
-  el.innerHTML = `
-    <div class="auth-card">
-      <div class="brand-title" style="margin-bottom:4px;">استعادة الدخول</div>
-      <div class="page-desc" style="margin-bottom:14px;">دي حسابات المدير المحفوظة على الجهاز ده. اختار حسابك واكتب كلمة مرور جديدة — بياناتك كلها هتفضل زي ما هي.</div>
-      <div class="field"><label>اسم المستخدم</label><select id="rec-user">${opts}</select></div>
-      <div class="field"><label>كلمة المرور الجديدة</label><input id="rec-pass" type="password"></div>
-      <div class="field"><label>تأكيد كلمة المرور</label><input id="rec-pass2" type="password"></div>
-      <button class="btn" style="width:100%; margin-top:12px;" onclick="doRecover()">حفظ ودخول</button>
-      <button type="button" style="width:100%; margin-top:10px; background:none; border:none; color:var(--text-dim); font:inherit; font-size:13px; cursor:pointer;" onclick="renderLogin()">رجوع لتسجيل الدخول</button>
-    </div>
-  `;
-}
-function doRecover(){
-  const id = document.getElementById('rec-user').value;
-  const p1 = document.getElementById('rec-pass').value;
-  const p2 = document.getElementById('rec-pass2').value;
-  if(!p1){ alert('من فضلك اكتب كلمة مرور جديدة'); return; }
-  if(p1!==p2){ alert('كلمتا المرور غير متطابقتين'); return; }
-  const user = DATA.users.find(u=>u._id===id);
-  if(!user) return;
-  user.password = p1;
-  saveData();
-  currentUser = user;
-  try{ localStorage.setItem('erpSession', user.username); }catch(e){}
-  showApp();
-}
-function attemptLogin(){
+let loginBusy = false;
+async function attemptLogin(){
+  if(loginBusy) return;
   const username = document.getElementById('login-username').value.trim();
   const password = document.getElementById('login-password').value;
-  const user = DATA.users.find(u=>u.username===username && u.password===password);
-  if(!user){ document.getElementById('loginError').style.display = 'block'; return; }
-  currentUser = user;
-  try{ localStorage.setItem('erpSession', username); }catch(e){}
-  showApp();
+  const errEl = document.getElementById('loginError');
+  if(!username || !password){ errEl.textContent = 'من فضلك اكتب اسم المستخدم وكلمة المرور'; errEl.style.display = 'block'; return; }
+  loginBusy = true;
+  const btn = document.querySelector('#authScreen .btn');
+  if(btn){ btn.disabled = true; btn.textContent = 'جارِ الدخول…'; }
+  try{
+    await cloudSignIn(username, password);
+  }catch(e){
+    loginBusy = false;
+    if(btn){ btn.disabled = false; btn.textContent = 'دخول'; }
+    errEl.textContent = e.code==='network' ? 'تعذّر الاتصال بالإنترنت' : 'اسم المستخدم أو كلمة المرور غير صحيحة';
+    errEl.style.display = 'block';
+    return;
+  }
+  loginBusy = false;
+  try{ await startSession(); }catch(e){ renderConnError(e); }
 }
-function logout(){
+async function logout(){
+  if((syncQueue.length || syncRunning) && !confirm('فيه تعديلات لسه بتتحفظ. لو خرجت دلوقتي ممكن تضيع. تخرج برضه؟')) return;
+  stopPolling();
+  if(typeof stopAlertsAutoSync==='function') stopAlertsAutoSync();
+  syncQueue = [];
   currentUser = null;
+  DATA = {};
   currentPage = 'dashboard';
   selectedProjectId = null;
   selectedSubId = null;
   selectedMaterialId = null;
   selectedEmployeeId = null;
-  selectedInvoiceId = null;
-  try{ localStorage.removeItem('erpSession'); }catch(e){}
-  stopAlertsAutoSync();
+  await cloudSignOut();
   renderLogin();
 }
 let resetArmed = false;
@@ -5125,24 +5713,14 @@ function requestFactoryReset(){
     }, 4000);
     return;
   }
-  try{
-    localStorage.removeItem('erpData');
-    localStorage.removeItem('erpSession');
-  }catch(e){}
-  location.reload();
+  resetArmed = false;
+  SYNC_COLLECTIONS.forEach(c=>DATA[c] = []);
+  SYNC_SETTINGS.forEach(k=>{ delete DATA[k]; });
+  normalizeData();
+  saveData();
+  buildNav();
+  renderPage();
 }
-function initAuth(){
-  if(!DATA.users.length){
-    renderBootstrap();
-    return;
-  }
-  let sessionUsername = null;
-  try{ sessionUsername = localStorage.getItem('erpSession'); }catch(e){}
-  const found = sessionUsername ? DATA.users.find(u=>u.username===sessionUsername) : null;
-  if(found){ currentUser = found; showApp(); }
-  else{ renderLogin(); }
-}
-
 /* ================= Demo data ================= */
 function loadDemoData(){
   DATA.projects = [
@@ -5292,10 +5870,7 @@ document.getElementById('ledger-type').addEventListener('change', populateLedger
 document.getElementById('ledger-project').addEventListener('input', updateLedgerPhaseOptions);
 
 /* ================= Init ================= */
-loadData();
-initAuth();
+bootApp();
 </script>
 </body>
 </html>
-
-</body></html>
