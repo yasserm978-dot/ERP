@@ -443,6 +443,25 @@ tbody tr:hover{background:var(--surface-2);}
   </div>
 </div>
 
+<div class="overlay" id="reminderOverlay">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 id="reminderModalTitle">إضافة تنبيه</h3>
+      <button class="modal-close" onclick="closeReminderModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="field"><label>عنوان التنبيه (مثال: شيك مستحق، مستخلص، تجديد رخصة...)</label><input id="reminder-title" type="text" placeholder="شيك مستحق لمورد كذا"></div>
+      <div class="field"><label>تاريخ الاستحقاق</label><input id="reminder-date" type="date"></div>
+      <div class="field"><label>نبّهني قبل الموعد بكام يوم</label><input id="reminder-lead" type="number" value="3" min="0"></div>
+      <div class="field"><label>ملاحظة (اختياري)</label><input id="reminder-note" type="text"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn secondary" onclick="closeReminderModal()">إلغاء</button>
+      <button class="btn" onclick="saveReminder()">حفظ</button>
+    </div>
+  </div>
+</div>
+
 <div class="overlay" id="listSettingsOverlay">
   <div class="modal">
     <div class="modal-head">
@@ -734,6 +753,22 @@ tbody tr:hover{background:var(--surface-2);}
   </div>
 </div>
 
+<div class="overlay" id="confirmOverlay">
+  <div class="modal" style="max-width:420px;">
+    <div class="modal-head">
+      <h3 id="confirm-title">تأكيد</h3>
+      <button class="modal-close" onclick="closeConfirmModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <p id="confirm-message" style="margin:0; line-height:1.6;"></p>
+    </div>
+    <div class="modal-foot">
+      <button class="btn secondary" id="confirm-cancel-btn" onclick="closeConfirmModal()">إلغاء</button>
+      <button class="btn" id="confirm-ok-btn" onclick="runConfirmModalCallback()">تأكيد</button>
+    </div>
+  </div>
+</div>
+
 <div class="overlay" id="printOverlay">
   <div class="modal" style="max-width:920px;">
     <div class="modal-head">
@@ -821,6 +856,75 @@ tbody tr:hover{background:var(--surface-2);}
   </div>
 </div>
 
+<div class="overlay" id="assetOverlay">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 id="assetModalTitle">إضافة أصل</h3>
+      <button class="modal-close" onclick="closeAssetModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="field"><label>اسم الأصل</label><input id="asset-name" type="text" placeholder="مثال: رافعة برجية، سيارة نقل، جهاز قياس ليزر"></div>
+      <div class="field"><label>نوع الأصل</label>
+        <div style="display:flex; gap:6px;">
+          <select id="asset-type" style="flex:1;"></select>
+          <button type="button" class="btn secondary small" onclick="toggleNewAccountInput('assettype')">+ نوع جديد</button>
+        </div>
+        <div id="assettype-new-account-row" style="display:none; gap:6px; margin-top:8px;">
+          <input type="text" id="assettype-new-account-name" placeholder="اسم النوع الجديد" style="flex:1; background:var(--bg); border:1px solid var(--border); color:var(--text); padding:8px 10px; border-radius:6px; font-family:inherit; font-size:13px;">
+          <button type="button" class="btn small" onclick="confirmNewAccount('assettype')">إضافة</button>
+        </div>
+      </div>
+      <div class="field"><label>الحالة</label>
+        <select id="asset-status">
+          <option value="متاح">متاح</option>
+          <option value="قيد الاستخدام">قيد الاستخدام</option>
+          <option value="صيانة">صيانة</option>
+        </select>
+      </div>
+      <div class="field"><label>المشروع الحالي (اختياري)</label>
+        <select id="asset-project"><option value="">بدون مشروع محدد</option></select>
+      </div>
+      <div class="field"><label>تاريخ الشراء</label><input id="asset-purchase-date" type="date"></div>
+      <div class="field"><label>القيمة (جنيه)</label><input id="asset-value" type="number"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn secondary" onclick="closeAssetModal()">إلغاء</button>
+      <button class="btn" onclick="saveAsset()">حفظ</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="assetExpenseOverlay">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 id="assetExpenseModalTitle">تسجيل مصروف على الأصل</h3>
+      <button class="modal-close" onclick="closeAssetExpenseModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="field"><label>نوع المصروف</label>
+        <div style="display:flex; gap:6px;">
+          <select id="assetexp-kind" style="flex:1;"></select>
+          <button type="button" class="btn secondary small" onclick="toggleNewAccountInput('assetexpkind')">+ نوع جديد</button>
+        </div>
+        <div id="assetexpkind-new-account-row" style="display:none; gap:6px; margin-top:8px;">
+          <input type="text" id="assetexpkind-new-account-name" placeholder="اسم النوع الجديد" style="flex:1; background:var(--bg); border:1px solid var(--border); color:var(--text); padding:8px 10px; border-radius:6px; font-family:inherit; font-size:13px;">
+          <button type="button" class="btn small" onclick="confirmNewAccount('assetexpkind')">إضافة</button>
+        </div>
+      </div>
+      <div class="field"><label>التاريخ</label><input id="assetexp-date" type="date"></div>
+      <div class="field"><label>المبلغ (جنيه)</label><input id="assetexp-amount" type="number"></div>
+      <div class="field"><label>المشروع (اختياري — لو المصروف ده تكلفة على مشروع معيّن)</label>
+        <select id="assetexp-project"><option value="">بدون مشروع محدد</option></select>
+      </div>
+      <div class="field"><label>ملاحظة</label><input id="assetexp-note" type="text"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn secondary" onclick="closeAssetExpenseModal()">إلغاء</button>
+      <button class="btn" onclick="saveAssetExpense()">حفظ</button>
+    </div>
+  </div>
+</div>
+
 <div class="overlay" id="purchaseOverlay">
   <div class="modal" style="max-width:640px;">
     <div class="modal-head">
@@ -838,6 +942,280 @@ tbody tr:hover{background:var(--surface-2);}
     <div class="modal-foot">
       <button class="btn secondary" onclick="closePurchaseModal()">إلغاء</button>
       <button class="btn" onclick="savePurchase()">حفظ</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="contractOverlay">
+  <div class="modal" style="max-width:640px;">
+    <div class="modal-head">
+      <h3 id="contractModalTitle">إضافة عقد</h3>
+      <button class="modal-close" onclick="closeContractModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="field"><label>رقم العقد</label><input id="contract-number" type="text"></div>
+      <div class="field"><label>نوع العقد</label>
+        <select id="contract-type" onchange="onContractTypeChange()">
+          <option value="عميل">عقد مع عميل</option>
+          <option value="مقاول_باطن">عقد مع مقاول من الباطن</option>
+        </select>
+      </div>
+      <div class="field"><label>المشروع</label>
+        <div style="display:flex; gap:6px;">
+          <select id="contract-project" onchange="onContractProjectChange()" style="flex:1;"></select>
+          <button type="button" class="btn secondary small" onclick="toggleNewProjectInput()">+ مشروع جديد</button>
+        </div>
+        <div id="contract-new-project-row" style="display:none; margin-top:8px; border:1px solid var(--border); border-radius:6px; padding:10px; background:var(--bg);">
+          <div class="field" style="margin-bottom:8px;"><label>اسم المشروع الجديد</label><input type="text" id="contract-new-project-name" placeholder="اسم المشروع"></div>
+          <div class="field" style="margin-bottom:8px;"><label>العميل (اختياري)</label><input type="text" id="contract-new-project-client" placeholder="اسم العميل"></div>
+          <button type="button" class="btn small" onclick="confirmNewProject()">إضافة المشروع</button>
+        </div>
+      </div>
+      <div class="field" id="contract-client-wrap"><label>اسم العميل</label><input id="contract-client" type="text"></div>
+      <div class="field" id="contract-sub-wrap" style="display:none;"><label>مقاول الباطن</label>
+        <div style="display:flex; gap:6px;">
+          <select id="contract-sub" style="flex:1;"></select>
+          <button type="button" class="btn secondary small" onclick="toggleNewSubInput()">+ مقاول باطن جديد</button>
+        </div>
+        <div id="contract-new-sub-row" style="display:none; margin-top:8px; border:1px solid var(--border); border-radius:6px; padding:10px; background:var(--bg);">
+          <div class="field" style="margin-bottom:8px;"><label>اسم المقاول الجديد</label><input type="text" id="contract-new-sub-name" placeholder="اسم مقاول الباطن"></div>
+          <div class="field" style="margin-bottom:8px;"><label>التخصص (اختياري)</label><input type="text" id="contract-new-sub-specialty" placeholder="مثال: أعمال تشطيبات، حدادة..."></div>
+          <div class="field" style="margin-bottom:8px;"><label>رقم الهاتف (اختياري)</label><input type="text" id="contract-new-sub-phone" placeholder="رقم الهاتف"></div>
+          <button type="button" class="btn small" onclick="confirmNewSub()">إضافة المقاول</button>
+        </div>
+        <div class="field" id="contract-linkedcontract-wrap" style="margin-top:10px;">
+          <label>العقد المرتبط (عقد العميل الخاص بهذا المشروع)</label>
+          <select id="contract-linked-contract" onchange="onContractLinkedContractChange()">
+            <option value="">— اختر العقد —</option>
+          </select>
+        </div>
+        <div class="field" id="contract-linked-items-wrap" style="display:none;">
+          <label>بنود العقد المختار — اختر البنود التي سينفذها مقاول الباطن (بعضها أو كلها حسب الاتفاق)</label>
+          <div style="margin-bottom:6px;">
+            <label style="font-weight:400; display:inline-flex; align-items:center; gap:6px; cursor:pointer;">
+              <input type="checkbox" id="contract-linked-items-all" onchange="toggleAllLinkedItems()"> تحديد الكل
+            </label>
+          </div>
+          <div id="contract-linked-items-list" style="max-height:240px; overflow:auto; border:1px solid var(--border); border-radius:6px; padding:8px;"></div>
+        </div>
+      </div>
+      <div class="field"><label>تاريخ البدء</label><input id="contract-start" type="date"></div>
+      <div class="field"><label>تاريخ الانتهاء</label><input id="contract-end" type="date"></div>
+      <div class="field"><label>الحالة</label>
+        <select id="contract-status">
+          <option value="ساري">ساري</option>
+          <option value="منتهي">منتهي</option>
+          <option value="ملغي">ملغي</option>
+        </select>
+      </div>
+      <div class="field"><label>ملاحظات</label><input id="contract-notes" type="text"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn secondary" onclick="closeContractModal()">إلغاء</button>
+      <button class="btn" onclick="saveContractRecord()">حفظ</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="contractItemOverlay">
+  <div class="modal" style="max-width:640px;">
+    <div class="modal-head">
+      <h3 id="contractItemModalTitle">إضافة بند</h3>
+      <button class="modal-close" onclick="closeContractItemModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="field"><label>كود البند</label><input id="citem-code" type="text"></div>
+      <div class="field"><label>البيان</label><input id="citem-desc" type="text" placeholder="مثال: أعمال مباني بالمتر"></div>
+      <div class="field"><label>طريقة الحساب</label>
+        <div style="display:flex; gap:6px;">
+          <select id="citem-method" style="flex:1;"></select>
+          <button type="button" class="btn secondary small" onclick="toggleNewMethodInput()">+ طريقة جديدة</button>
+        </div>
+        <div id="citem-new-method-row" style="display:none; margin-top:8px; border:1px solid var(--border); border-radius:6px; padding:10px; background:var(--bg);">
+          <div class="field" style="margin-bottom:8px;"><label>اسم طريقة الحساب الجديدة</label><input type="text" id="citem-new-method-name" placeholder="مثال: بالقطعة، بالطن..."></div>
+          <button type="button" class="btn small" onclick="confirmNewMethod()">إضافة الطريقة</button>
+        </div>
+      </div>
+      <div class="field"><label>الوحدة</label><input id="citem-unit" type="text" placeholder="م²، يوم، مقطوعية..."></div>
+      <div class="field"><label>الكمية</label><input id="citem-qty" type="number" step="any" oninput="autoCalcContractItemValue()"></div>
+      <div class="field"><label>سعر الوحدة (جنيه)</label><input id="citem-price" type="number" step="any" oninput="autoCalcContractItemValue()"></div>
+      <div class="field"><label>القيمة الإجمالية (جنيه)</label><input id="citem-value" type="number" readonly style="opacity:.7;"></div>
+      <div class="field" id="citem-link-wrap" style="display:none;">
+        <label>ربط ببند من عقد العميل (لحساب الهامش تلقائيًا)</label>
+        <select id="citem-link-contract" onchange="fillLinkedItemOptions()">
+          <option value="">— بدون ربط —</option>
+        </select>
+        <select id="citem-link-item" style="margin-top:8px;">
+          <option value="">— اختر البند —</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn secondary" onclick="closeContractItemModal()">إلغاء</button>
+      <button class="btn" onclick="saveContractItem()">حفظ</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="changeOrderOverlay">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 id="changeOrderModalTitle">إضافة أمر تغيير</h3>
+      <button class="modal-close" onclick="closeChangeOrderModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="field"><label>التاريخ</label><input id="co-date" type="date"></div>
+      <div class="field"><label>البيان</label><input id="co-desc" type="text" placeholder="سبب أمر التغيير"></div>
+      <div class="field"><label>قيمة التغيير (جنيه) — أدخل قيمة سالبة للنقصان</label><input id="co-amount" type="number" step="any"></div>
+      <div class="field"><label>الحالة</label>
+        <select id="co-approved">
+          <option value="0">قيد الاعتماد</option>
+          <option value="1">معتمد</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn secondary" onclick="closeChangeOrderModal()">إلغاء</button>
+      <button class="btn" onclick="saveChangeOrder()">حفظ</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="deductionOverlay">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 id="deductionModalTitle">إضافة قاعدة استقطاع</h3>
+      <button class="modal-close" onclick="closeDeductionModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="field"><label>نوع الاستقطاع</label>
+        <select id="ded-type">
+          <option value="دفعة مقدمة">دفعة مقدمة (تُخصم من أول مستخلصات)</option>
+          <option value="احتجاز ضمان">احتجاز ضمان</option>
+          <option value="ضريبة">ضريبة / خصم</option>
+          <option value="سلف">سلف</option>
+          <option value="جزاءات">جزاءات تأخير</option>
+        </select>
+      </div>
+      <div class="field"><label>طريقة الحساب</label>
+        <select id="ded-mode">
+          <option value="percent">نسبة %</option>
+          <option value="fixed">مبلغ ثابت</option>
+        </select>
+      </div>
+      <div class="field"><label>القيمة (نسبة % أو مبلغ ثابت حسب الاختيار أعلاه)</label><input id="ded-value" type="number" step="any"></div>
+      <div class="field"><label>ملاحظة</label><input id="ded-note" type="text"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn secondary" onclick="closeDeductionModal()">إلغاء</button>
+      <button class="btn" onclick="saveDeductionRule()">حفظ</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="extractOverlay">
+  <div class="modal" style="max-width:800px;">
+    <div class="modal-head">
+      <h3 id="extractModalTitle">إضافة مستخلص</h3>
+      <button class="modal-close" onclick="closeExtractModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        <div class="field" style="flex:1; min-width:140px;"><label>التاريخ</label><input id="extract-date" type="date"></div>
+        <div class="field" style="flex:1; min-width:140px;"><label>من فترة</label><input id="extract-period-from" type="date"></div>
+        <div class="field" style="flex:1; min-width:140px;"><label>إلى فترة</label><input id="extract-period-to" type="date"></div>
+      </div>
+      <div class="section-title" style="margin:10px 0 8px;">كميات التنفيذ لكل بند</div>
+      <div class="table-wrap"><div class="table-scroll"><table>
+        <thead><tr><th>البند</th><th>سابق</th><th>الكمية الحالية</th><th>الإجمالي</th><th>القيمة (هذه الفترة)</th></tr></thead>
+        <tbody id="extract-items-body"></tbody>
+      </table></div></div>
+      <div class="field" style="margin-top:12px;"><label>ملاحظات</label><input id="extract-notes" type="text"></div>
+      <div id="extract-totals-preview" style="margin-top:12px; font-size:13px; color:var(--text-dim);"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn secondary" onclick="closeExtractModal()">إلغاء</button>
+      <button class="btn" onclick="saveExtract()">حفظ</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="boqOverlay">
+  <div class="modal" style="max-width:720px;">
+    <div class="modal-head">
+      <h3 id="boqModalTitle">إضافة حصر</h3>
+      <button class="modal-close" onclick="closeBoqModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        <div class="field" style="flex:1; min-width:140px;"><label>رقم الحصر</label><input id="boq-number" type="text"></div>
+        <div class="field" style="flex:2; min-width:180px;"><label>عنوان الحصر</label><input id="boq-title" type="text" placeholder="مثال: حصر أعمال التشطيبات"></div>
+      </div>
+      <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        <div class="field" style="flex:1; min-width:140px;"><label>التاريخ</label><input id="boq-date" type="date"></div>
+        <div class="field" style="flex:1; min-width:140px;"><label>الحالة</label>
+          <select id="boq-status">
+            <option value="مسودة">مسودة</option>
+            <option value="معتمد">معتمد</option>
+          </select>
+        </div>
+      </div>
+      <div class="section-title" style="margin:10px 0 8px;">بنود الحصر (بدون أسعار — قابلة للزيادة أو النقصان في أي وقت)</div>
+      <div id="boq-items"></div>
+      <button type="button" class="btn secondary small" onclick="addBoqItemRow()">+ إضافة بند</button>
+      <div class="field" style="margin-top:14px;"><label>ملاحظات</label><input id="boq-notes" type="text"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn secondary" onclick="closeBoqModal()">إلغاء</button>
+      <button class="btn" onclick="saveBoqRecord()">حفظ</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="quotationOverlay">
+  <div class="modal" style="max-width:820px;">
+    <div class="modal-head">
+      <h3 id="quotationModalTitle">إضافة عرض سعر</h3>
+      <button class="modal-close" onclick="closeQuotationModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        <div class="field" style="flex:1; min-width:140px;"><label>رقم العرض</label><input id="quotation-number" type="text"></div>
+        <div class="field" style="flex:1; min-width:140px;"><label>التاريخ</label><input id="quotation-date" type="date"></div>
+        <div class="field" style="flex:1; min-width:140px;"><label>صالح حتى</label><input id="quotation-validuntil" type="date"></div>
+      </div>
+      <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        <div class="field" style="flex:1; min-width:160px;"><label>اسم العميل</label><input id="quotation-client" type="text"></div>
+        <div class="field" style="flex:1; min-width:160px;"><label>الحالة</label>
+          <select id="quotation-status">
+            <option value="مسودة">مسودة</option>
+            <option value="مرسل">مرسل للعميل</option>
+            <option value="مقبول">مقبول</option>
+            <option value="مرفوض">مرفوض</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label>المشروع (اختياري — يمكن تحديده لاحقًا قبل التحويل إلى عقد)</label>
+        <div style="display:flex; gap:6px;">
+          <select id="quotation-project" style="flex:1;"></select>
+          <button type="button" class="btn secondary small" onclick="toggleNewProjectInputQuotation()">+ مشروع جديد</button>
+        </div>
+        <div id="quotation-new-project-row" style="display:none; margin-top:8px; border:1px solid var(--border); border-radius:6px; padding:10px; background:var(--bg);">
+          <div class="field" style="margin-bottom:8px;"><label>اسم المشروع الجديد</label><input type="text" id="quotation-new-project-name" placeholder="اسم المشروع"></div>
+          <div class="field" style="margin-bottom:8px;"><label>العميل (اختياري)</label><input type="text" id="quotation-new-project-client" placeholder="اسم العميل"></div>
+          <button type="button" class="btn small" onclick="confirmNewProjectQuotation()">إضافة المشروع</button>
+        </div>
+      </div>
+      <div class="section-title" style="margin:10px 0 8px;">بنود عرض السعر (يمكن تقسيمها لأقسام)</div>
+      <div id="quotation-items"></div>
+      <button type="button" class="btn secondary small" onclick="addQuotationItemRow()">+ إضافة بند</button>
+      <div class="field" style="margin-top:14px;"><label>شروط وأحكام</label><textarea id="quotation-terms" rows="2" style="width:100%;"></textarea></div>
+      <div class="field"><label>ملاحظات</label><input id="quotation-notes" type="text"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn secondary" onclick="closeQuotationModal()">إلغاء</button>
+      <button class="btn" onclick="saveQuotationRecord()">حفظ</button>
     </div>
   </div>
 </div>
@@ -937,8 +1315,8 @@ const rpc = (fn, args)=>api('POST', 'rpc/' + fn, args || {});
 const q = v=>encodeURIComponent(v);
 
 /* ---------- تحميل ومزامنة البيانات ---------- */
-const SYNC_COLLECTIONS = ['projects','hr','finance','contracts','assets','subs','ledger','generalExpenses','collections','purchases','materials'];
-const SYNC_SETTINGS = ['revenueAccounts','expenseAccounts','capital','overheadAllocationBasis','projectStatuses','procedureTypes','contractTypes','materialCategories','alertRules','alertLog'];
+const SYNC_COLLECTIONS = ['projects','hr','finance','contracts','assets','subs','ledger','generalExpenses','collections','purchases','materials','quotations','boq','reminders','auditLog'];
+const SYNC_SETTINGS = ['revenueAccounts','expenseAccounts','capital','overheadAllocationBasis','projectStatuses','procedureTypes','contractTypes','materialCategories','alertRules','alertLog','contractCalcMethods','assetTypes','assetExpenseKinds'];
 // إعدادات حساسة (زي رمز واتساب) — بتتخزن في جدول المدير بس يقدر يقراه
 const ADMIN_SETTINGS = ['whatsappSettings'];
 function settingsTable(key){ return ADMIN_SETTINGS.includes(key) ? 'erp_admin_settings' : 'erp_settings'; }
@@ -1400,7 +1778,7 @@ function checkLegacyLocalData(){
   if(!isAdmin()) return;
   const data = readLegacyLocalData();
   if(!data) return;
-  const labels = {projects:'مشاريع', subs:'مقاولين باطن', materials:'أصناف مخزون', purchases:'فواتير شراء', hr:'موظفين', finance:'فواتير عملاء', ledger:'قيود يدوية', generalExpenses:'مصروفات عامة', collections:'دفعات محصّلة', contracts:'عقود', assets:'أصول'};
+  const labels = {quotations:'عروض أسعار', boq:'مقايسات', reminders:'تذكيرات', auditLog:'سجل التدقيق', projects:'مشاريع', subs:'مقاولين باطن', materials:'أصناف مخزون', purchases:'فواتير شراء', hr:'موظفين', finance:'فواتير عملاء', ledger:'قيود يدوية', generalExpenses:'مصروفات عامة', collections:'دفعات محصّلة', contracts:'عقود', assets:'أصول'};
   const rows = SYNC_COLLECTIONS.map(c=>{
     const local = Array.isArray(data[c]) ? data[c].filter(it=>isSyncable(c, it)).length : 0;
     const server = (DATA[c]||[]).filter(it=>isSyncable(c, it)).length;
@@ -1454,6 +1832,9 @@ const ICONS = {
   accounting:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 21V9M10 21V4M16 21v-6M22 21H2"/></svg>',
   users:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="7.5" r="3"/><path d="M3 20c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5"/><path d="M16 4.5a3 3 0 0 1 0 6"/><path d="M17.5 14.8c2 .6 3.5 2.3 3.5 5.2"/></svg>',
   alerts:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3a5 5 0 0 0-5 5v3.5c0 .8-.3 1.6-.9 2.2L4.5 15.5c-.6.6-.2 1.7.7 1.7h13.6c.9 0 1.3-1.1.7-1.7l-1.6-1.8a3 3 0 0 1-.9-2.2V8a5 5 0 0 0-5-5Z"/><path d="M9.5 19.5a2.5 2.5 0 0 0 5 0"/></svg>',
+  boq:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="3" width="16" height="18" rx="1.5"/><path d="M8 8h8M8 12h8M8 16h4"/><path d="M8 3v2M16 3v2"/></svg>',
+  quotations:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"/><path d="M14 3v5h5"/><path d="m9 15 2 2 4-4"/></svg>',
+  auditlog:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/><path d="M3 12a9 9 0 0 1 9-9"/></svg>',
 };
 
 /* ================= Module configs ================= */
@@ -1539,6 +1920,15 @@ const MODULES = {
     ],
     columns:['name','type','status','project','value'],
   },
+  quotations:{
+    label:'عروض الأسعار', icon:ICONS.quotations,
+    desc:'عروض أسعار للعملاء — نقطة البداية لأي عقد أو مشروع',
+    idPrefix:'QUO',
+    fields:[
+      {key:'number', label:'رقم العرض', type:'text', required:true},
+    ],
+    columns:['number'],
+  },
 };
 
 const COL_LABELS = {};
@@ -1603,8 +1993,91 @@ function normalizeData(){
   ];
   DATA.alertRules.forEach(r=>{ if(r.enabled===undefined) r.enabled=false; });
   if(!Array.isArray(DATA.alertLog)) DATA.alertLog = [];
+  if(!Array.isArray(DATA.contractCalcMethods) || !DATA.contractCalcMethods.length) DATA.contractCalcMethods = ['بالمتر','يومية','مقطوعية'];
+  if(!Array.isArray(DATA.quotations)) DATA.quotations = [];
+  DATA.quotations.forEach(ensureQuotationShape);
+  if(!Array.isArray(DATA.boq)) DATA.boq = [];
+  DATA.boq.forEach(b=>{ if(!Array.isArray(b.items)) b.items = []; });
+  DATA.contracts.forEach(ensureContractShape);
+  syncSubContractItemEntries();
+  if(!Array.isArray(DATA.assetTypes) || !DATA.assetTypes.length) DATA.assetTypes = ['معدة','أثاث','سيارة','أخرى'];
+  if(!Array.isArray(DATA.assetExpenseKinds) || !DATA.assetExpenseKinds.length) DATA.assetExpenseKinds = ['صيانة','زيت وزيوت','غاز ووقود','قطع غيار','أخرى'];
+  DATA.assets.forEach(ensureAssetShape);
+  if(!Array.isArray(DATA.auditLog)) DATA.auditLog = [];
+  if(!Array.isArray(DATA.reminders)) DATA.reminders = [];
+  DATA.reminders.forEach(r=>{ if(r.leadDays===undefined) r.leadDays = 3; if(r.done===undefined) r.done = false; if(r.note===undefined) r.note = ''; });
 }
 /* saveData() موجودة في جزء الاتصال بالسحابة */
+/* ================= سجل التدقيق (Audit Log) ================= */
+// بيسجل مين عمل إيه وإمتى على أي بيانات مهمة فى النظام — استدعيه قبل saveData() مباشرة فى أي دالة حفظ/حذف
+function logAudit(action, entityType, entityLabel, extra){
+  if(!Array.isArray(DATA.auditLog)) DATA.auditLog = [];
+  const n = (DATA.auditLog.length ? Math.max(...DATA.auditLog.map(r=>r._n||0)) : 0) + 1;
+  DATA.auditLog.push({
+    _id:'AUD-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,7), _n:n,
+    ts: new Date().toISOString(),
+    userName: currentUser ? currentUser.name : 'غير معروف',
+    userRole: currentUser ? currentUser.role : '',
+    action, entityType, entityLabel: entityLabel||'', extra: extra||'',
+  });
+}
+function fmtAuditTs(iso){
+  if(!iso) return '—';
+  const d = new Date(iso);
+  if(isNaN(d.getTime())) return iso;
+  const pad = n=>String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+function auditActionBadge(action){
+  const cls = action==='إضافة' ? 'b-good' : (action==='حذف' ? 'b-bad' : 'b-warn');
+  return `<span class="badge ${cls}">${action}</span>`;
+}
+function renderAuditLogPage(){
+  const rows = (DATA.auditLog||[]).slice().sort((a,b)=>(b.ts||'').localeCompare(a.ts||''));
+  const body = rows.length ? `
+    <div class="table-wrap"><div class="table-scroll"><table>
+      <thead><tr><th>الوقت</th><th>المستخدم</th><th>الإجراء</th><th>النوع</th><th>التفاصيل</th></tr></thead>
+      <tbody id="tbody-auditlog">
+        ${rows.map(r=>`<tr>
+          <td style="white-space:nowrap;">${fmtAuditTs(r.ts)}</td>
+          <td>${r.userName}${r.userRole?` <span style="color:var(--text-dim); font-size:11px;">(${r.userRole})</span>`:''}</td>
+          <td>${auditActionBadge(r.action)}</td>
+          <td>${r.entityType}</td>
+          <td>${r.entityLabel}${r.extra?` <span style="color:var(--text-dim);">— ${r.extra}</span>`:''}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table></div></div>
+  ` : `<div class="table-wrap"><div class="empty-state">لا توجد حركات مسجلة فى سجل التدقيق حتى الآن</div></div>`;
+  return `
+    <div class="page-head">
+      <div>
+        <div class="page-title">سجل التدقيق</div>
+        <div class="page-desc">كل عمليات الإضافة والتعديل والحذف المهمة فى النظام، مين عملها وإمتى — للمدير فقط</div>
+      </div>
+      ${rows.length ? `<button class="btn secondary small" onclick="clearAuditLog()">🗑 مسح السجل</button>` : ''}
+    </div>
+    <div class="toolbar"><input class="search-input" id="search-auditlog" placeholder="بحث في سجل التدقيق (باسم المستخدم، النوع، التفاصيل)..."></div>
+    ${body}
+  `;
+}
+function attachAuditLogEvents(){
+  const searchInput = document.getElementById('search-auditlog');
+  if(searchInput){
+    searchInput.addEventListener('input', ()=>{
+      const q = searchInput.value.trim().toLowerCase();
+      document.querySelectorAll('#tbody-auditlog tr').forEach(tr=>{
+        tr.style.display = tr.textContent.toLowerCase().includes(q) ? '' : 'none';
+      });
+    });
+  }
+}
+function clearAuditLog(){
+  if(!isAdmin()) return;
+  if(!confirm('هل أنت متأكد من مسح سجل التدقيق بالكامل؟ ده إجراء لا يمكن التراجع عنه.')) return;
+  DATA.auditLog = [];
+  saveData();
+  renderPage();
+}
 function nextId(moduleKey){
   const cfg = MODULES[moduleKey];
   const n = (DATA[moduleKey].length ? Math.max(...DATA[moduleKey].map(r=>r._n||0)) : 0) + 1;
@@ -1617,6 +2090,8 @@ let selectedProjectId = null;
 let selectedSubId = null;
 let selectedEmployeeId = null;
 let selectedInvoiceId = null;
+let selectedContractId = null;
+let selectedQuotationId = null;
 let expandedExpenseAccount = null;
 const navList = document.getElementById('navList');
 const pagesEl = document.getElementById('pages');
@@ -1629,6 +2104,7 @@ function buildNav(){
     {key:'hr', label:MODULES.hr.label, icon:MODULES.hr.icon},
     {key:'finance', label:MODULES.finance.label, icon:MODULES.finance.icon},
     {key:'accounting', label:'المحاسبة والتقارير المالية', icon:ICONS.accounting},
+    {key:'quotations', label:MODULES.quotations.label, icon:MODULES.quotations.icon},
     {key:'contracts', label:MODULES.contracts.label, icon:MODULES.contracts.icon},
     {key:'assets', label:MODULES.assets.label, icon:MODULES.assets.icon},
   ];
@@ -1637,6 +2113,7 @@ function buildNav(){
   if(currentUser && currentUser.role==='مدير'){
     items.push({key:'users', label:'المستخدمون والصلاحيات', icon:ICONS.users});
     items.push({key:'alerts', label:'تنبيهات واتساب', icon:ICONS.alerts});
+    items.push({key:'auditlog', label:'سجل التدقيق', icon:ICONS.auditlog});
   }
   navList.innerHTML = items.map(it=>`
     <div class="nav-item ${it.key===currentPage?'active':''}" data-nav="${it.key}">
@@ -1647,7 +2124,7 @@ function buildNav(){
   });
 }
 function goTo(key){
-  if(key==='users' || key==='alerts'){
+  if(key==='users' || key==='alerts' || key==='auditlog'){
     if(!(currentUser && currentUser.role==='مدير')) return;
   }else if(key!=='dashboard' && !canView(key)){
     return;
@@ -1658,6 +2135,9 @@ function goTo(key){
   selectedMaterialId = null;
   selectedEmployeeId = null;
   selectedInvoiceId = null;
+  selectedContractId = null;
+  selectedQuotationId = null;
+  selectedAssetId = null;
   buildNav();
   renderPage();
 }
@@ -1674,6 +2154,7 @@ function badgeFor(moduleKey, status){
     'معلقة':'b-warn','مدفوعة':'b-good','مدفوعة جزئيًا':'b-warn','متأخرة':'b-bad',
     'ساري':'b-good','ملغي':'b-bad',
     'متاح':'b-good','قيد الاستخدام':'b-warn','صيانة':'b-bad',
+    'مسودة':'b-neutral','مرسل':'b-warn','مقبول':'b-good','مرفوض':'b-bad',
   };
   return `<span class="badge ${map[status]||'b-neutral'}">${status||'—'}</span>`;
 }
@@ -1714,6 +2195,36 @@ function statCard(label, value, color){
 }
 function statCardsRow(cards){
   return `<div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:16px;">${cards.join('')}</div>`;
+}
+// تأكيد مخصص داخل الصفحة (بديل window.confirm) — بعض المتصفحات بتوقف نوافذ confirm/alert
+// تلقائيًا بعد تكرارها بدون أي إشعار واضح للمستخدم، فبنستخدم نافذة داخلية بدل ما نعتمد عليها
+// خصوصًا في إجراءات مهمة زي تحويل عرض سعر إلى عقد.
+let confirmModalCallback = null;
+function openConfirmModal(message, onConfirm){
+  document.getElementById('confirm-title').textContent = 'تأكيد';
+  document.getElementById('confirm-message').textContent = message;
+  document.getElementById('confirm-cancel-btn').style.display = '';
+  document.getElementById('confirm-ok-btn').textContent = 'تأكيد';
+  confirmModalCallback = onConfirm;
+  document.getElementById('confirmOverlay').classList.add('open');
+}
+// رسالة تنبيه بسيطة (بديل alert) — زرار "حسنًا" واحد بس، بدون إلغاء
+function notify(message, title){
+  document.getElementById('confirm-title').textContent = title || 'تنبيه';
+  document.getElementById('confirm-message').textContent = message;
+  document.getElementById('confirm-cancel-btn').style.display = 'none';
+  document.getElementById('confirm-ok-btn').textContent = 'حسنًا';
+  confirmModalCallback = null;
+  document.getElementById('confirmOverlay').classList.add('open');
+}
+function closeConfirmModal(){
+  document.getElementById('confirmOverlay').classList.remove('open');
+  confirmModalCallback = null;
+}
+function runConfirmModalCallback(){
+  const cb = confirmModalCallback;
+  closeConfirmModal();
+  if(cb) cb();
 }
 function openPrintDocument(title, subtitle, extraHtml){
   // بيئة معاينة الأرتيفاكت بتمنع أي حفظ ملف مباشر (رابط تحميل تلقائي أو فتح نافذة جديدة)،
@@ -2008,7 +2519,7 @@ function printProjectStatement(id){
   const p = DATA.projects.find(r=>r._id===id);
   if(!p) return;
   const collected = computeProjectCollected(p.name);
-  const contractValue = Number(p.budget)||0;
+  const contractValue = projectContractValue(p);
   const deductions = computeProjectDeductions(p);
   const adjustedContractValue = contractValue - deductions.total;
   const remaining = adjustedContractValue - collected;
@@ -2057,10 +2568,57 @@ function renderPage(){
   else if(currentPage==='users'){ currentPage = 'dashboard'; pagesEl.innerHTML = renderDashboard(); }
   else if(currentPage==='alerts' && isAdmin()){ pagesEl.innerHTML = renderAlertsPage(); attachAlertsEvents(); }
   else if(currentPage==='alerts'){ currentPage = 'dashboard'; pagesEl.innerHTML = renderDashboard(); }
+  else if(currentPage==='auditlog' && isAdmin()){ pagesEl.innerHTML = renderAuditLogPage(); attachAuditLogEvents(); }
+  else if(currentPage==='auditlog'){ currentPage = 'dashboard'; pagesEl.innerHTML = renderDashboard(); }
   else if(currentPage==='projects' && selectedProjectId){ pagesEl.innerHTML = renderProjectDetail(selectedProjectId); attachProjectDetailEvents(); }
   else if(currentPage==='hr' && selectedEmployeeId){ pagesEl.innerHTML = renderEmployeeDetail(selectedEmployeeId); attachEmployeeDetailEvents(); }
   else if(currentPage==='finance' && selectedInvoiceId){ pagesEl.innerHTML = renderInvoiceDetail(selectedInvoiceId); attachInvoiceDetailEvents(); }
+  else if(currentPage==='contracts' && selectedContractId){ pagesEl.innerHTML = renderContractDetail(selectedContractId); attachContractDetailEvents(); }
+  else if(currentPage==='contracts'){ pagesEl.innerHTML = renderContractsPage(); attachContractsEvents(); }
+  else if(currentPage==='quotations' && selectedQuotationId){ pagesEl.innerHTML = renderQuotationDetail(selectedQuotationId); attachQuotationDetailEvents(); }
+  else if(currentPage==='quotations'){ pagesEl.innerHTML = renderQuotationsPage(); attachQuotationsEvents(); }
+  else if(currentPage==='assets' && selectedAssetId){ pagesEl.innerHTML = renderAssetDetail(selectedAssetId); attachAssetDetailEvents(); }
+  else if(currentPage==='assets'){ pagesEl.innerHTML = renderAssetsPage(); attachAssetsEvents(); }
   else{ pagesEl.innerHTML = renderModulePage(currentPage); attachModuleEvents(currentPage); }
+}
+
+/* ================= تذكيرات يدوية (شيكات، مستخلصات، أي موعد) ================= */
+function isReminderDue(r){
+  if(!r || r.done || !r.dueDate) return false;
+  return daysLate(r.dueDate) >= -(Number(r.leadDays)||0);
+}
+function openReminderForm(){
+  document.getElementById('reminderModalTitle').textContent = 'إضافة تنبيه';
+  document.getElementById('reminder-title').value = '';
+  document.getElementById('reminder-date').value = '';
+  document.getElementById('reminder-lead').value = '3';
+  document.getElementById('reminder-note').value = '';
+  document.getElementById('reminderOverlay').classList.add('open');
+}
+function closeReminderModal(){
+  document.getElementById('reminderOverlay').classList.remove('open');
+}
+function saveReminder(){
+  const title = document.getElementById('reminder-title').value.trim();
+  const dueDate = document.getElementById('reminder-date').value;
+  const leadDays = Number(document.getElementById('reminder-lead').value)||0;
+  const note = document.getElementById('reminder-note').value.trim();
+  if(!title){ alert('من فضلك أدخل عنوان التنبيه'); return; }
+  if(!dueDate){ alert('من فضلك أدخل تاريخ الاستحقاق'); return; }
+  if(!Array.isArray(DATA.reminders)) DATA.reminders = [];
+  const n = (DATA.reminders.length ? Math.max(...DATA.reminders.map(r=>r._n||0)) : 0)+1;
+  DATA.reminders.push({_id:'REM-'+n, _n:n, title, dueDate, leadDays, note, done:false});
+  logAudit('إضافة', 'تنبيه', title, dueDate);
+  saveData();
+  closeReminderModal();
+  renderPage();
+}
+function dismissReminder(id){
+  const r = (DATA.reminders||[]).find(x=>x._id===id);
+  DATA.reminders = (DATA.reminders||[]).filter(x=>x._id!==id);
+  logAudit('إنجاز', 'تنبيه', r?r.title:id);
+  saveData();
+  renderPage();
 }
 
 function renderDashboard(){
@@ -2153,6 +2711,7 @@ function renderDashboard(){
       computeProjectAlerts(pr).forEach(a=>dashboardAlerts.push(Object.assign({projectId:pr._id, projectName:pr.name}, a)));
     });
   }
+  const dueReminders = (DATA.reminders||[]).filter(isReminderDue).sort((a,b)=>(a.dueDate||'').localeCompare(b.dueDate||''));
 
   return `
     <div class="page-head">
@@ -2161,10 +2720,26 @@ function renderDashboard(){
         <div class="page-desc">نظرة عامة على المشاريع والمخزون والحسابات</div>
       </div>
       <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <button class="btn secondary small" onclick="openReminderForm()">🔔 إضافة تنبيه</button>
         ${hasAnyData ? '' : '<button class="btn secondary" onclick="loadDemoData()">تحميل بيانات تجريبية</button>'}
         ${(currentUser && currentUser.role==='مدير') ? `<button class="btn secondary small" onclick="downloadBackup()">⬇ تنزيل نسخة احتياطية</button><button class="btn secondary small" onclick="pickBackupFile()">⬆ استيراد بيانات</button><button class="btn secondary small" id="resetDataBtn" onclick="requestFactoryReset()">مسح كل البيانات (إعادة تعيين)</button>` : ''}
       </div>
     </div>
+
+    ${dueReminders.length ? `
+    <div class="section-title" style="margin-top:0;">تذكيراتي</div>
+    <div style="margin-bottom:22px;">
+      ${dueReminders.map(r=>{
+        const late = daysLate(r.dueDate);
+        const level = late>=0 ? 'bad' : 'warn';
+        const statusText = late>0 ? `متأخر ${late} يوم` : (late===0 ? 'اليوم' : `بعد ${-late} يوم`);
+        return `<div style="display:flex; gap:8px; align-items:center; justify-content:space-between; padding:10px 14px; border-radius:6px; margin-bottom:8px; font-size:13px;
+          background:${level==='bad'?'rgba(193,84,60,.12)':'rgba(217,164,65,.12)'}; color:${level==='bad'?'var(--bad)':'var(--warn)'}; border:1px solid ${level==='bad'?'var(--bad)':'var(--warn)'};">
+          <span>🔔 <b>${r.title}</b> — ${statusText} (${r.dueDate})${r.note?(' — '+r.note):''}</span>
+          <button class="btn secondary small" onclick="dismissReminder('${r._id}')">تم</button>
+        </div>`;
+      }).join('')}
+    </div>` : ''}
 
     ${dashboardAlerts.length ? `
     <div class="section-title" style="margin-top:0;">تنبيهات المشاريع</div>
@@ -2359,7 +2934,13 @@ function saveRecord(){
     }
     DATA[moduleKey].push(rec);
     if(moduleKey==='finance') syncInvoiceStatus(rec);
+    logAudit('إضافة', cfg.label, values.name||values.client||values.number||id);
+    saveData();
+    closeModal();
+    renderPage();
+    return;
   }
+  logAudit('تعديل', cfg.label, values.name||values.client||values.number||editId);
   saveData();
   closeModal();
   renderPage();
@@ -2367,7 +2948,10 @@ function saveRecord(){
 function deleteRecord(moduleKey, id){
   if(!isAdmin()) return;
   if(!confirm('هل أنت متأكد من الحذف؟')) return;
+  const rec = DATA[moduleKey].find(r=>r._id===id);
+  const cfg = MODULES[moduleKey];
   DATA[moduleKey] = DATA[moduleKey].filter(r=>r._id!==id);
+  logAudit('حذف', cfg.label, (rec&&(rec.name||rec.client||rec.number))||id);
   saveData();
   renderPage();
 }
@@ -2626,9 +3210,11 @@ function saveMaterial(){
   if(materialFormState.editId){
     const rec = DATA.materials.find(m=>m._id===materialFormState.editId);
     Object.assign(rec, {name, description, unit, category, isRawMaterial, unitPrice, openingQuantity, minQuantity, supplier});
+    logAudit('تعديل', 'صنف مخزون', name);
   }else{
     const n = (DATA.materials.length?Math.max(...DATA.materials.map(r=>r._n||0)):0)+1;
     DATA.materials.push({_id:'MAT-'+String(n).padStart(3,'0'), _n:n, name, description, unit, category, isRawMaterial, unitPrice, openingQuantity, minQuantity, supplier, movements:[]});
+    logAudit('إضافة', 'صنف مخزون', name);
   }
   saveData();
   closeMaterialModal();
@@ -2637,7 +3223,9 @@ function saveMaterial(){
 function deleteMaterial(id){
   if(!isAdmin()) return;
   if(!confirm('هل أنت متأكد من حذف هذا الصنف؟ هيتحذف معاه كل حركاته المسجلة.')) return;
+  const rec = DATA.materials.find(m=>m._id===id);
   DATA.materials = DATA.materials.filter(m=>m._id!==id);
+  logAudit('حذف', 'صنف مخزون', rec?rec.name:id);
   saveData();
   renderPage();
 }
@@ -2685,6 +3273,7 @@ function saveMovement(){
     const n = (m.movements.length?Math.max(...m.movements.map(r=>r._n||0)):0)+1;
     m.movements.push({id:'MV-'+m._id+'-'+n, _n:n, type, date, quantity, project, personName, note});
   }
+  logAudit(movementFormState.editId?'تعديل':'إضافة', 'حركة مخزون', m.name, `${type} - كمية ${quantity}`);
   saveData();
   closeMovementModal();
   renderPage();
@@ -2697,6 +3286,7 @@ function deleteMovement(materialId, movementId){
   if(mv && mv.source){ alert('هذه الحركة مرتبطة بفاتورة شراء — عدّل أو احذف الفاتورة نفسها بدلًا من ذلك.'); return; }
   if(!confirm('هل أنت متأكد من حذف هذه الحركة؟')) return;
   m.movements = (m.movements||[]).filter(x=>x.id!==movementId);
+  logAudit('حذف', 'حركة مخزون', m.name);
   saveData();
   renderPage();
 }
@@ -2801,6 +3391,7 @@ function savePurchase(){
     DATA.purchases.push(purchase);
   }
   syncPurchaseMovements(purchase);
+  logAudit(purchaseFormState.editId?'تعديل':'إضافة', 'فاتورة مشتريات', supplier||purchase._id);
   saveData();
   closePurchaseModal();
   renderPage();
@@ -2808,8 +3399,10 @@ function savePurchase(){
 function deletePurchase(id){
   if(!isAdmin()) return;
   if(!confirm('هل أنت متأكد من حذف فاتورة المشتريات دي؟ هيتحذف معاها حركات الدخول المرتبطة بيها من المخزون.')) return;
+  const purchase = DATA.purchases.find(p=>p._id===id);
   removePurchaseMovements(id);
   DATA.purchases = DATA.purchases.filter(p=>p._id!==id);
+  logAudit('حذف', 'فاتورة مشتريات', (purchase&&purchase.supplier)||id);
   saveData();
   renderPage();
 }
@@ -2885,7 +3478,9 @@ function attachSubsEvents(){
 function deleteSubRecord(id){
   if(!isAdmin()) return;
   if(!confirm('هل أنت متأكد من حذف هذا المقاول؟')) return;
+  const rec = DATA.subs.find(r=>r._id===id);
   DATA.subs = DATA.subs.filter(r=>r._id!==id);
+  logAudit('حذف', 'مقاول باطن', rec?rec.name:id);
   saveData();
   renderPage();
 }
@@ -2953,10 +3548,12 @@ function saveSubRecord(){
   if(subFormState.editId){
     const rec = DATA.subs.find(r=>r._id===subFormState.editId);
     Object.assign(rec, {name, specialty, phone, assignments});
+    logAudit('تعديل', 'مقاول باطن', name);
   }else{
     const n = (DATA.subs.length ? Math.max(...DATA.subs.map(r=>r._n||0)) : 0)+1;
     const id = 'SUB-' + String(n).padStart(3,'0');
     DATA.subs.push({_id:id, _n:n, name, specialty, phone, assignments});
+    logAudit('إضافة', 'مقاول باطن', name);
   }
   saveData();
   closeSubModal();
@@ -2982,6 +3579,40 @@ function renderSubDetail(id){
   const totalNet = computeSubTotal(s);
   const totalPaid = assignments.reduce((sum,a)=>sum+computeEntryTotals(a).paid,0);
   const totalRemaining = assignments.reduce((sum,a)=>sum+computeEntryTotals(a).remaining,0);
+  const subContracts = contractsForSub(s._id);
+
+  const subContractsSection = subContracts.length ? `
+    <div class="section-title">📄 عقود هذا المقاول (من موديول العقود)</div>
+    <div class="table-wrap" style="margin-bottom:16px;"><div class="table-scroll"><table>
+      <thead><tr><th>رقم العقد</th><th>المشروع</th><th>القيمة الحالية</th><th>عدد البنود</th><th>الحالة</th><th></th></tr></thead>
+      <tbody>
+        ${subContracts.map(c=>`<tr>
+          <td>${c.number||'—'}</td>
+          <td>${contractProjectName(c)}</td>
+          <td style="font-weight:700;">${fmtMoney(computeContractValue(c))}</td>
+          <td>${(c.items||[]).length}</td>
+          <td>${badgeFor('contracts', c.status)}</td>
+          <td class="row-actions"><button class="btn secondary small" onclick="openContractFromSub('${c._id}')">عرض العقد</button></td>
+        </tr>`).join('')}
+      </tbody>
+    </table></div></div>
+    <div class="section-title">📋 البنود المسندة لهذا المقاول (من كل عقوده)</div>
+    <div class="table-wrap" style="margin-bottom:28px;"><div class="table-scroll"><table>
+      <thead><tr><th>رقم العقد</th><th>كود</th><th>البيان</th><th>طريقة الحساب</th><th>الوحدة</th><th>الكمية</th><th>سعر الوحدة</th><th>القيمة</th></tr></thead>
+      <tbody>
+        ${subContracts.flatMap(c=>(c.items||[]).map(it=>`<tr>
+          <td>${c.number||'—'}</td>
+          <td>${it.code||'—'}</td>
+          <td>${it.description||'—'}</td>
+          <td>${it.method||'—'}</td>
+          <td>${it.unit||'—'}</td>
+          <td>${it.quantity||0}</td>
+          <td>${fmtMoney(it.unitPrice)}</td>
+          <td style="font-weight:700;">${fmtMoney(computeContractItemValue(it))}</td>
+        </tr>`)).join('') || `<tr><td colspan="8" style="text-align:center;">لا توجد بنود مسندة بعد</td></tr>`}
+      </tbody>
+    </table></div></div>
+  ` : '';
 
   return `
     <button class="btn secondary small" onclick="backToSubsList()" style="margin-bottom:16px;">→ رجوع لكل مقاولي الباطن</button>
@@ -3000,6 +3631,7 @@ function renderSubDetail(id){
       <div class="kpi ok"><div class="kpi-label">إجمالي المدفوع له</div><div class="kpi-value">${fmtMoney(totalPaid)}</div></div>
       <div class="kpi ${totalRemaining>0?'alert':'ok'}"><div class="kpi-label">الباقي له</div><div class="kpi-value">${fmtMoney(totalRemaining)}</div></div>
     </div>
+    ${subContractsSection}
     ${assignments.length ? assignments.map(a=>renderAssignmentLedger(s, a, editable)).join('') : '<div class="table-wrap"><div class="empty-state">لا توجد مشاريع مُسندة لهذا المقاول بعد</div></div>'}
     ${renderSubWorkersSection(s)}
   `;
@@ -3042,10 +3674,14 @@ function renderAssignmentLedger(s, a, editable){
   const canModify = isAdmin();
   const {positive, deductions, paid, netValue, remaining} = computeEntryTotals(a);
   const entries = (a.entries||[]).slice().sort((x,y)=>(y.date||'').localeCompare(x.date||''));
+  const linkedContract = a.linkedContractId ? DATA.contracts.find(x=>x._id===a.linkedContractId) : null;
   return `
     <div class="section-title" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
-      <span>${a.project} <span style="color:var(--text-dim); font-weight:400; font-size:12.5px;">— تعاقد ${a.contractType}</span></span>
+      <span>${a.project} <span style="color:var(--text-dim); font-weight:400; font-size:12.5px;">— تعاقد ${a.contractType}</span>
+        ${linkedContract ? `<span class="badge b-good" style="font-size:11px; margin-right:6px;">مرتبط بعقد ${linkedContract.number}</span>` : ''}
+      </span>
       <span style="display:flex; gap:8px; flex-wrap:wrap;">
+        ${linkedContract ? `<button class="btn secondary small" onclick="openContractFromSub('${linkedContract._id}')">عرض العقد المرتبط</button>` : ''}
         <button class="btn secondary small" onclick="printAssignmentStatement('${s._id}','${a.id}')">🖨 طباعة كشف هذا المشروع</button>
         ${a.contractType==='يومية' ? `<button class="btn secondary small" onclick="printDailyWageStatement('${s._id}','${a.id}')">🖨 كشف اليوميات</button>` : ''}
       </span>
@@ -3064,17 +3700,18 @@ function renderAssignmentLedger(s, a, editable){
         ${entries.map(e=>{
           const k = ENTRY_KINDS[e.kind] || {label:e.kind, cls:'b-neutral'};
           const amountDisplay = (e.kind==='خصم') ? `<span style="color:var(--bad);">- ${fmtMoney(e.amount)}</span>` : fmtMoney(e.amount);
+          const isSynced = !!e._syncContractId;
           return `<tr>
             <td>${e.date||'—'}</td>
             <td><span class="badge ${k.cls}">${k.label}</span></td>
             <td>${e.workerName ? (e.workerName + (e.workerRole?' ('+e.workerRole+')':'')) : '<span style="color:var(--text-dim)">—</span>'}</td>
-            <td>${e.description||'—'}</td>
+            <td>${e.description||'—'}${isSynced ? ' <span class="badge b-neutral" style="font-size:10.5px;">من بند عقد</span>' : ''}</td>
             <td>${e.quantity||'—'}</td>
             <td>${e.unitPrice?fmtMoney(e.unitPrice):'—'}</td>
             <td style="font-weight:700;">${amountDisplay}</td>
             <td class="row-actions">
-              ${canModify ? `<button class="btn secondary small" data-entryedit="${s._id}|${a.id}|${e.id}">تعديل</button>
-              <button class="btn danger small" data-entrydel="${s._id}|${a.id}|${e.id}">حذف</button>` : ''}
+              ${isSynced ? `<button class="btn secondary small" onclick="openContractFromSub('${e._syncContractId}')">عرض البند بالعقد</button>` : (canModify ? `<button class="btn secondary small" data-entryedit="${s._id}|${a.id}|${e.id}">تعديل</button>
+              <button class="btn danger small" data-entrydel="${s._id}|${a.id}|${e.id}">حذف</button>` : '')}
             </td>
           </tr>`;
         }).join('')}
@@ -3161,6 +3798,7 @@ function saveEntry(){
     const n = (a.entries.length ? Math.max(...a.entries.map(e=>e._n||0)) : 0)+1;
     a.entries.push(Object.assign({id:a.id+'-E'+n, _n:n}, data));
   }
+  logAudit(editId?'تعديل':'إضافة', 'بند مقاول باطن', s.name, `${kind} - ${a.project} - ${fmtMoney(Number(amount)||0)}`);
   saveData();
   closeEntryModal();
   renderPage();
@@ -3173,8 +3811,1914 @@ function deleteEntry(subId, assignmentId, entryId){
   if(!a) return;
   if(!confirm('هل أنت متأكد من حذف هذا البند؟')) return;
   a.entries = (a.entries||[]).filter(e=>e.id!==entryId);
+  logAudit('حذف', 'بند مقاول باطن', s.name, a.project);
   saveData();
   renderPage();
+}
+
+/* ================= Contracts module (عقود العملاء ومقاولي الباطن) ================= */
+function ensureContractShape(c){
+  if(!c.contractType){
+    // ترحيل تلقائي لسجل عقد قديم (شكل مسطح: type/project/party/value) إلى الشكل الجديد بالبنود
+    c.contractType = (c.type==='عميل') ? 'عميل' : 'مقاول_باطن';
+    const proj = DATA.projects.find(p=>p.name===c.project);
+    c.projectId = proj ? proj._id : (c.projectId || null);
+    c.projectName_legacy = c.project || '';
+    if(c.contractType==='عميل'){
+      c.clientName = c.party || (proj ? proj.client : '') || '';
+    }else{
+      const sub = DATA.subs.find(s=>s.name===c.party);
+      c.subId = sub ? sub._id : null;
+      c.subName_legacy = c.party || '';
+    }
+    if(!Array.isArray(c.items) || !c.items.length){
+      c.items = [];
+      if(Number(c.value)>0){
+        c.items.push({id:'ITM-1', code:'1', description:'بند عام (تم ترحيله تلقائيًا من العقد القديم)', method:'مقطوعية', unit:'مقطوعية', quantity:1, unitPrice:Number(c.value), linkedContractId:null, linkedItemId:null});
+      }
+    }
+  }
+  if(!Array.isArray(c.items)) c.items = [];
+  if(!Array.isArray(c.changeOrders)) c.changeOrders = [];
+  if(!Array.isArray(c.deductionRules)) c.deductionRules = [];
+  if(!Array.isArray(c.extracts)) c.extracts = [];
+  if(!Array.isArray(c.boqs)) c.boqs = [];
+  if(!c.projectId && c.project){
+    const proj = DATA.projects.find(p=>p.name===c.project);
+    if(proj) c.projectId = proj._id;
+  }
+  if(c.notes===undefined) c.notes = '';
+  if(c.quotationId===undefined) c.quotationId = null;
+  if(c.clientName===undefined) c.clientName = '';
+  if(c.subId===undefined) c.subId = null;
+  c.items.forEach((it,idx)=>{
+    if(!it.id) it.id = 'ITM-'+(idx+1);
+    if(it.linkedContractId===undefined) it.linkedContractId = null;
+    if(it.linkedItemId===undefined) it.linkedItemId = null;
+  });
+  c.changeOrders.forEach((co,idx)=>{
+    if(!co.id) co.id = 'CO-'+(idx+1);
+    if(co.approved===undefined) co.approved = false;
+  });
+  c.deductionRules.forEach((d,idx)=>{
+    if(!d.id) d.id = 'DED-'+(idx+1);
+    if(!d.mode) d.mode = 'percent';
+    if(d.value===undefined) d.value = d.percent!==undefined ? d.percent : (d.amount||0);
+  });
+  c.boqs.forEach((b,idx)=>{
+    if(!b.id) b.id = 'BOQ-'+(idx+1);
+    if(b._n===undefined) b._n = idx+1;
+    if(!Array.isArray(b.items)) b.items = [];
+    if(!b.status) b.status = 'مسودة';
+    if(b.notes===undefined) b.notes = '';
+    b.items.forEach((it,i2)=>{
+      if(!it.id) it.id = 'BQI-'+(i2+1);
+    });
+  });
+  // ترحيل سجلات الحصر القديمة (المستقلة) المرتبطة بنفس المشروع إلى هذا العقد (مرة واحدة فقط)
+  if(Array.isArray(DATA.boq) && DATA.boq.length && c.projectId && c.contractType==='عميل'){
+    const legacy = DATA.boq.filter(b=>b.projectId===c.projectId && !b._migratedToContract);
+    legacy.forEach(b=>{
+      const n = (c.boqs.length ? Math.max(...c.boqs.map(x=>Number((x.id||'').replace('BOQ-',''))||0)) : 0) + 1;
+      c.boqs.push({
+        id:'BOQ-'+n, _n:c.boqs.length+1,
+        number: b.number||('BQ-'+n), title: b.title||'', date: b.date||'', status: b.status||'مسودة', notes: b.notes||'',
+        items: (b.items||[]).map((it,i2)=>({id:'BQI-'+(i2+1), code:it.code||'', description:it.description||'', unit:it.unit||'', quantity:it.quantity||0}))
+      });
+      b._migratedToContract = c._id;
+    });
+  }
+  // تأكيد ربط عقد مقاول الباطن بسجل مشاريعه (لعقود قديمة اتسجلت قبل إضافة الربط التلقائي)
+  if(c.contractType==='مقاول_باطن' && c.subId && c.projectId){
+    const sub = DATA.subs.find(s=>s._id===c.subId);
+    if(sub) ensureSubProjectLink(sub, c.projectId, c._id);
+  }
+}
+function computeContractItemValue(it){
+  return (Number(it.quantity)||0) * (Number(it.unitPrice)||0);
+}
+function computeContractItemsTotal(c){
+  return (c.items||[]).reduce((s,it)=>s+computeContractItemValue(it),0);
+}
+function computeApprovedChangeOrdersTotal(c){
+  return (c.changeOrders||[]).filter(co=>co.approved).reduce((s,co)=>s+(Number(co.amountDelta)||0),0);
+}
+function computeContractValue(c){
+  return computeContractItemsTotal(c) + computeApprovedChangeOrdersTotal(c);
+}
+function contractProjectName(c){
+  const p = DATA.projects.find(p=>p._id===c.projectId);
+  return p ? p.name : (c.projectName_legacy || c.project || '—');
+}
+function contractPartyName(c){
+  if(c.contractType==='عميل') return c.clientName || '—';
+  const s = DATA.subs.find(s=>s._id===c.subId);
+  return s ? s.name : (c.subName_legacy || c.party || '—');
+}
+function contractTypeBadge(c){
+  return c.contractType==='عميل'
+    ? `<span class="badge b-neutral">عقد عميل</span>`
+    : `<span class="badge b-warn">عقد مقاول باطن</span>`;
+}
+// كل العقود (عميل أو مقاول باطن) المرتبطة بمشروع معين
+function contractsForProject(projectId){
+  return DATA.contracts.filter(c=>c.projectId===projectId);
+}
+// عقد العميل الأساسي لمشروع معين (أول عقد عميل مرتبط بيه)
+function primaryClientContractForProject(projectId){
+  return DATA.contracts.find(c=>c.contractType==='عميل' && c.projectId===projectId) || null;
+}
+// كل عقود مقاول الباطن المسجلة على مقاول معين
+function contractsForSub(subId){
+  return DATA.contracts.filter(c=>c.contractType==='مقاول_باطن' && c.subId===subId);
+}
+// قيمة "عقد" المشروع: لو فيه عقد عميل مربوط فعليًا بالمشروع من موديول العقود بتاخد قيمته الحالية،
+// وإلا بترجع لحقل الميزانية القديم على المشروع نفسه (توافقًا مع المشاريع اللي لسه معندهاش عقد مسجل)
+function projectContractValue(p){
+  const c = primaryClientContractForProject(p._id);
+  return c ? computeContractValue(c) : (Number(p.budget)||0);
+}
+// إجمالي المُحصَّل من العميل على مشروع معين (من تحصيلات المشروع المسجلة)
+function computeContractCollected(c){
+  if(c.contractType!=='عميل') return 0;
+  const projName = contractProjectName(c);
+  return DATA.collections.filter(col=>col.project===projName).reduce((s,col)=>s+(Number(col.amount)||0),0);
+}
+// تكلفة كل بنود عقود مقاولي الباطن المرتبطة ببند معيّن في عقد عميل
+function computeItemLinkedCost(clientContractId, itemId){
+  let cost = 0;
+  DATA.contracts.forEach(oc=>{
+    if(oc.contractType==='مقاول_باطن'){
+      (oc.items||[]).forEach(it=>{
+        if(it.linkedContractId===clientContractId && it.linkedItemId===itemId){
+          cost += computeContractItemValue(it);
+        }
+      });
+    }
+  });
+  return cost;
+}
+function clientContractsForProject(projectId, excludeId){
+  return DATA.contracts.filter(c=>c.contractType==='عميل' && c.projectId===projectId && c._id!==excludeId);
+}
+
+/* ---- المستخلصات (Extracts) ---- */
+function sortedExtracts(c){
+  return (c.extracts||[]).slice().sort((a,b)=>(a._n||0)-(b._n||0));
+}
+// إجمالي الكمية المنفذة سابقًا لبند معين (في كل المستخلصات السابقة لمستخلص معين، أو كل المستخلصات لو ext=null)
+function itemPrevQty(c, itemId, beforeExt){
+  const list = sortedExtracts(c);
+  let sum = 0;
+  for(const ext of list){
+    if(beforeExt && ext._n>=beforeExt._n) break;
+    const row = (ext.items||[]).find(x=>x.itemId===itemId);
+    if(row) sum += Number(row.qty)||0;
+  }
+  return sum;
+}
+function computeExtractItemRows(c, ext){
+  return (c.items||[]).map(it=>{
+    const row = (ext.items||[]).find(x=>x.itemId===it.id) || {qty:0};
+    const currentQty = Number(row.qty)||0;
+    const prevQty = itemPrevQty(c, it.id, ext);
+    const totalQty = prevQty + currentQty;
+    const contractQty = Number(it.quantity)||0;
+    const pct = contractQty ? Math.min(100, Math.round(totalQty/contractQty*100)) : 0;
+    return {item:it, currentQty, prevQty, totalQty, value: currentQty*(Number(it.unitPrice)||0), cumulativeValue: totalQty*(Number(it.unitPrice)||0), pct};
+  });
+}
+function computeExtractDeductions(c, currentPeriodValue){
+  let taxTotal = 0, otherDeductionsTotal = 0;
+  const breakdown = [];
+  (c.deductionRules||[]).forEach(d=>{
+    const amount = d.mode==='percent' ? currentPeriodValue*(Number(d.value)||0)/100 : (Number(d.value)||0);
+    if(d.type==='ضريبة'){ taxTotal += amount; breakdown.push({...d, amount, sign:1}); }
+    else{ otherDeductionsTotal += amount; breakdown.push({...d, amount, sign:-1}); }
+  });
+  const netPayable = currentPeriodValue + taxTotal - otherDeductionsTotal;
+  return {taxTotal, otherDeductionsTotal, netPayable, breakdown};
+}
+function computeExtractTotals(c, ext){
+  const rows = computeExtractItemRows(c, ext);
+  const currentPeriodValue = rows.reduce((s,r)=>s+r.value,0);
+  const cumulativeValue = rows.reduce((s,r)=>s+r.cumulativeValue,0);
+  const ded = computeExtractDeductions(c, currentPeriodValue);
+  return {rows, currentPeriodValue, cumulativeValue, ...ded};
+}
+// إجمالي المنفذ فعليًا من العقد حتى الآن (تراكمي، من كل المستخلصات)
+function computeContractExecutedTotal(c){
+  return (c.items||[]).reduce((s,it)=>{
+    const totalQty = itemPrevQty(c, it.id, null);
+    return s + totalQty*(Number(it.unitPrice)||0);
+  },0);
+}
+function computeContractApprovedExtractsTotal(c){
+  return sortedExtracts(c).reduce((s,ext)=>s+computeExtractTotals(c,ext).netPayable,0);
+}
+
+function renderContractsPage(){
+  const rows = DATA.contracts;
+  const editable = canEdit('contracts');
+  const canModify = isAdmin();
+  const body = rows.length ? `
+    <div class="table-wrap"><div class="table-scroll"><table>
+      <thead><tr>
+        <th>رقم العقد</th><th>النوع</th><th>المشروع</th><th>الطرف الآخر</th><th>القيمة الحالية</th><th>الحالة</th><th></th>
+      </tr></thead>
+      <tbody id="tbody-contracts">
+        ${rows.map(r=>`
+          <tr data-id="${r._id}" data-opencontract="${r._id}" style="cursor:pointer;">
+            <td>${r.number||'—'}</td>
+            <td>${contractTypeBadge(r)}</td>
+            <td>${contractProjectName(r)}</td>
+            <td>${contractPartyName(r)}</td>
+            <td style="font-weight:700;">${fmtMoney(computeContractValue(r))}</td>
+            <td>${badgeFor('contracts', r.status)}</td>
+            <td class="row-actions">
+              ${canModify ? `<button class="btn danger small" data-contractdel="${r._id}">حذف</button>` : ''}
+            </td>
+          </tr>`).join('')}
+      </tbody>
+    </table></div></div>
+  ` : `<div class="table-wrap"><div class="empty-state">لا توجد عقود مسجلة حتى الآن<br>
+        ${editable ? `<button class="btn small" style="margin-top:12px" onclick="openContractForm()">إضافة أول عقد</button>` : ''}</div></div>`;
+
+  return `
+    <div class="page-head">
+      <div>
+        <div class="page-title">العقود</div>
+        <div class="page-desc">عقود العملاء وعقود مقاولي الباطن — مربوطة بالمشاريع، مع بنود قابلة للتعديل، أوامر تغيير، استقطاعات، وربط تلقائي لحساب هامش الربح لكل بند</div>
+      </div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        ${editable ? `<button class="btn" onclick="openContractForm()">+ إضافة عقد</button>` : ''}
+      </div>
+    </div>
+    <div class="toolbar"><input class="search-input" id="search-contracts" placeholder="بحث في العقود..."></div>
+    ${body}
+  `;
+}
+function attachContractsEvents(){
+  const searchInput = document.getElementById('search-contracts');
+  if(searchInput){
+    searchInput.addEventListener('input', ()=>{
+      const q = searchInput.value.trim().toLowerCase();
+      document.querySelectorAll('#tbody-contracts tr').forEach(tr=>{
+        tr.style.display = tr.textContent.toLowerCase().includes(q) ? '' : 'none';
+      });
+    });
+  }
+  document.querySelectorAll('[data-contractdel]').forEach(btn=>{
+    btn.addEventListener('click', (e)=>{ e.stopPropagation(); deleteContractRecord(btn.dataset.contractdel); });
+  });
+  document.querySelectorAll('[data-opencontract]').forEach(tr=>{
+    tr.addEventListener('click', ()=>openContractDetail(tr.dataset.opencontract));
+  });
+}
+function deleteContractRecord(id){
+  if(!isAdmin()) return;
+  if(!confirm('هل أنت متأكد من حذف هذا العقد؟ سيتم حذف كل بنوده وأوامر التغيير الخاصة به.')) return;
+  const rec = DATA.contracts.find(r=>r._id===id);
+  DATA.subs.forEach(sub=>{
+    (sub.assignments||[]).forEach(a=>{ if(a.linkedContractId===id) delete a.linkedContractId; });
+  });
+  DATA.contracts = DATA.contracts.filter(r=>r._id!==id);
+  syncSubContractItemEntries();
+  logAudit('حذف', 'عقد', rec?rec.number:id);
+  saveData();
+  renderPage();
+}
+
+let contractFormState = {editId:null};
+function populateContractProjectSelect(selectedId){
+  const sel = document.getElementById('contract-project');
+  sel.innerHTML = '<option value="">— اختر المشروع —</option>' +
+    DATA.projects.map(p=>`<option value="${p._id}" ${p._id===selectedId?'selected':''}>${p.name}</option>`).join('');
+}
+function populateContractSubSelect(selectedId){
+  const sel = document.getElementById('contract-sub');
+  sel.innerHTML = '<option value="">— اختر مقاول الباطن —</option>' +
+    DATA.subs.map(s=>`<option value="${s._id}" ${s._id===selectedId?'selected':''}>${s.name}</option>`).join('');
+}
+function toggleNewProjectInput(){
+  const row = document.getElementById('contract-new-project-row');
+  const show = row.style.display==='none';
+  row.style.display = show ? '' : 'none';
+  if(show){
+    document.getElementById('contract-new-project-name').value = '';
+    document.getElementById('contract-new-project-client').value = '';
+  }
+}
+function confirmNewProject(){
+  const name = document.getElementById('contract-new-project-name').value.trim();
+  const client = document.getElementById('contract-new-project-client').value.trim();
+  if(!name){ alert('من فضلك أدخل اسم المشروع'); return; }
+  const {n, id} = nextId('projects');
+  DATA.projects.push({_id:id, _n:n, name, client, location:'', startDate:'', endDate:'', budget:'', spent:'0', description:'', engineer:'', supervisor:'', landArea:'', unitsCount:'', status:(DATA.projectStatuses[0]||{}).name||'', phases:[], adjustments:[]});
+  logAudit('إضافة', 'المشاريع', name);
+  saveData();
+  populateContractProjectSelect(id);
+  toggleNewProjectInput();
+  onContractProjectChange();
+}
+function toggleNewSubInput(){
+  const row = document.getElementById('contract-new-sub-row');
+  const show = row.style.display==='none';
+  row.style.display = show ? '' : 'none';
+  if(show){
+    document.getElementById('contract-new-sub-name').value = '';
+    document.getElementById('contract-new-sub-specialty').value = '';
+    document.getElementById('contract-new-sub-phone').value = '';
+  }
+}
+function confirmNewSub(){
+  const name = document.getElementById('contract-new-sub-name').value.trim();
+  const specialty = document.getElementById('contract-new-sub-specialty').value.trim();
+  const phone = document.getElementById('contract-new-sub-phone').value.trim();
+  if(!name){ alert('من فضلك أدخل اسم مقاول الباطن'); return; }
+  const n = (DATA.subs.length ? Math.max(...DATA.subs.map(r=>r._n||0)) : 0)+1;
+  const id = 'SUB-' + String(n).padStart(3,'0');
+  DATA.subs.push({_id:id, _n:n, name, specialty, phone, assignments:[]});
+  logAudit('إضافة', 'مقاول باطن', name);
+  saveData();
+  populateContractSubSelect(id);
+  toggleNewSubInput();
+}
+function onContractTypeChange(){
+  const t = document.getElementById('contract-type').value;
+  document.getElementById('contract-client-wrap').style.display = t==='عميل' ? '' : 'none';
+  document.getElementById('contract-sub-wrap').style.display = t==='مقاول_باطن' ? '' : 'none';
+  if(t==='مقاول_باطن') populateLinkedContractSelect();
+}
+function onContractProjectChange(){
+  const t = document.getElementById('contract-type').value;
+  const clientInput = document.getElementById('contract-client');
+  if(t==='عميل' && !clientInput.value.trim()){
+    const p = DATA.projects.find(p=>p._id===document.getElementById('contract-project').value);
+    if(p && p.client) clientInput.value = p.client;
+  }
+  if(t==='مقاول_باطن') populateLinkedContractSelect();
+}
+// عقد العميل المرتبط (لمقاول الباطن) + بنوده القابلة للاختيار
+function populateLinkedContractSelect(selectedContractId){
+  const sel = document.getElementById('contract-linked-contract');
+  if(!sel) return;
+  const projectId = document.getElementById('contract-project').value;
+  const excludeId = contractFormState.editId || null;
+  const clients = projectId ? clientContractsForProject(projectId, excludeId) : [];
+  sel.innerHTML = '<option value="">— اختر العقد —</option>' +
+    clients.map(lc=>`<option value="${lc._id}" ${lc._id===selectedContractId?'selected':''}>${lc.number} — ${contractPartyName(lc)}</option>`).join('');
+  if(!projectId){
+    sel.innerHTML = '<option value="">— اختر المشروع أولًا —</option>';
+  }else if(!clients.length){
+    sel.innerHTML = '<option value="">— لا يوجد عقد عميل مسجل على هذا المشروع —</option>';
+  }
+  onContractLinkedContractChange();
+}
+function onContractLinkedContractChange(){
+  const wrap = document.getElementById('contract-linked-items-wrap');
+  const list = document.getElementById('contract-linked-items-list');
+  const linkedContractId = document.getElementById('contract-linked-contract').value;
+  const lc = DATA.contracts.find(r=>r._id===linkedContractId);
+  if(!lc || !(lc.items||[]).length){
+    wrap.style.display = 'none';
+    list.innerHTML = '';
+    return;
+  }
+  wrap.style.display = '';
+  const editingContract = contractFormState.editId ? DATA.contracts.find(r=>r._id===contractFormState.editId) : null;
+  const alreadyLinkedItemIds = editingContract ? (editingContract.items||[]).filter(it=>it.linkedContractId===linkedContractId).map(it=>it.linkedItemId) : [];
+  list.innerHTML = lc.items.map(it=>{
+    const already = alreadyLinkedItemIds.includes(it.id);
+    return `
+    <div style="display:flex; align-items:center; gap:8px; padding:6px 2px; border-bottom:1px solid var(--border);">
+      <label style="display:flex; align-items:center; gap:8px; flex:1; font-weight:400; cursor:pointer; margin:0;">
+        <input type="checkbox" class="linked-item-check" value="${it.id}" ${already?'checked disabled':''}>
+        <span>${it.description||'—'} <span style="color:var(--text-dim); font-size:12px;">(${it.unit||'—'} — كمية ${it.quantity||0} — سعر العميل ${fmtMoney(it.unitPrice)})</span></span>
+      </label>
+      ${already
+        ? '<span class="badge b-good" style="font-size:11px;">مضاف بالفعل</span>'
+        : `<input type="number" step="any" class="linked-item-price" data-itemid="${it.id}" placeholder="سعر مقاول الباطن" style="width:150px; padding:5px 8px; border:1px solid var(--border); border-radius:6px; background:var(--card);" oninput="onLinkedItemPriceInput(this)">`}
+    </div>`;
+  }).join('');
+  document.getElementById('contract-linked-items-all').checked = false;
+}
+function toggleAllLinkedItems(){
+  const checkAll = document.getElementById('contract-linked-items-all').checked;
+  document.querySelectorAll('#contract-linked-items-list .linked-item-check:not(:disabled)').forEach(cb=>{ cb.checked = checkAll; });
+}
+// كتابة سعر لبند في القائمة بيحدده تلقائيًا كمُختار (بدون الحاجة لضغط الـ checkbox يدويًا)
+function onLinkedItemPriceInput(input){
+  const row = input.closest('div');
+  const cb = row ? row.querySelector('.linked-item-check') : null;
+  if(cb && !cb.disabled && Number(input.value) > 0) cb.checked = true;
+}
+function openContractForm(editId, presetProjectId){
+  if(!canEdit('contracts')) return;
+  if(editId && !isAdmin()) return;
+  contractFormState.editId = editId || null;
+  const c = editId ? DATA.contracts.find(r=>r._id===editId) : null;
+  document.getElementById('contractModalTitle').textContent = editId ? 'تعديل بيانات العقد' : 'إضافة عقد';
+  document.getElementById('contract-number').value = c ? (c.number||'') : '';
+  document.getElementById('contract-type').value = c ? c.contractType : 'عميل';
+  populateContractProjectSelect(c ? c.projectId : (presetProjectId||''));
+  populateContractSubSelect(c ? c.subId : '');
+  document.getElementById('contract-client').value = c ? (c.clientName||'') : '';
+  document.getElementById('contract-start').value = c ? (c.startDate||'') : '';
+  document.getElementById('contract-end').value = c ? (c.endDate||'') : '';
+  document.getElementById('contract-status').value = c ? (c.status||'ساري') : 'ساري';
+  document.getElementById('contract-notes').value = c ? (c.notes||'') : '';
+  onContractTypeChange();
+  if(c && c.contractType==='مقاول_باطن'){
+    const commonLinkedId = (c.items||[]).map(it=>it.linkedContractId).find(x=>x);
+    populateLinkedContractSelect(commonLinkedId||'');
+  }else if(!c && presetProjectId){
+    onContractProjectChange();
+  }
+  document.getElementById('contractOverlay').classList.add('open');
+}
+function closeContractModal(){
+  document.getElementById('contractOverlay').classList.remove('open');
+}
+function saveContractRecord(){
+  const number = document.getElementById('contract-number').value.trim();
+  const contractType = document.getElementById('contract-type').value;
+  const projectId = document.getElementById('contract-project').value;
+  const startDate = document.getElementById('contract-start').value;
+  const endDate = document.getElementById('contract-end').value;
+  const status = document.getElementById('contract-status').value;
+  const notes = document.getElementById('contract-notes').value.trim();
+  if(!number){ alert('من فضلك أدخل رقم العقد'); return; }
+  if(!projectId){ alert('من فضلك اختر المشروع'); return; }
+  let clientName = '', subId = null;
+  if(contractType==='عميل'){
+    clientName = document.getElementById('contract-client').value.trim();
+    if(!clientName){ alert('من فضلك أدخل اسم العميل'); return; }
+  }else{
+    subId = document.getElementById('contract-sub').value;
+    if(!subId){ alert('من فضلك اختر مقاول الباطن'); return; }
+  }
+  let c;
+  if(contractFormState.editId){
+    c = DATA.contracts.find(r=>r._id===contractFormState.editId);
+    Object.assign(c, {number, contractType, projectId, clientName, subId, startDate, endDate, status, notes});
+  }else{
+    const {n,id} = nextId('contracts');
+    c = {_id:id, _n:n, number, contractType, projectId, clientName, subId, startDate, endDate, status, notes,
+      items:[], changeOrders:[], deductionRules:[], extracts:[], boqs:[]};
+    DATA.contracts.push(c);
+  }
+  if(contractType==='مقاول_باطن'){
+    const linkedContractId = document.getElementById('contract-linked-contract').value;
+    const lc = linkedContractId ? DATA.contracts.find(r=>r._id===linkedContractId) : null;
+    if(lc){
+      const checkedIds = Array.from(document.querySelectorAll('#contract-linked-items-list .linked-item-check:checked:not(:disabled)')).map(cb=>cb.value);
+      checkedIds.forEach(itemId=>{
+        const alreadyExists = (c.items||[]).some(it=>it.linkedContractId===linkedContractId && it.linkedItemId===itemId);
+        if(alreadyExists) return;
+        const srcItem = (lc.items||[]).find(it=>it.id===itemId);
+        if(!srcItem) return;
+        const priceInput = document.querySelector(`#contract-linked-items-list .linked-item-price[data-itemid="${itemId}"]`);
+        const subPrice = priceInput ? (Number(priceInput.value)||0) : 0;
+        const n2 = (c.items.length ? Math.max(...c.items.map(x=>Number((x.id||'').replace('ITM-',''))||0)) : 0) + 1;
+        c.items.push({
+          id:'ITM-'+n2, code: srcItem.code||'', description: srcItem.description||'', method: srcItem.method||(DATA.contractCalcMethods[0]||'مقطوعية'),
+          unit: srcItem.unit||'', quantity: srcItem.quantity||0, unitPrice: subPrice,
+          linkedContractId, linkedItemId: itemId
+        });
+      });
+    }
+    // ربط المشروع تلقائيًا بسجل مقاول الباطن (يظهر في قائمة مشاريعه وكشف حسابه)
+    const sub = DATA.subs.find(r=>r._id===subId);
+    if(sub) ensureSubProjectLink(sub, projectId, c._id);
+  }
+  syncSubContractItemEntries();
+  logAudit(contractFormState.editId?'تعديل':'إضافة', 'عقد', number);
+  saveData();
+  closeContractModal();
+  renderPage();
+}
+// يتأكد أن مشروع عقد مقاول الباطن مضاف كـ"إسناد مشروع" في سجل المقاول نفسه (عشان يظهر في صفحته وكشف حسابه)
+function ensureSubProjectLink(sub, projectId, contractId){
+  const p = DATA.projects.find(x=>x._id===projectId);
+  const projectName = p ? p.name : '';
+  if(!projectName) return;
+  if(!Array.isArray(sub.assignments)) sub.assignments = [];
+  let a = sub.assignments.find(x=>x.linkedContractId===contractId);
+  if(!a) a = sub.assignments.find(x=>x.project===projectName);
+  if(a){
+    a.linkedContractId = contractId;
+    if(!a.project) a.project = projectName;
+  }else{
+    sub.assignments.push({id:'ASG-'+Math.random().toString(36).slice(2,10), project:projectName, contractType:(DATA.contractTypes[0]||'مقطوعية'), entries:[], linkedContractId: contractId});
+  }
+}
+
+/* ---- تفاصيل العقد ---- */
+function openContractDetail(id){
+  selectedContractId = id;
+  renderPage();
+}
+// فتح تفاصيل عقد مباشرة من صفحة تفاصيل المشروع
+function openContractFromProject(id){
+  if(!canView('contracts')) return;
+  currentPage = 'contracts';
+  selectedContractId = id;
+  buildNav();
+  renderPage();
+}
+// فتح صفحة المشروع مباشرة من تفاصيل العقد
+function openProjectFromContract(projectId){
+  if(!projectId || !canView('projects')) return;
+  currentPage = 'projects';
+  selectedProjectId = projectId;
+  selectedContractId = null;
+  buildNav();
+  renderPage();
+}
+function backToContractsList(){
+  selectedContractId = null;
+  renderPage();
+}
+// فتح تفاصيل عقد من صفحة تفاصيل مقاول الباطن
+function openContractFromSub(id){
+  if(!canView('contracts')) return;
+  currentPage = 'contracts';
+  selectedContractId = id;
+  buildNav();
+  renderPage();
+}
+function renderContractDetail(id){
+  const c = DATA.contracts.find(r=>r._id===id);
+  if(!c){ selectedContractId=null; return renderContractsPage(); }
+  const editable = canEdit('contracts');
+  const canModify = isAdmin();
+  const itemsTotal = computeContractItemsTotal(c);
+  const coTotal = computeApprovedChangeOrdersTotal(c);
+  const currentValue = itemsTotal + coTotal;
+  const isClient = c.contractType==='عميل';
+  const totalMargin = isClient ? (c.items||[]).reduce((s,it)=>s + (computeContractItemValue(it) - computeItemLinkedCost(c._id, it.id)), 0) : 0;
+  const executedTotal = computeContractExecutedTotal(c);
+  const approvedExtractsTotal = computeContractApprovedExtractsTotal(c);
+  const remainingWork = currentValue - executedTotal;
+  const collectedFromClient = isClient ? computeContractCollected(c) : 0;
+  const remainingToCollect = isClient ? currentValue - collectedFromClient : 0;
+  const projCollectionsForContract = isClient ? DATA.collections.filter(col=>col.project===contractProjectName(c)).slice().sort((a,b)=>(b.date||'').localeCompare(a.date||'')) : [];
+
+  const itemsRows = (c.items||[]).length ? c.items.map(it=>{
+    const val = computeContractItemValue(it);
+    let extraCol = '';
+    if(isClient){
+      const cost = computeItemLinkedCost(c._id, it.id);
+      const margin = val - cost;
+      extraCol = `<td>${cost ? fmtMoney(cost) : '<span style="color:var(--text-dim)">—</span>'}</td><td style="font-weight:700; color:${margin>=0?'var(--good)':'var(--bad)'};">${fmtMoney(margin)}</td>`;
+    }else{
+      let linkLabel = '<span style="color:var(--text-dim)">— بدون ربط —</span>';
+      if(it.linkedContractId){
+        const lc = DATA.contracts.find(x=>x._id===it.linkedContractId);
+        const li = lc ? (lc.items||[]).find(x=>x.id===it.linkedItemId) : null;
+        if(lc && li) linkLabel = `${lc.number} — ${li.description}`;
+        else if(lc) linkLabel = lc.number;
+      }
+      extraCol = `<td>${linkLabel}</td>`;
+    }
+    return `<tr>
+      <td>${it.code||'—'}</td>
+      <td>${it.description||'—'}</td>
+      <td>${it.method||'—'}</td>
+      <td>${it.unit||'—'}</td>
+      <td>${it.quantity||0}</td>
+      <td>${fmtMoney(it.unitPrice)}</td>
+      <td style="font-weight:700;">${fmtMoney(val)}</td>
+      ${extraCol}
+      <td class="row-actions">
+        ${canModify ? `<button class="btn secondary small" data-citemedit="${it.id}">تعديل</button>
+        <button class="btn danger small" data-citemdel="${it.id}">حذف</button>` : ''}
+      </td>
+    </tr>`;
+  }).join('') : `<tr><td colspan="9" style="text-align:center;">لا توجد بنود مسجلة بعد</td></tr>`;
+
+  const coRows = (c.changeOrders||[]).length ? c.changeOrders.map(co=>`
+    <tr>
+      <td>${co.date||'—'}</td>
+      <td>${co.description||'—'}</td>
+      <td style="font-weight:700; color:${(Number(co.amountDelta)||0)>=0?'var(--good)':'var(--bad)'};">${(Number(co.amountDelta)||0)>=0?'+':''}${fmtMoney(co.amountDelta)}</td>
+      <td>${co.approved ? '<span class="badge b-good">معتمد</span>' : '<span class="badge b-warn">قيد الاعتماد</span>'}</td>
+      <td class="row-actions">
+        ${canModify ? `<button class="btn secondary small" data-coedit="${co.id}">تعديل</button>
+        <button class="btn danger small" data-codel="${co.id}">حذف</button>` : ''}
+      </td>
+    </tr>`).join('') : `<tr><td colspan="5" style="text-align:center;">لا توجد أوامر تغيير مسجلة</td></tr>`;
+
+  const dedRows = (c.deductionRules||[]).length ? c.deductionRules.map(d=>`
+    <tr>
+      <td>${d.type}</td>
+      <td>${d.mode==='percent' ? (d.value+'%') : fmtMoney(d.value)}</td>
+      <td>${d.note||'—'}</td>
+      <td class="row-actions">
+        ${canModify ? `<button class="btn secondary small" data-dedit="${d.id}">تعديل</button>
+        <button class="btn danger small" data-ddel="${d.id}">حذف</button>` : ''}
+      </td>
+    </tr>`).join('') : `<tr><td colspan="4" style="text-align:center;">لا توجد قواعد استقطاع محددة</td></tr>`;
+
+  const extractsRows = sortedExtracts(c).length ? sortedExtracts(c).map(ext=>{
+    const t = computeExtractTotals(c, ext);
+    return `<tr>
+      <td>${ext._n}</td>
+      <td>${ext.date||'—'}</td>
+      <td>${ext.periodFrom||'—'} → ${ext.periodTo||'—'}</td>
+      <td>${fmtMoney(t.currentPeriodValue)}</td>
+      <td style="font-weight:700;">${fmtMoney(t.netPayable)}</td>
+      <td class="row-actions">
+        <button class="btn secondary small" data-extprint="${ext.id}">🖨 طباعة</button>
+        ${canModify ? `<button class="btn secondary small" data-extedit="${ext.id}">تعديل</button>
+        <button class="btn danger small" data-extdel="${ext.id}">حذف</button>` : ''}
+      </td>
+    </tr>`;
+  }).join('') : `<tr><td colspan="6" style="text-align:center;">لا توجد مستخلصات مسجلة بعد</td></tr>`;
+
+  const boqsRows = (c.boqs||[]).length ? c.boqs.slice().sort((a,b)=>(a._n||0)-(b._n||0)).map(b=>`
+    <tr>
+      <td>${b.number||b.id}</td>
+      <td>${b.title||'—'}</td>
+      <td>${b.date||'—'}</td>
+      <td>${(b.items||[]).length}</td>
+      <td>${b.status==='معتمد' ? '<span class="badge b-good">معتمد</span>' : '<span class="badge b-warn">مسودة</span>'}</td>
+      <td class="row-actions">
+        <button class="btn secondary small" data-boqprint="${b.id}">🖨 طباعة</button>
+        ${canModify ? `<button class="btn secondary small" data-boqedit="${b.id}">تعديل</button>
+        <button class="btn danger small" data-boqdel="${b.id}">حذف</button>` : ''}
+      </td>
+    </tr>`).join('') : `<tr><td colspan="6" style="text-align:center;">لا يوجد حصر مسجل بعد</td></tr>`;
+
+  return `
+    <button class="btn secondary small" onclick="backToContractsList()" style="margin-bottom:16px;">→ رجوع لكل العقود</button>
+    <div class="page-head">
+      <div>
+        <div class="page-title">${c.number} ${contractTypeBadge(c)}</div>
+        <div class="page-desc">${contractProjectName(c)} — ${contractPartyName(c)}${c.startDate?' · من '+c.startDate:''}${c.endDate?' إلى '+c.endDate:''}</div>
+        ${c.quotationId ? `<div style="margin-top:6px;"><span class="badge b-good" style="font-size:11px;">تم إنشاؤه من عرض سعر</span></div>` : ''}
+      </div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        ${c.quotationId ? `<button class="btn secondary" onclick="openQuotationFromContract('${c.quotationId}')">عرض عرض السعر الأصلي</button>` : ''}
+        ${canModify ? `<button class="btn secondary" onclick="openContractForm('${c._id}')">تعديل بيانات العقد</button>` : ''}
+        <button class="btn secondary" onclick="printContract('${c._id}')">🖨 طباعة العقد</button>
+      </div>
+    </div>
+    <div class="kpi-grid" style="margin-bottom:24px;">
+      <div class="kpi"><div class="kpi-label">قيمة البنود الأساسية</div><div class="kpi-value">${fmtMoney(itemsTotal)}</div></div>
+      <div class="kpi"><div class="kpi-label">أوامر التغيير المعتمدة</div><div class="kpi-value">${coTotal>=0?'+':''}${fmtMoney(coTotal)}</div></div>
+      <div class="kpi ok"><div class="kpi-label">القيمة الحالية للعقد</div><div class="kpi-value">${fmtMoney(currentValue)}</div></div>
+      <div class="kpi"><div class="kpi-label">المنفذ فعليًا (تراكمي من المستخلصات)</div><div class="kpi-value">${fmtMoney(executedTotal)}</div></div>
+      <div class="kpi ok"><div class="kpi-label">المستخلصات المعتمدة (صافي)</div><div class="kpi-value">${fmtMoney(approvedExtractsTotal)}</div></div>
+      <div class="kpi ${remainingWork>0?'alert':'ok'}"><div class="kpi-label">المتبقي من الأعمال</div><div class="kpi-value">${fmtMoney(remainingWork)}</div></div>
+      ${isClient ? `<div class="kpi ${totalMargin>=0?'ok':'alert'}"><div class="kpi-label">هامش الربح المتوقع (من البنود المرتبطة بمقاولي الباطن)</div><div class="kpi-value">${fmtMoney(totalMargin)}</div></div>` : ''}
+      ${isClient ? `<div class="kpi ok"><div class="kpi-label">المحصّل من العميل (من تحصيلات المشروع)</div><div class="kpi-value">${fmtMoney(collectedFromClient)}</div></div>` : ''}
+      ${isClient ? `<div class="kpi ${remainingToCollect>0?'alert':'ok'}"><div class="kpi-label">المتبقي للتحصيل من العميل</div><div class="kpi-value">${fmtMoney(remainingToCollect)}</div></div>` : ''}
+    </div>
+
+    <div class="section-title" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+      <span>📋 بنود العقد</span>
+      ${editable ? `<button class="btn secondary small" onclick="openContractItemForm('${c._id}')">+ إضافة بند</button>` : ''}
+    </div>
+    <div class="table-wrap" style="margin-bottom:28px;"><div class="table-scroll"><table>
+      <thead><tr>
+        <th>كود</th><th>البيان</th><th>طريقة الحساب</th><th>الوحدة</th><th>الكمية</th><th>سعر الوحدة</th><th>القيمة</th>
+        ${isClient ? '<th>تكلفة مقاول الباطن المرتبطة</th><th>الهامش</th>' : '<th>مرتبط ببند عقد العميل</th>'}
+        <th></th>
+      </tr></thead>
+      <tbody id="tbody-contract-items">${itemsRows}</tbody>
+    </table></div></div>
+
+    <div class="section-title" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+      <span>🔄 أوامر التغيير</span>
+      ${editable ? `<button class="btn secondary small" onclick="openChangeOrderForm('${c._id}')">+ إضافة أمر تغيير</button>` : ''}
+    </div>
+    <div class="table-wrap" style="margin-bottom:28px;"><div class="table-scroll"><table>
+      <thead><tr><th>التاريخ</th><th>البيان</th><th>قيمة التغيير</th><th>الحالة</th><th></th></tr></thead>
+      <tbody id="tbody-contract-cos">${coRows}</tbody>
+    </table></div></div>
+
+    <div class="section-title" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+      <span>➖ قواعد الاستقطاعات</span>
+      ${editable ? `<button class="btn secondary small" onclick="openDeductionForm('${c._id}')">+ إضافة قاعدة استقطاع</button>` : ''}
+    </div>
+    <div class="table-wrap" style="margin-bottom:28px;"><div class="table-scroll"><table>
+      <thead><tr><th>نوع الاستقطاع</th><th>القيمة</th><th>ملاحظة</th><th></th></tr></thead>
+      <tbody id="tbody-contract-ded">${dedRows}</tbody>
+    </table></div></div>
+
+    <div class="section-title" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+      <span>📄 المستخلصات</span>
+      ${editable ? `<button class="btn secondary small" onclick="openExtractForm('${c._id}')">+ إضافة مستخلص</button>` : ''}
+    </div>
+    <div class="table-wrap" style="margin-bottom:28px;"><div class="table-scroll"><table>
+      <thead><tr><th>رقم المستخلص</th><th>التاريخ</th><th>الفترة</th><th>قيمة الفترة</th><th>صافي المستحق</th><th></th></tr></thead>
+      <tbody id="tbody-contract-extracts">${extractsRows}</tbody>
+    </table></div></div>
+
+    <div class="section-title" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+      <span>📐 الحصر</span>
+      ${editable ? `<button class="btn secondary small" onclick="openBoqForm('${c._id}')">+ إضافة حصر</button>` : ''}
+    </div>
+    <div class="table-wrap" style="margin-bottom:28px;"><div class="table-scroll"><table>
+      <thead><tr><th>رقم الحصر</th><th>العنوان</th><th>التاريخ</th><th>عدد البنود</th><th>الحالة</th><th></th></tr></thead>
+      <tbody id="tbody-contract-boqs">${boqsRows}</tbody>
+    </table></div></div>
+
+    ${isClient ? `
+    <div class="section-title" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+      <span>💰 التحصيلات من العميل على هذا المشروع</span>
+      ${editable ? `<button class="btn secondary small" onclick="openCollectionForm('${contractProjectName(c)}')">+ تحصيل دفعة جديدة</button>` : ''}
+    </div>
+    <div class="table-wrap" style="margin-bottom:28px;"><div class="table-scroll"><table>
+      <thead><tr><th>التاريخ</th><th>طريقة التحصيل</th><th>المبلغ</th><th>ملاحظة</th></tr></thead>
+      <tbody>
+        ${projCollectionsForContract.length ? projCollectionsForContract.map(col=>`<tr>
+          <td>${col.date||'—'}</td><td>${col.method||'—'}</td><td style="font-weight:700;">${fmtMoney(col.amount)}</td><td>${col.note||'—'}</td>
+        </tr>`).join('') : `<tr><td colspan="4" style="text-align:center;">لا توجد تحصيلات مسجلة على هذا المشروع بعد</td></tr>`}
+      </tbody>
+    </table></div></div>
+    <div style="margin-bottom:8px;"><button class="btn secondary small" onclick="openProjectFromContract('${c.projectId}')">→ فتح صفحة المشروع الكاملة</button></div>
+    ` : ''}
+    ${c.notes ? `<div class="section-title">ملاحظات</div><div class="table-wrap" style="padding:14px;">${c.notes}</div>` : ''}
+  `;
+}
+function attachContractDetailEvents(){
+  document.querySelectorAll('[data-citemedit]').forEach(btn=>{
+    btn.addEventListener('click', ()=>openContractItemForm(selectedContractId, btn.dataset.citemedit));
+  });
+  document.querySelectorAll('[data-citemdel]').forEach(btn=>{
+    btn.addEventListener('click', ()=>deleteContractItem(selectedContractId, btn.dataset.citemdel));
+  });
+  document.querySelectorAll('[data-coedit]').forEach(btn=>{
+    btn.addEventListener('click', ()=>openChangeOrderForm(selectedContractId, btn.dataset.coedit));
+  });
+  document.querySelectorAll('[data-codel]').forEach(btn=>{
+    btn.addEventListener('click', ()=>deleteChangeOrder(selectedContractId, btn.dataset.codel));
+  });
+  document.querySelectorAll('[data-dedit]').forEach(btn=>{
+    btn.addEventListener('click', ()=>openDeductionForm(selectedContractId, btn.dataset.dedit));
+  });
+  document.querySelectorAll('[data-ddel]').forEach(btn=>{
+    btn.addEventListener('click', ()=>deleteDeductionRule(selectedContractId, btn.dataset.ddel));
+  });
+  document.querySelectorAll('[data-extedit]').forEach(btn=>{
+    btn.addEventListener('click', ()=>openExtractForm(selectedContractId, btn.dataset.extedit));
+  });
+  document.querySelectorAll('[data-extdel]').forEach(btn=>{
+    btn.addEventListener('click', ()=>deleteExtract(selectedContractId, btn.dataset.extdel));
+  });
+  document.querySelectorAll('[data-extprint]').forEach(btn=>{
+    btn.addEventListener('click', ()=>printExtract(selectedContractId, btn.dataset.extprint));
+  });
+  document.querySelectorAll('[data-boqedit]').forEach(btn=>{
+    btn.addEventListener('click', ()=>openBoqForm(selectedContractId, btn.dataset.boqedit));
+  });
+  document.querySelectorAll('[data-boqdel]').forEach(btn=>{
+    btn.addEventListener('click', ()=>deleteBoqRecord(selectedContractId, btn.dataset.boqdel));
+  });
+  document.querySelectorAll('[data-boqprint]').forEach(btn=>{
+    btn.addEventListener('click', ()=>printBoq(selectedContractId, btn.dataset.boqprint));
+  });
+}
+
+/* ---- بنود العقد ---- */
+let contractItemFormState = {contractId:null, editId:null};
+function autoCalcContractItemValue(){
+  const qty = Number(document.getElementById('citem-qty').value)||0;
+  const price = Number(document.getElementById('citem-price').value)||0;
+  document.getElementById('citem-value').value = (qty*price) || '';
+}
+function populateContractMethodSelect(selectedValue){
+  const sel = document.getElementById('citem-method');
+  const methods = DATA.contractCalcMethods.slice();
+  if(selectedValue && !methods.includes(selectedValue)) methods.push(selectedValue);
+  sel.innerHTML = methods.map(m=>`<option value="${m}" ${m===selectedValue?'selected':''}>${m}</option>`).join('');
+}
+function toggleNewMethodInput(){
+  const row = document.getElementById('citem-new-method-row');
+  const show = row.style.display==='none';
+  row.style.display = show ? '' : 'none';
+  if(show) document.getElementById('citem-new-method-name').value = '';
+}
+function confirmNewMethod(){
+  const name = document.getElementById('citem-new-method-name').value.trim();
+  if(!name){ alert('من فضلك أدخل اسم طريقة الحساب'); return; }
+  if(!DATA.contractCalcMethods.includes(name)) DATA.contractCalcMethods.push(name);
+  saveData();
+  populateContractMethodSelect(name);
+  toggleNewMethodInput();
+}
+function fillLinkedContractOptions(){
+  const c = DATA.contracts.find(r=>r._id===contractItemFormState.contractId);
+  if(!c) return;
+  const sel = document.getElementById('citem-link-contract');
+  const clients = clientContractsForProject(c.projectId, c._id);
+  sel.innerHTML = '<option value="">— بدون ربط —</option>' +
+    clients.map(lc=>`<option value="${lc._id}">${lc.number}</option>`).join('');
+  fillLinkedItemOptions();
+}
+function fillLinkedItemOptions(){
+  const linkContractId = document.getElementById('citem-link-contract').value;
+  const itemSel = document.getElementById('citem-link-item');
+  const lc = DATA.contracts.find(r=>r._id===linkContractId);
+  itemSel.innerHTML = '<option value="">— اختر البند —</option>' +
+    (lc ? (lc.items||[]).map(it=>`<option value="${it.id}">${it.description} (${fmtMoney(computeContractItemValue(it))})</option>`).join('') : '');
+}
+function openContractItemForm(contractId, itemId){
+  if(!canEdit('contracts')) return;
+  const c = DATA.contracts.find(r=>r._id===contractId);
+  if(!c) return;
+  contractItemFormState = {contractId, editId: itemId||null};
+  const it = itemId ? (c.items||[]).find(x=>x.id===itemId) : null;
+  document.getElementById('contractItemModalTitle').textContent = itemId ? 'تعديل بند' : 'إضافة بند';
+  document.getElementById('citem-code').value = it ? (it.code||'') : '';
+  document.getElementById('citem-desc').value = it ? (it.description||'') : '';
+  populateContractMethodSelect(it ? (it.method||DATA.contractCalcMethods[0]||'مقطوعية') : (DATA.contractCalcMethods[0]||'مقطوعية'));
+  document.getElementById('citem-new-method-row').style.display = 'none';
+  document.getElementById('citem-unit').value = it ? (it.unit||'') : '';
+  document.getElementById('citem-qty').value = it ? (it.quantity||'') : '';
+  document.getElementById('citem-price').value = it ? (it.unitPrice||'') : '';
+  document.getElementById('citem-value').value = it ? computeContractItemValue(it) : '';
+  const linkWrap = document.getElementById('citem-link-wrap');
+  if(c.contractType==='مقاول_باطن'){
+    linkWrap.style.display = '';
+    fillLinkedContractOptions();
+    if(it && it.linkedContractId){
+      document.getElementById('citem-link-contract').value = it.linkedContractId;
+      fillLinkedItemOptions();
+      document.getElementById('citem-link-item').value = it.linkedItemId||'';
+    }
+  }else{
+    linkWrap.style.display = 'none';
+  }
+  document.getElementById('contractItemOverlay').classList.add('open');
+}
+function closeContractItemModal(){
+  document.getElementById('contractItemOverlay').classList.remove('open');
+}
+function saveContractItem(){
+  const c = DATA.contracts.find(r=>r._id===contractItemFormState.contractId);
+  if(!c) return;
+  const code = document.getElementById('citem-code').value.trim();
+  const description = document.getElementById('citem-desc').value.trim();
+  const method = document.getElementById('citem-method').value;
+  const unit = document.getElementById('citem-unit').value.trim();
+  const quantity = Number(document.getElementById('citem-qty').value)||0;
+  const unitPrice = Number(document.getElementById('citem-price').value)||0;
+  if(!description){ alert('من فضلك أدخل بيان البند'); return; }
+  let linkedContractId = null, linkedItemId = null;
+  if(c.contractType==='مقاول_باطن'){
+    linkedContractId = document.getElementById('citem-link-contract').value || null;
+    linkedItemId = linkedContractId ? (document.getElementById('citem-link-item').value || null) : null;
+  }
+  if(contractItemFormState.editId){
+    const it = c.items.find(x=>x.id===contractItemFormState.editId);
+    Object.assign(it, {code, description, method, unit, quantity, unitPrice, linkedContractId, linkedItemId});
+  }else{
+    const n = (c.items.length ? Math.max(...c.items.map(x=>Number((x.id||'').replace('ITM-',''))||0)) : 0) + 1;
+    c.items.push({id:'ITM-'+n, code, description, method, unit, quantity, unitPrice, linkedContractId, linkedItemId});
+  }
+  if(c.contractType==='مقاول_باطن') syncSubContractItemEntries();
+  logAudit(contractItemFormState.editId?'تعديل':'إضافة', 'بند عقد', c.number, description);
+  saveData();
+  closeContractItemModal();
+  renderPage();
+}
+function deleteContractItem(contractId, itemId){
+  if(!isAdmin()) return;
+  const c = DATA.contracts.find(r=>r._id===contractId);
+  if(!c) return;
+  if(!confirm('هل أنت متأكد من حذف هذا البند؟')) return;
+  const it = c.items.find(x=>x.id===itemId);
+  c.items = c.items.filter(x=>x.id!==itemId);
+  if(c.contractType==='مقاول_باطن') syncSubContractItemEntries();
+  logAudit('حذف', 'بند عقد', c.number, it?it.description:'');
+  saveData();
+  renderPage();
+}
+
+/* ---- أوامر التغيير ---- */
+let changeOrderFormState = {contractId:null, editId:null};
+function openChangeOrderForm(contractId, coId){
+  if(!canEdit('contracts')) return;
+  const c = DATA.contracts.find(r=>r._id===contractId);
+  if(!c) return;
+  changeOrderFormState = {contractId, editId: coId||null};
+  const co = coId ? (c.changeOrders||[]).find(x=>x.id===coId) : null;
+  document.getElementById('changeOrderModalTitle').textContent = coId ? 'تعديل أمر تغيير' : 'إضافة أمر تغيير';
+  document.getElementById('co-date').value = co ? (co.date||'') : todayStr();
+  document.getElementById('co-desc').value = co ? (co.description||'') : '';
+  document.getElementById('co-amount').value = co ? (co.amountDelta||'') : '';
+  document.getElementById('co-approved').value = co && co.approved ? '1' : '0';
+  document.getElementById('changeOrderOverlay').classList.add('open');
+}
+function closeChangeOrderModal(){
+  document.getElementById('changeOrderOverlay').classList.remove('open');
+}
+function saveChangeOrder(){
+  const c = DATA.contracts.find(r=>r._id===changeOrderFormState.contractId);
+  if(!c) return;
+  const date = document.getElementById('co-date').value;
+  const description = document.getElementById('co-desc').value.trim();
+  const amountDelta = Number(document.getElementById('co-amount').value)||0;
+  const approved = document.getElementById('co-approved').value==='1';
+  if(!description){ alert('من فضلك أدخل بيان أمر التغيير'); return; }
+  if(changeOrderFormState.editId){
+    const co = c.changeOrders.find(x=>x.id===changeOrderFormState.editId);
+    Object.assign(co, {date, description, amountDelta, approved, approvedDate: approved ? (co.approvedDate||todayStr()) : null});
+  }else{
+    const n = (c.changeOrders.length ? Math.max(...c.changeOrders.map(x=>Number((x.id||'').replace('CO-',''))||0)) : 0) + 1;
+    c.changeOrders.push({id:'CO-'+n, date, description, amountDelta, approved, approvedDate: approved ? todayStr() : null});
+  }
+  logAudit(changeOrderFormState.editId?'تعديل':'إضافة', 'أمر تغيير', c.number, description);
+  saveData();
+  closeChangeOrderModal();
+  renderPage();
+}
+function deleteChangeOrder(contractId, coId){
+  if(!isAdmin()) return;
+  const c = DATA.contracts.find(r=>r._id===contractId);
+  if(!c) return;
+  if(!confirm('هل أنت متأكد من حذف أمر التغيير هذا؟')) return;
+  c.changeOrders = c.changeOrders.filter(x=>x.id!==coId);
+  logAudit('حذف', 'أمر تغيير', c.number);
+  saveData();
+  renderPage();
+}
+
+/* ---- قواعد الاستقطاعات ---- */
+let deductionFormState = {contractId:null, editId:null};
+function openDeductionForm(contractId, dedId){
+  if(!canEdit('contracts')) return;
+  const c = DATA.contracts.find(r=>r._id===contractId);
+  if(!c) return;
+  deductionFormState = {contractId, editId: dedId||null};
+  const d = dedId ? (c.deductionRules||[]).find(x=>x.id===dedId) : null;
+  document.getElementById('deductionModalTitle').textContent = dedId ? 'تعديل قاعدة استقطاع' : 'إضافة قاعدة استقطاع';
+  document.getElementById('ded-type').value = d ? d.type : 'احتجاز ضمان';
+  document.getElementById('ded-mode').value = d ? (d.mode||'percent') : 'percent';
+  document.getElementById('ded-value').value = d ? (d.value||'') : '';
+  document.getElementById('ded-note').value = d ? (d.note||'') : '';
+  document.getElementById('deductionOverlay').classList.add('open');
+}
+function closeDeductionModal(){
+  document.getElementById('deductionOverlay').classList.remove('open');
+}
+function saveDeductionRule(){
+  const c = DATA.contracts.find(r=>r._id===deductionFormState.contractId);
+  if(!c) return;
+  const type = document.getElementById('ded-type').value;
+  const mode = document.getElementById('ded-mode').value;
+  const value = Number(document.getElementById('ded-value').value)||0;
+  const note = document.getElementById('ded-note').value.trim();
+  if(deductionFormState.editId){
+    const d = c.deductionRules.find(x=>x.id===deductionFormState.editId);
+    Object.assign(d, {type, mode, value, note});
+  }else{
+    const n = (c.deductionRules.length ? Math.max(...c.deductionRules.map(x=>Number((x.id||'').replace('DED-',''))||0)) : 0) + 1;
+    c.deductionRules.push({id:'DED-'+n, type, mode, value, note});
+  }
+  logAudit(deductionFormState.editId?'تعديل':'إضافة', 'قاعدة استقطاع', c.number, type);
+  saveData();
+  closeDeductionModal();
+  renderPage();
+}
+function deleteDeductionRule(contractId, dedId){
+  if(!isAdmin()) return;
+  const c = DATA.contracts.find(r=>r._id===contractId);
+  if(!c) return;
+  if(!confirm('هل أنت متأكد من حذف قاعدة الاستقطاع هذه؟')) return;
+  c.deductionRules = c.deductionRules.filter(x=>x.id!==dedId);
+  logAudit('حذف', 'قاعدة استقطاع', c.number);
+  saveData();
+  renderPage();
+}
+
+/* ---- المستخلصات ---- */
+let extractFormState = {contractId:null, editId:null};
+function renderExtractItemsForm(c, ext){
+  document.getElementById('extract-items-body').innerHTML = (c.items||[]).map(it=>{
+    const row = (ext.items||[]).find(x=>x.itemId===it.id) || {qty:0};
+    const prevQty = itemPrevQty(c, it.id, extractFormState.editId ? ext : null);
+    return `<tr data-itemid="${it.id}">
+      <td>${it.description||'—'}<div style="font-size:11px; color:var(--text-dim);">${it.unit||''}${it.quantity?' — الكمية الكلية بالعقد: '+it.quantity:''}</div></td>
+      <td class="ext-prev">${prevQty}</td>
+      <td><input type="number" step="any" class="ext-qty-input" data-price="${it.unitPrice||0}" value="${row.qty||''}" style="width:100px; background:var(--bg); border:1px solid var(--border); color:var(--text); padding:6px 8px; border-radius:6px;" oninput="recalcExtractPreview()"></td>
+      <td class="ext-total">${prevQty}</td>
+      <td class="ext-value">${fmtMoney(0)}</td>
+    </tr>`;
+  }).join('');
+  recalcExtractPreview();
+}
+function recalcExtractPreview(){
+  const c = DATA.contracts.find(r=>r._id===extractFormState.contractId);
+  if(!c) return;
+  let currentPeriodValue = 0;
+  document.querySelectorAll('#extract-items-body tr').forEach(tr=>{
+    const input = tr.querySelector('.ext-qty-input');
+    const qty = Number(input.value)||0;
+    const price = Number(input.dataset.price)||0;
+    const prevQty = Number(tr.querySelector('.ext-prev').textContent)||0;
+    const totalQty = prevQty + qty;
+    const value = qty*price;
+    tr.querySelector('.ext-total').textContent = totalQty;
+    tr.querySelector('.ext-value').textContent = fmtMoney(value);
+    currentPeriodValue += value;
+  });
+  const ded = computeExtractDeductions(c, currentPeriodValue);
+  document.getElementById('extract-totals-preview').innerHTML = `
+    قيمة هذه الفترة: <b>${fmtMoney(currentPeriodValue)}</b> —
+    ${ded.taxTotal ? 'ضريبة: <b>+'+fmtMoney(ded.taxTotal)+'</b> — ' : ''}
+    ${ded.otherDeductionsTotal ? 'استقطاعات: <b>-'+fmtMoney(ded.otherDeductionsTotal)+'</b> — ' : ''}
+    صافي المستحق: <b style="color:var(--good);">${fmtMoney(ded.netPayable)}</b>
+  `;
+}
+function openExtractForm(contractId, extId){
+  if(!canEdit('contracts')) return;
+  const c = DATA.contracts.find(r=>r._id===contractId);
+  if(!c) return;
+  extractFormState = {contractId, editId: extId||null};
+  const ext = extId ? (c.extracts||[]).find(x=>x.id===extId) : {items:[]};
+  document.getElementById('extractModalTitle').textContent = extId ? 'تعديل مستخلص' : 'إضافة مستخلص';
+  document.getElementById('extract-date').value = ext.date || todayStr();
+  document.getElementById('extract-period-from').value = ext.periodFrom || '';
+  document.getElementById('extract-period-to').value = ext.periodTo || '';
+  document.getElementById('extract-notes').value = ext.notes || '';
+  renderExtractItemsForm(c, ext);
+  document.getElementById('extractOverlay').classList.add('open');
+}
+function closeExtractModal(){
+  document.getElementById('extractOverlay').classList.remove('open');
+}
+function saveExtract(){
+  const c = DATA.contracts.find(r=>r._id===extractFormState.contractId);
+  if(!c) return;
+  const date = document.getElementById('extract-date').value;
+  const periodFrom = document.getElementById('extract-period-from').value;
+  const periodTo = document.getElementById('extract-period-to').value;
+  const notes = document.getElementById('extract-notes').value.trim();
+  const items = [];
+  document.querySelectorAll('#extract-items-body tr').forEach(tr=>{
+    const qty = Number(tr.querySelector('.ext-qty-input').value)||0;
+    if(qty){ items.push({itemId: tr.dataset.itemid, qty}); }
+  });
+  if(!items.length){ alert('من فضلك أدخل كمية منفذة لبند واحد على الأقل'); return; }
+  if(!date){ alert('من فضلك أدخل تاريخ المستخلص'); return; }
+  if(extractFormState.editId){
+    const ext = c.extracts.find(x=>x.id===extractFormState.editId);
+    Object.assign(ext, {date, periodFrom, periodTo, notes, items});
+  }else{
+    const n = (c.extracts.length ? Math.max(...c.extracts.map(x=>x._n||0)) : 0) + 1;
+    c.extracts.push({id:'EXT-'+n, _n:n, date, periodFrom, periodTo, notes, items});
+  }
+  logAudit(extractFormState.editId?'تعديل':'إضافة', 'مستخلص', c.number, date);
+  saveData();
+  closeExtractModal();
+  renderPage();
+}
+function deleteExtract(contractId, extId){
+  if(!isAdmin()) return;
+  const c = DATA.contracts.find(r=>r._id===contractId);
+  if(!c) return;
+  if(!confirm('هل أنت متأكد من حذف هذا المستخلص؟ سيؤثر هذا على حساب الكميات السابقة للمستخلصات الأحدث.')) return;
+  c.extracts = c.extracts.filter(x=>x.id!==extId);
+  logAudit('حذف', 'مستخلص', c.number);
+  saveData();
+  renderPage();
+}
+function printExtract(contractId, extId){
+  const c = DATA.contracts.find(r=>r._id===contractId);
+  if(!c) return;
+  const ext = (c.extracts||[]).find(x=>x.id===extId);
+  if(!ext) return;
+  const t = computeExtractTotals(c, ext);
+
+  const info = `<table style="width:100%; border-collapse:collapse; font-size:13px;">
+    <tbody>
+      <tr><td style="padding:7px; border:1px solid #ccc; font-weight:700; width:180px;">العقد</td><td style="padding:7px; border:1px solid #ccc;">${c.number} — ${contractProjectName(c)}</td></tr>
+      <tr><td style="padding:7px; border:1px solid #ccc; font-weight:700;">${c.contractType==='عميل'?'العميل':'مقاول الباطن'}</td><td style="padding:7px; border:1px solid #ccc;">${contractPartyName(c)}</td></tr>
+      <tr><td style="padding:7px; border:1px solid #ccc; font-weight:700;">رقم المستخلص</td><td style="padding:7px; border:1px solid #ccc;">${ext._n}</td></tr>
+      <tr><td style="padding:7px; border:1px solid #ccc; font-weight:700;">التاريخ</td><td style="padding:7px; border:1px solid #ccc;">${ext.date||'—'}</td></tr>
+      <tr><td style="padding:7px; border:1px solid #ccc; font-weight:700;">الفترة</td><td style="padding:7px; border:1px solid #ccc;">${ext.periodFrom||'—'} إلى ${ext.periodTo||'—'}</td></tr>
+    </tbody>
+  </table>`;
+
+  const itemsRows = t.rows.map(r=>`<tr>
+      <td>${r.item.description||'—'}</td><td>${r.item.unit||'—'}</td>
+      <td>${r.prevQty}</td><td>${r.currentQty}</td><td>${r.totalQty}</td>
+      <td>${fmtMoney(r.item.unitPrice)}</td><td style="font-weight:700;">${fmtMoney(r.value)}</td><td>${r.pct}%</td>
+    </tr>`).join('') || `<tr><td colspan="8" style="text-align:center;">لا توجد بنود</td></tr>`;
+
+  const dedRows = t.breakdown.map(d=>`<tr>
+      <td>${d.type}</td><td style="color:${d.sign>0?'var(--good)':'var(--bad)'};">${d.sign>0?'+':'-'} ${fmtMoney(d.amount)}</td>
+    </tr>`).join('') || `<tr><td colspan="2" style="text-align:center;">لا توجد استقطاعات</td></tr>`;
+
+  const cards = statCardsRow([
+    statCard('إجمالي قيمة هذه الفترة', fmtMoney(t.currentPeriodValue), '#2980b9'),
+    statCard('صافي المستحق', fmtMoney(t.netPayable), '#27ae60'),
+    statCard('الإجمالي التراكمي حتى الآن', fmtMoney(t.cumulativeValue), '#8e44ad'),
+  ]);
+
+  const body = info + cards
+    + `<h3 style="margin:20px 0 4px;">📋 كميات التنفيذ</h3>` + buildStatementTable(['البند','الوحدة','سابق','حالي','إجمالي','سعر الوحدة','القيمة','نسبة التنفيذ'], itemsRows)
+    + `<h3 style="margin:20px 0 4px;">➖ الاستقطاعات والإضافات</h3>` + buildStatementTable(['النوع','القيمة'], dedRows)
+    + `<div style="margin-top:16px; padding:14px; border:1px solid #ccc; border-radius:8px; background:#f7f7f8;">
+        <div style="display:flex; justify-content:space-between; margin-bottom:6px;"><span>إجمالي قيمة الأعمال المنفذة (هذه الفترة)</span><b>${fmtMoney(t.currentPeriodValue)}</b></div>
+        ${t.taxTotal ? `<div style="display:flex; justify-content:space-between; margin-bottom:6px;"><span>+ الضريبة</span><b style="color:#27ae60;">${fmtMoney(t.taxTotal)}</b></div>` : ''}
+        ${t.otherDeductionsTotal ? `<div style="display:flex; justify-content:space-between; margin-bottom:6px;"><span>- الاستقطاعات</span><b style="color:#c0392b;">${fmtMoney(t.otherDeductionsTotal)}</b></div>` : ''}
+        <div style="display:flex; justify-content:space-between; font-size:16px; border-top:1px solid #ccc; padding-top:8px; margin-top:8px;"><span>صافي المستحق</span><b>${fmtMoney(t.netPayable)}</b></div>
+      </div>
+      <div style="display:flex; gap:20px; margin-top:30px; flex-wrap:wrap;">
+        <div style="flex:1; min-width:140px; text-align:center; border-top:1px solid #999; padding-top:6px;">المقاول</div>
+        <div style="flex:1; min-width:140px; text-align:center; border-top:1px solid #999; padding-top:6px;">المهندس المسؤول</div>
+        <div style="flex:1; min-width:140px; text-align:center; border-top:1px solid #999; padding-top:6px;">مكتب المراجعة</div>
+        <div style="flex:1; min-width:140px; text-align:center; border-top:1px solid #999; padding-top:6px;">المدير المالي</div>
+      </div>`;
+
+  openPrintDocument('مستخلص رقم '+ext._n+' — عقد '+c.number, contractProjectName(c)+' — '+contractPartyName(c), body);
+}
+
+/* ---- طباعة العقد ---- */
+function printContract(id){
+  const c = DATA.contracts.find(r=>r._id===id);
+  if(!c) return;
+  const itemsTotal = computeContractItemsTotal(c);
+  const coTotal = computeApprovedChangeOrdersTotal(c);
+  const currentValue = itemsTotal + coTotal;
+
+  const info = `<table style="width:100%; border-collapse:collapse; font-size:13px;">
+    <tbody>
+      <tr><td style="padding:7px; border:1px solid #ccc; font-weight:700; width:180px;">نوع العقد</td><td style="padding:7px; border:1px solid #ccc;">${c.contractType==='عميل'?'عقد مع عميل':'عقد مع مقاول من الباطن'}</td></tr>
+      <tr><td style="padding:7px; border:1px solid #ccc; font-weight:700;">المشروع</td><td style="padding:7px; border:1px solid #ccc;">${contractProjectName(c)}</td></tr>
+      <tr><td style="padding:7px; border:1px solid #ccc; font-weight:700;">${c.contractType==='عميل'?'العميل':'مقاول الباطن'}</td><td style="padding:7px; border:1px solid #ccc;">${contractPartyName(c)}</td></tr>
+      <tr><td style="padding:7px; border:1px solid #ccc; font-weight:700;">تاريخ البدء</td><td style="padding:7px; border:1px solid #ccc;">${c.startDate||'—'}</td></tr>
+      <tr><td style="padding:7px; border:1px solid #ccc; font-weight:700;">تاريخ الانتهاء</td><td style="padding:7px; border:1px solid #ccc;">${c.endDate||'—'}</td></tr>
+      <tr><td style="padding:7px; border:1px solid #ccc; font-weight:700;">الحالة</td><td style="padding:7px; border:1px solid #ccc;">${c.status||'—'}</td></tr>
+    </tbody>
+  </table>`;
+
+  const cards = statCardsRow([
+    statCard('قيمة البنود الأساسية', fmtMoney(itemsTotal), '#2980b9'),
+    statCard('أوامر التغيير المعتمدة', fmtMoney(coTotal), '#8e44ad'),
+    statCard('القيمة الحالية للعقد', fmtMoney(currentValue), '#27ae60'),
+  ]);
+
+  const itemsRows = (c.items||[]).map(it=>`<tr>
+      <td>${it.code||'—'}</td><td>${it.description||'—'}</td><td>${it.method||'—'}</td><td>${it.unit||'—'}</td>
+      <td>${it.quantity||0}</td><td>${fmtMoney(it.unitPrice)}</td><td style="font-weight:700;">${fmtMoney(computeContractItemValue(it))}</td>
+    </tr>`).join('') || `<tr><td colspan="7" style="text-align:center;">لا توجد بنود</td></tr>`;
+
+  const coRows = (c.changeOrders||[]).map(co=>`<tr>
+      <td>${co.date||'—'}</td><td>${co.description||'—'}</td><td>${fmtMoney(co.amountDelta)}</td><td>${co.approved?'معتمد':'قيد الاعتماد'}</td>
+    </tr>`).join('') || `<tr><td colspan="4" style="text-align:center;">لا توجد أوامر تغيير</td></tr>`;
+
+  const dedRows = (c.deductionRules||[]).map(d=>`<tr>
+      <td>${d.type}</td><td>${d.mode==='percent'?(d.value+'%'):fmtMoney(d.value)}</td><td>${d.note||'—'}</td>
+    </tr>`).join('') || `<tr><td colspan="3" style="text-align:center;">لا توجد قواعد استقطاع</td></tr>`;
+
+  const body = info + cards
+    + `<h3 style="margin:20px 0 4px;">📋 بنود العقد</h3>` + buildStatementTable(['كود','البيان','طريقة الحساب','الوحدة','الكمية','سعر الوحدة','القيمة'], itemsRows)
+    + `<h3 style="margin:20px 0 4px;">🔄 أوامر التغيير</h3>` + buildStatementTable(['التاريخ','البيان','قيمة التغيير','الحالة'], coRows)
+    + `<h3 style="margin:20px 0 4px;">➖ قواعد الاستقطاعات</h3>` + buildStatementTable(['النوع','القيمة','ملاحظة'], dedRows);
+
+  openPrintDocument('عقد رقم '+(c.number||c._id), contractProjectName(c)+' — '+contractPartyName(c), body);
+}
+
+/* ================= الحصر (البصر) — داخل العقد ================= */
+function nextBoqNumber(c){
+  const n = (c.boqs.length ? Math.max(...c.boqs.map(x=>Number((x.id||'').replace('BOQ-',''))||0)) : 0) + 1;
+  return n;
+}
+let boqFormState = {contractId:null, editId:null};
+function addBoqItemRow(prefill){
+  const container = document.getElementById('boq-items');
+  const div = document.createElement('div');
+  div.className = 'assignment-row';
+  div.style.cssText = 'border:1px solid var(--border); border-radius:6px; padding:12px; margin-bottom:10px; background:var(--bg);';
+  div.innerHTML = `
+    <div style="display:flex; gap:8px; margin-bottom:8px; flex-wrap:wrap;">
+      <div class="field" style="flex:1; min-width:70px; margin-bottom:0;"><label>الكود</label><input type="text" class="bqitem-code"></div>
+      <div class="field" style="flex:3; min-width:180px; margin-bottom:0;"><label>الصنف / البيان</label><input type="text" class="bqitem-desc"></div>
+      <div class="field" style="flex:1; min-width:80px; margin-bottom:0;"><label>الوحدة</label><input type="text" class="bqitem-unit"></div>
+      <div class="field" style="flex:1; min-width:90px; margin-bottom:0;"><label>الكمية</label><input type="number" class="bqitem-qty"></div>
+    </div>
+    <button type="button" class="btn danger small" onclick="this.closest('.assignment-row').remove()">حذف هذا البند</button>
+  `;
+  container.appendChild(div);
+  if(prefill){
+    div.querySelector('.bqitem-code').value = prefill.code||'';
+    div.querySelector('.bqitem-desc').value = prefill.description||'';
+    div.querySelector('.bqitem-unit').value = prefill.unit||'';
+    div.querySelector('.bqitem-qty').value = prefill.quantity||'';
+  }
+}
+function openBoqForm(contractId, boqId){
+  const c = DATA.contracts.find(r=>r._id===contractId);
+  if(!c) return;
+  if(boqId && !isAdmin()) return;
+  boqFormState = {contractId, editId: boqId||null};
+  const b = boqId ? (c.boqs||[]).find(x=>x.id===boqId) : null;
+  document.getElementById('boqModalTitle').textContent = boqId ? 'تعديل حصر' : 'إضافة حصر';
+  document.getElementById('boq-number').value = b ? (b.number||'') : ('BQ-'+nextBoqNumber(c));
+  document.getElementById('boq-title').value = b ? (b.title||'') : '';
+  document.getElementById('boq-date').value = b ? (b.date||'') : '';
+  document.getElementById('boq-status').value = b ? (b.status||'مسودة') : 'مسودة';
+  document.getElementById('boq-notes').value = b ? (b.notes||'') : '';
+  document.getElementById('boq-items').innerHTML = '';
+  if(b && b.items && b.items.length){ b.items.forEach(it=>addBoqItemRow(it)); }
+  else{ addBoqItemRow(); }
+  document.getElementById('boqOverlay').classList.add('open');
+}
+function closeBoqModal(){ document.getElementById('boqOverlay').classList.remove('open'); }
+function saveBoqRecord(){
+  const c = DATA.contracts.find(r=>r._id===boqFormState.contractId);
+  if(!c) return;
+  const number = document.getElementById('boq-number').value.trim();
+  const title = document.getElementById('boq-title').value.trim();
+  const date = document.getElementById('boq-date').value;
+  const status = document.getElementById('boq-status').value;
+  const notes = document.getElementById('boq-notes').value.trim();
+  const rows = document.querySelectorAll('#boq-items .assignment-row');
+  const items = [];
+  rows.forEach((row,idx)=>{
+    const code = row.querySelector('.bqitem-code').value.trim();
+    const description = row.querySelector('.bqitem-desc').value.trim();
+    const unit = row.querySelector('.bqitem-unit').value.trim();
+    const quantity = row.querySelector('.bqitem-qty').value;
+    if(description){
+      items.push({id:'BQI-'+(idx+1), code, description, unit, quantity: Number(quantity)||0});
+    }
+  });
+  if(!items.length){ alert('من فضلك أضف بند واحد على الأقل ببيان صحيح'); return; }
+  if(boqFormState.editId){
+    const b = c.boqs.find(x=>x.id===boqFormState.editId);
+    Object.assign(b, {number, title, date, status, notes, items});
+  }else{
+    const n = nextBoqNumber(c);
+    c.boqs.push({id:'BOQ-'+n, _n: c.boqs.length+1, number: number||('BQ-'+n), title, date, status, notes, items});
+  }
+  logAudit(boqFormState.editId?'تعديل':'إضافة', 'حصر كميات', c.number, title);
+  saveData();
+  closeBoqModal();
+  renderPage();
+}
+function deleteBoqRecord(contractId, boqId){
+  const c = DATA.contracts.find(r=>r._id===contractId);
+  if(!c || !isAdmin()) return;
+  if(!confirm('هل تريد حذف هذا الحصر؟')) return;
+  c.boqs = c.boqs.filter(x=>x.id!==boqId);
+  logAudit('حذف', 'حصر كميات', c.number);
+  saveData();
+  renderPage();
+}
+function printBoq(contractId, boqId){
+  const c = DATA.contracts.find(r=>r._id===contractId);
+  if(!c) return;
+  const b = (c.boqs||[]).find(x=>x.id===boqId);
+  if(!b) return;
+  const info = `<table style="width:100%; border-collapse:collapse; font-size:13px;">
+    <tbody>
+      <tr><td style="padding:7px; border:1px solid #ccc; font-weight:700; width:180px;">العقد</td><td style="padding:7px; border:1px solid #ccc;">${c.number}</td></tr>
+      <tr><td style="padding:7px; border:1px solid #ccc; font-weight:700;">المشروع</td><td style="padding:7px; border:1px solid #ccc;">${contractProjectName(c)}</td></tr>
+      <tr><td style="padding:7px; border:1px solid #ccc; font-weight:700;">رقم الحصر</td><td style="padding:7px; border:1px solid #ccc;">${b.number||'—'}</td></tr>
+      <tr><td style="padding:7px; border:1px solid #ccc; font-weight:700;">التاريخ</td><td style="padding:7px; border:1px solid #ccc;">${b.date||'—'}</td></tr>
+      <tr><td style="padding:7px; border:1px solid #ccc; font-weight:700;">الحالة</td><td style="padding:7px; border:1px solid #ccc;">${b.status||'—'}</td></tr>
+    </tbody>
+  </table>`;
+  const itemsRows = (b.items||[]).map(it=>`<tr>
+      <td>${it.code||'—'}</td><td>${it.description||'—'}</td><td>${it.unit||'—'}</td><td>${it.quantity||0}</td>
+    </tr>`).join('') || `<tr><td colspan="4" style="text-align:center;">لا توجد بنود</td></tr>`;
+  const body = info + `<h3 style="margin:20px 0 4px;">📋 بنود الحصر</h3>` + buildStatementTable(['الكود','الصنف','الوحدة','الكمية'], itemsRows);
+  openPrintDocument(b.title||('حصر رقم '+(b.number||b.id)), c.number+' — '+contractProjectName(c), body);
+}
+
+/* ================= عروض الأسعار (Quotations) ================= */
+function ensureQuotationShape(q){
+  if(!Array.isArray(q.items)) q.items = [];
+  if(!q.status) q.status = 'مسودة';
+  if(q.notes===undefined) q.notes = '';
+  if(q.terms===undefined) q.terms = '';
+  if(q.projectId===undefined) q.projectId = null;
+  if(q.contractId===undefined) q.contractId = null;
+  if(q.validUntil===undefined) q.validUntil = '';
+  q.items.forEach((it,idx)=>{
+    if(!it.id) it.id = 'QIT-'+(idx+1);
+    if(it.section===undefined) it.section = '';
+  });
+}
+function computeQuotationItemValue(it){
+  return (Number(it.quantity)||0) * (Number(it.unitPrice)||0);
+}
+function computeQuotationTotal(q){
+  return (q.items||[]).reduce((s,it)=>s+computeQuotationItemValue(it),0);
+}
+// تجميع بنود عرض السعر حسب القسم (بترتيب ظهورها) لعرضها/طباعتها مقسّمة
+function groupQuotationItemsBySection(q){
+  const groups = [];
+  const map = {};
+  (q.items||[]).forEach(it=>{
+    const key = (it.section||'').trim() || 'بنود عامة';
+    if(!map[key]){ map[key] = {section:key, items:[]}; groups.push(map[key]); }
+    map[key].items.push(it);
+  });
+  return groups;
+}
+function quotationProjectName(q){
+  const p = DATA.projects.find(p=>p._id===q.projectId);
+  return p ? p.name : '—';
+}
+
+function renderQuotationsPage(){
+  const rows = DATA.quotations;
+  const editable = canEdit('quotations');
+  const canModify = isAdmin();
+  const body = rows.length ? `
+    <div class="table-wrap"><div class="table-scroll"><table>
+      <thead><tr>
+        <th>رقم العرض</th><th>العميل</th><th>المشروع</th><th>التاريخ</th><th>القيمة الإجمالية</th><th>الحالة</th><th></th>
+      </tr></thead>
+      <tbody id="tbody-quotations">
+        ${rows.map(r=>`
+          <tr data-id="${r._id}" data-openquotation="${r._id}" style="cursor:pointer;">
+            <td>${r.number||'—'}</td>
+            <td>${r.clientName||'—'}</td>
+            <td>${quotationProjectName(r)}</td>
+            <td>${r.date||'—'}</td>
+            <td style="font-weight:700;">${fmtMoney(computeQuotationTotal(r))}</td>
+            <td>${badgeFor('quotations', r.status)}${r.contractId?' <span class="badge b-good" style="font-size:11px;">تم التحويل لعقد</span>':''}</td>
+            <td class="row-actions">
+              ${canModify ? `<button class="btn danger small" data-quotationdel="${r._id}">حذف</button>` : ''}
+            </td>
+          </tr>`).join('')}
+      </tbody>
+    </table></div></div>
+  ` : `<div class="table-wrap"><div class="empty-state">لا توجد عروض أسعار مسجلة حتى الآن<br>
+        ${editable ? `<button class="btn small" style="margin-top:12px" onclick="openQuotationForm()">إضافة أول عرض سعر</button>` : ''}</div></div>`;
+
+  return `
+    <div class="page-head">
+      <div>
+        <div class="page-title">عروض الأسعار</div>
+        <div class="page-desc">نقطة البداية لأي عقد أو مشروع — عرّض على العميل، وبعد الموافقة حوّله مباشرة إلى عقد ببنوده كاملة</div>
+      </div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        ${editable ? `<button class="btn" onclick="openQuotationForm()">+ إضافة عرض سعر</button>` : ''}
+      </div>
+    </div>
+    <div class="toolbar"><input class="search-input" id="search-quotations" placeholder="بحث في عروض الأسعار..."></div>
+    ${body}
+  `;
+}
+function attachQuotationsEvents(){
+  const searchInput = document.getElementById('search-quotations');
+  if(searchInput){
+    searchInput.addEventListener('input', ()=>{
+      const q = searchInput.value.trim().toLowerCase();
+      document.querySelectorAll('#tbody-quotations tr').forEach(tr=>{
+        tr.style.display = tr.textContent.toLowerCase().includes(q) ? '' : 'none';
+      });
+    });
+  }
+  document.querySelectorAll('[data-quotationdel]').forEach(btn=>{
+    btn.addEventListener('click', (e)=>{ e.stopPropagation(); deleteQuotationRecord(btn.dataset.quotationdel); });
+  });
+  document.querySelectorAll('[data-openquotation]').forEach(tr=>{
+    tr.addEventListener('click', ()=>openQuotationDetail(tr.dataset.openquotation));
+  });
+}
+function deleteQuotationRecord(id){
+  if(!isAdmin()) return;
+  if(!confirm('هل أنت متأكد من حذف عرض السعر هذا؟')) return;
+  const rec = DATA.quotations.find(r=>r._id===id);
+  DATA.quotations = DATA.quotations.filter(r=>r._id!==id);
+  logAudit('حذف', 'عرض سعر', rec?(rec.number||rec.client):id);
+  saveData();
+  renderPage();
+}
+
+let quotationFormState = {editId:null};
+function populateQuotationProjectSelect(selectedId){
+  const sel = document.getElementById('quotation-project');
+  sel.innerHTML = '<option value="">— بدون مشروع بعد —</option>' +
+    DATA.projects.map(p=>`<option value="${p._id}" ${p._id===selectedId?'selected':''}>${p.name}</option>`).join('');
+}
+function toggleNewProjectInputQuotation(){
+  const row = document.getElementById('quotation-new-project-row');
+  const show = row.style.display==='none';
+  row.style.display = show ? '' : 'none';
+  if(show){
+    document.getElementById('quotation-new-project-name').value = '';
+    document.getElementById('quotation-new-project-client').value = '';
+  }
+}
+function confirmNewProjectQuotation(){
+  const name = document.getElementById('quotation-new-project-name').value.trim();
+  const client = document.getElementById('quotation-new-project-client').value.trim();
+  if(!name){ alert('من فضلك أدخل اسم المشروع'); return; }
+  const {n, id} = nextId('projects');
+  DATA.projects.push({_id:id, _n:n, name, client, location:'', startDate:'', endDate:'', budget:'', spent:'0', description:'', engineer:'', supervisor:'', landArea:'', unitsCount:'', status:(DATA.projectStatuses[0]||{}).name||'', phases:[], adjustments:[]});
+  saveData();
+  populateQuotationProjectSelect(id);
+  toggleNewProjectInputQuotation();
+  if(client && !document.getElementById('quotation-client').value.trim()){
+    document.getElementById('quotation-client').value = client;
+  }
+}
+function addQuotationItemRow(prefill){
+  const container = document.getElementById('quotation-items');
+  const lastSection = prefill ? '' : (container.querySelector('.assignment-row:last-child .qitem-section')?.value || '');
+  const div = document.createElement('div');
+  div.className = 'assignment-row';
+  div.style.cssText = 'border:1px solid var(--border); border-radius:6px; padding:12px; margin-bottom:10px; background:var(--bg);';
+  div.innerHTML = `
+    <div style="display:flex; gap:8px; margin-bottom:8px; flex-wrap:wrap;">
+      <div class="field" style="flex:1; min-width:120px; margin-bottom:0;"><label>القسم (اختياري)</label><input type="text" class="qitem-section" placeholder="مثال: أعمال الحفر والأساسات"></div>
+      <div class="field" style="flex:1; min-width:70px; margin-bottom:0;"><label>الكود</label><input type="text" class="qitem-code"></div>
+    </div>
+    <div style="display:flex; gap:8px; margin-bottom:8px; flex-wrap:wrap;">
+      <div class="field" style="flex:3; min-width:180px; margin-bottom:0;"><label>البيان</label><input type="text" class="qitem-desc"></div>
+      <div class="field" style="flex:1; min-width:80px; margin-bottom:0;"><label>الوحدة</label><input type="text" class="qitem-unit"></div>
+      <div class="field" style="flex:1; min-width:90px; margin-bottom:0;"><label>الكمية</label><input type="number" step="any" class="qitem-qty"></div>
+      <div class="field" style="flex:1; min-width:100px; margin-bottom:0;"><label>سعر الوحدة</label><input type="number" step="any" class="qitem-price"></div>
+    </div>
+    <button type="button" class="btn danger small" onclick="this.closest('.assignment-row').remove()">حذف هذا البند</button>
+  `;
+  container.appendChild(div);
+  if(prefill){
+    div.querySelector('.qitem-section').value = prefill.section||'';
+    div.querySelector('.qitem-code').value = prefill.code||'';
+    div.querySelector('.qitem-desc').value = prefill.description||'';
+    div.querySelector('.qitem-unit').value = prefill.unit||'';
+    div.querySelector('.qitem-qty').value = prefill.quantity||'';
+    div.querySelector('.qitem-price').value = prefill.unitPrice||'';
+  }else if(lastSection){
+    div.querySelector('.qitem-section').value = lastSection;
+  }
+}
+function openQuotationForm(editId){
+  if(!canEdit('quotations')) return;
+  if(editId && !isAdmin()) return;
+  quotationFormState.editId = editId || null;
+  const q = editId ? DATA.quotations.find(r=>r._id===editId) : null;
+  document.getElementById('quotationModalTitle').textContent = editId ? 'تعديل عرض سعر' : 'إضافة عرض سعر';
+  document.getElementById('quotation-number').value = q ? (q.number||'') : '';
+  document.getElementById('quotation-date').value = q ? (q.date||'') : todayStr();
+  document.getElementById('quotation-validuntil').value = q ? (q.validUntil||'') : '';
+  document.getElementById('quotation-client').value = q ? (q.clientName||'') : '';
+  document.getElementById('quotation-status').value = q ? (q.status||'مسودة') : 'مسودة';
+  populateQuotationProjectSelect(q ? q.projectId : '');
+  document.getElementById('quotation-terms').value = q ? (q.terms||'') : '';
+  document.getElementById('quotation-notes').value = q ? (q.notes||'') : '';
+  document.getElementById('quotation-new-project-row').style.display = 'none';
+  document.getElementById('quotation-items').innerHTML = '';
+  if(q && q.items && q.items.length){ q.items.forEach(it=>addQuotationItemRow(it)); }
+  else{ addQuotationItemRow(); }
+  document.getElementById('quotationOverlay').classList.add('open');
+}
+function closeQuotationModal(){
+  document.getElementById('quotationOverlay').classList.remove('open');
+}
+function saveQuotationRecord(){
+  const number = document.getElementById('quotation-number').value.trim();
+  const date = document.getElementById('quotation-date').value;
+  const validUntil = document.getElementById('quotation-validuntil').value;
+  const clientName = document.getElementById('quotation-client').value.trim();
+  const status = document.getElementById('quotation-status').value;
+  const projectId = document.getElementById('quotation-project').value || null;
+  const terms = document.getElementById('quotation-terms').value.trim();
+  const notes = document.getElementById('quotation-notes').value.trim();
+  if(!number){ alert('من فضلك أدخل رقم العرض'); return; }
+  if(!clientName){ alert('من فضلك أدخل اسم العميل'); return; }
+  const rows = document.querySelectorAll('#quotation-items .assignment-row');
+  const items = [];
+  rows.forEach((row,idx)=>{
+    const section = row.querySelector('.qitem-section').value.trim();
+    const code = row.querySelector('.qitem-code').value.trim();
+    const description = row.querySelector('.qitem-desc').value.trim();
+    const unit = row.querySelector('.qitem-unit').value.trim();
+    const quantity = row.querySelector('.qitem-qty').value;
+    const unitPrice = row.querySelector('.qitem-price').value;
+    if(description){
+      items.push({id:'QIT-'+(idx+1), section, code, description, unit, quantity:Number(quantity)||0, unitPrice:Number(unitPrice)||0});
+    }
+  });
+  if(!items.length){ alert('من فضلك أضف بند واحد على الأقل ببيان صحيح'); return; }
+  if(quotationFormState.editId){
+    const q = DATA.quotations.find(r=>r._id===quotationFormState.editId);
+    Object.assign(q, {number, date, validUntil, clientName, status, projectId, terms, notes, items});
+  }else{
+    const {n,id} = nextId('quotations');
+    DATA.quotations.push({_id:id, _n:n, number, date, validUntil, clientName, status, projectId, terms, notes, items, contractId:null});
+  }
+  logAudit(quotationFormState.editId?'تعديل':'إضافة', 'عرض سعر', number, clientName);
+  saveData();
+  closeQuotationModal();
+  renderPage();
+}
+
+/* ---- تفاصيل عرض السعر ---- */
+function openQuotationDetail(id){
+  selectedQuotationId = id;
+  renderPage();
+}
+function backToQuotationsList(){
+  selectedQuotationId = null;
+  renderPage();
+}
+function renderQuotationDetail(id){
+  const q = DATA.quotations.find(r=>r._id===id);
+  if(!q){ selectedQuotationId=null; return renderQuotationsPage(); }
+  const canModify = isAdmin();
+  const editable = canEdit('quotations');
+  const total = computeQuotationTotal(q);
+  const groups = groupQuotationItemsBySection(q);
+  const linkedContract = q.contractId ? DATA.contracts.find(c=>c._id===q.contractId) : null;
+
+  const groupsHtml = groups.map(g=>{
+    const subtotal = g.items.reduce((s,it)=>s+computeQuotationItemValue(it),0);
+    return `
+    <div style="font-weight:700; margin:14px 0 6px; color:var(--text-dim);">${g.section}</div>
+    <div class="table-wrap" style="margin-bottom:10px;"><div class="table-scroll"><table>
+      <thead><tr><th>كود</th><th>البيان</th><th>الوحدة</th><th>الكمية</th><th>سعر الوحدة</th><th>القيمة</th></tr></thead>
+      <tbody>
+        ${g.items.map(it=>`<tr>
+          <td>${it.code||'—'}</td><td>${it.description||'—'}</td><td>${it.unit||'—'}</td><td>${it.quantity||0}</td>
+          <td>${fmtMoney(it.unitPrice)}</td><td style="font-weight:700;">${fmtMoney(computeQuotationItemValue(it))}</td>
+        </tr>`).join('')}
+        <tr><td colspan="5" style="text-align:left; font-weight:700;">إجمالي القسم</td><td style="font-weight:700;">${fmtMoney(subtotal)}</td></tr>
+      </tbody>
+    </table></div></div>`;
+  }).join('');
+
+  return `
+    <button class="btn secondary small" onclick="backToQuotationsList()" style="margin-bottom:16px;">→ رجوع لكل عروض الأسعار</button>
+    <div class="page-head">
+      <div>
+        <div class="page-title">${q.number} ${badgeFor('quotations', q.status)}</div>
+        <div class="page-desc">${q.clientName||'—'} — ${quotationProjectName(q)}${q.date?' · '+q.date:''}${q.validUntil?' · صالح حتى '+q.validUntil:''}</div>
+      </div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        ${canModify ? `<button class="btn secondary" onclick="openQuotationForm('${q._id}')">تعديل عرض السعر</button>` : ''}
+        <button class="btn secondary" onclick="printQuotation('${q._id}')">🖨 طباعة</button>
+        ${(editable && !q.contractId && q.status==='مقبول') ? `<button class="btn" onclick="convertQuotationToContract('${q._id}')">✅ تحويل إلى عقد</button>` : ''}
+        ${linkedContract ? `<button class="btn secondary" onclick="openContractFromQuotation('${linkedContract._id}')">عرض العقد الناتج</button>` : ''}
+      </div>
+    </div>
+    ${(editable && !q.contractId && q.status!=='مقبول') ? `<div class="table-wrap" style="padding:10px 14px; margin-bottom:16px; background:var(--bg);"><span style="color:var(--text-dim); font-size:13px;">⚠️ التحويل إلى عقد متاح فقط بعد تغيير حالة عرض السعر إلى "مقبول".</span> <button class="btn secondary small" style="margin-right:8px;" onclick="markQuotationAccepted('${q._id}')">تحديد كـ"مقبول" الآن</button></div>` : ''}
+    <div class="kpi-grid" style="margin-bottom:24px;">
+      <div class="kpi ok"><div class="kpi-label">القيمة الإجمالية</div><div class="kpi-value">${fmtMoney(total)}</div></div>
+      <div class="kpi"><div class="kpi-label">عدد البنود</div><div class="kpi-value">${(q.items||[]).length}</div></div>
+      <div class="kpi ${linkedContract?'ok':''}"><div class="kpi-label">الحالة</div><div class="kpi-value" style="font-size:16px;">${linkedContract ? 'تم تحويله إلى عقد رقم '+linkedContract.number : q.status}</div></div>
+    </div>
+    ${groupsHtml}
+    ${q.terms ? `<div class="section-title">الشروط والأحكام</div><div class="table-wrap" style="padding:14px; margin-bottom:20px;">${q.terms}</div>` : ''}
+    ${q.notes ? `<div class="section-title">ملاحظات</div><div class="table-wrap" style="padding:14px;">${q.notes}</div>` : ''}
+  `;
+}
+function attachQuotationDetailEvents(){ /* الأزرار مربوطة عبر onclick مباشرة */ }
+function printQuotation(id){
+  const q = DATA.quotations.find(r=>r._id===id);
+  if(!q) return;
+  const info = `<table style="width:100%; border-collapse:collapse; font-size:13px;">
+    <tbody>
+      <tr><td style="padding:7px; border:1px solid #ccc; font-weight:700; width:160px;">رقم العرض</td><td style="padding:7px; border:1px solid #ccc;">${q.number||'—'}</td></tr>
+      <tr><td style="padding:7px; border:1px solid #ccc; font-weight:700;">العميل</td><td style="padding:7px; border:1px solid #ccc;">${q.clientName||'—'}</td></tr>
+      <tr><td style="padding:7px; border:1px solid #ccc; font-weight:700;">المشروع</td><td style="padding:7px; border:1px solid #ccc;">${quotationProjectName(q)}</td></tr>
+      <tr><td style="padding:7px; border:1px solid #ccc; font-weight:700;">التاريخ</td><td style="padding:7px; border:1px solid #ccc;">${q.date||'—'}</td></tr>
+      <tr><td style="padding:7px; border:1px solid #ccc; font-weight:700;">صالح حتى</td><td style="padding:7px; border:1px solid #ccc;">${q.validUntil||'—'}</td></tr>
+    </tbody>
+  </table>`;
+  const groups = groupQuotationItemsBySection(q);
+  let runningNo = 0;
+  const sectionsHtml = groups.map(g=>{
+    const subtotal = g.items.reduce((s,it)=>s+computeQuotationItemValue(it),0);
+    const rows = g.items.map(it=>{
+      runningNo++;
+      return `<tr><td>${runningNo}</td><td>${it.code||'—'}</td><td>${it.description||'—'}</td><td>${it.unit||'—'}</td><td>${it.quantity||0}</td><td>${fmtMoney(it.unitPrice)}</td><td>${fmtMoney(computeQuotationItemValue(it))}</td></tr>`;
+    }).join('');
+    return `<h3 style="margin:18px 0 4px;">${g.section}</h3>` +
+      buildStatementTable(['م','الكود','البيان','الوحدة','الكمية','سعر الوحدة','القيمة'], rows) +
+      `<div style="text-align:left; font-weight:700; margin:4px 0 10px;">إجمالي القسم: ${fmtMoney(subtotal)}</div>`;
+  }).join('');
+  const total = computeQuotationTotal(q);
+  const totalsHtml = `<div style="text-align:left; font-weight:700; font-size:16px; margin-top:14px; border-top:2px solid #333; padding-top:10px;">الإجمالي الكلي لعرض السعر: ${fmtMoney(total)}</div>`;
+  const termsHtml = q.terms ? `<h3 style="margin:20px 0 4px;">الشروط والأحكام</h3><div style="border:1px solid #ccc; padding:10px; font-size:13px;">${q.terms}</div>` : '';
+  const sigHtml = `<div style="display:flex; justify-content:space-between; margin-top:50px; font-size:13px;">
+    <div>توقيع مقدم العرض<br><br>....................................</div>
+    <div>توقيع العميل بالموافقة<br><br>....................................</div>
+  </div>`;
+  const body = info + sectionsHtml + totalsHtml + termsHtml + sigHtml;
+  openPrintDocument('عرض سعر رقم '+(q.number||q._id), q.clientName||'', body);
+}
+// تحديد عرض السعر كـ"مقبول" مباشرة من صفحة تفاصيله (بدون فتح فورم التعديل الكامل)
+function markQuotationAccepted(id){
+  if(!canEdit('quotations')) return;
+  const q = DATA.quotations.find(r=>r._id===id);
+  if(!q) return;
+  q.status = 'مقبول';
+  saveData();
+  renderPage();
+}
+// تحويل عرض السعر إلى عقد عميل فعلي — ببنوده كاملة، ومربوط بنفس المشروع
+// ملحوظة: بنستخدم هنا نافذة التأكيد/التنبيه الداخلية (notify/openConfirmModal) بدل alert/confirm
+// لأن بعض المتصفحات بتوقف نوافذ alert/confirm تلقائيًا بعد تكرارها بدون أي إشعار للمستخدم،
+// فيظهر الأمر وكأن الزرار "مش بيعمل حاجة" مع إن الكود شغال فعلًا.
+function convertQuotationToContract(id){
+  if(!canEdit('contracts')){ notify('لا تملك صلاحية إضافة عقود'); return; }
+  const q = DATA.quotations.find(r=>r._id===id);
+  if(!q) return;
+  if(q.contractId){ notify('تم تحويل عرض السعر هذا إلى عقد بالفعل'); return; }
+  if(q.status!=='مقبول'){ notify('من فضلك غيّر حالة عرض السعر إلى "مقبول" أولًا قبل التحويل إلى عقد'); return; }
+  if(!q.projectId){
+    notify('من فضلك حدد مشروعًا لعرض السعر أولًا. هيتفتحلك نموذج التعديل — اختر أو أضف مشروعًا، احفظ، وبعدين اضغط "تحويل إلى عقد" تاني من صفحة العرض.');
+    openQuotationForm(id);
+    return;
+  }
+  if(!Array.isArray(q.items) || !q.items.length){ notify('عرض السعر ده مالوش بنود مسجلة، من فضلك أضف بند واحد على الأقل قبل التحويل'); return; }
+  openConfirmModal('هل تريد تحويل عرض السعر هذا إلى عقد جديد مع كل بنوده؟', ()=>{
+    try{
+      if(!Array.isArray(DATA.contracts)) DATA.contracts = [];
+      if(!Array.isArray(DATA.contractCalcMethods) || !DATA.contractCalcMethods.length) DATA.contractCalcMethods = ['مقطوعية'];
+      const {n, id:contractId} = nextId('contracts');
+      const items = (q.items||[]).map((it,idx)=>({
+        id:'ITM-'+(idx+1), code: it.code||'', description: it.description||'', method: (DATA.contractCalcMethods[0]||'مقطوعية'),
+        unit: it.unit||'', quantity: it.quantity||0, unitPrice: it.unitPrice||0, linkedContractId:null, linkedItemId:null
+      }));
+      const contract = {
+        _id:contractId, _n:n, number:q.number||('C-'+contractId), contractType:'عميل', projectId:q.projectId, clientName:q.clientName||'',
+        subId:null, startDate: todayStr(), endDate:'', status:'ساري', notes: 'تم إنشاؤه تلقائيًا من عرض سعر رقم '+(q.number||q._id),
+        items, changeOrders:[], deductionRules:[], extracts:[], boqs:[], quotationId: q._id
+      };
+      DATA.contracts.push(contract);
+      q.contractId = contractId;
+      q.status = 'مقبول';
+      logAudit('تحويل', 'عرض سعر → عقد', q.number, 'عقد رقم '+contract.number);
+      saveData();
+      currentPage = 'contracts';
+      selectedContractId = contractId;
+      buildNav();
+      renderPage();
+      notify('تم تحويل عرض السعر إلى عقد رقم '+contract.number+' بنجاح', 'تم بنجاح');
+    }catch(err){
+      console.error('convertQuotationToContract failed:', err);
+      notify('حصل خطأ أثناء التحويل إلى عقد: ' + (err && err.message ? err.message : err), 'خطأ');
+    }
+  });
+}
+
+function openContractFromQuotation(id){
+  if(!canView('contracts')) return;
+  currentPage = 'contracts';
+  selectedContractId = id;
+  buildNav();
+  renderPage();
+}
+function openQuotationFromContract(id){
+  if(!canView('quotations')) return;
+  currentPage = 'quotations';
+  selectedQuotationId = id;
+  buildNav();
+  renderPage();
+}
+
+/* ================= الأصول والمعدات ================= */
+let selectedAssetId = null;
+function openAssetDetail(id){ selectedAssetId = id; renderPage(); }
+function backToAssetsList(){ selectedAssetId = null; renderPage(); }
+function assetStatusBadge(status){
+  const cls = status==='متاح' ? 'b-good' : (status==='صيانة' ? 'b-bad' : 'b-warn');
+  return `<span class="badge ${cls}">${status||'—'}</span>`;
+}
+function renderAssetsPage(){
+  const editable = canEdit('assets');
+  const canModify = isAdmin();
+  const rows = DATA.assets;
+  const body = rows.length ? `
+    <div class="table-wrap"><div class="table-scroll"><table>
+      <thead><tr><th>اسم الأصل</th><th>النوع</th><th>الحالة</th><th>المشروع الحالي</th><th>القيمة</th><th>إجمالي المصاريف</th><th></th></tr></thead>
+      <tbody id="tbody-assets">
+        ${rows.map(a=>`
+          <tr data-openasset="${a._id}" style="cursor:pointer;">
+            <td>${a.name}</td>
+            <td>${a.type?`<span class="badge b-neutral">${a.type}</span>`:'<span style="color:var(--text-dim)">—</span>'}</td>
+            <td>${assetStatusBadge(a.status)}</td>
+            <td>${a.project||'<span style="color:var(--text-dim)">—</span>'}</td>
+            <td>${fmtMoney(a.value)}</td>
+            <td>${fmtMoney(computeAssetExpensesTotal(a))}</td>
+            <td class="row-actions">
+              ${canModify ? `<button class="btn secondary small" onclick="event.stopPropagation(); openAssetForm('${a._id}')">تعديل</button>
+              <button class="btn danger small" onclick="event.stopPropagation(); deleteAsset('${a._id}')">حذف</button>` : ''}
+            </td>
+          </tr>`).join('')}
+      </tbody>
+    </table></div></div>
+  ` : `<div class="table-wrap"><div class="empty-state">لا توجد أصول مسجلة بعد<br>
+        ${editable ? `<button class="btn small" style="margin-top:12px" onclick="openAssetForm()">إضافة أول أصل</button>` : ''}</div></div>`;
+
+  return `
+    <div class="page-head">
+      <div>
+        <div class="page-title">الأصول والمعدات</div>
+        <div class="page-desc">المعدات والأثاث والسيارات وكل أصول الشركة — اضغط على أي أصل لعرض تفاصيله ومصاريفه</div>
+      </div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        ${editable ? `<button class="btn secondary small" onclick="openListSettings('assetTypes')">⚙ أنواع الأصول</button>` : ''}
+        ${editable ? `<button class="btn" onclick="openAssetForm()">+ إضافة أصل</button>` : ''}
+      </div>
+    </div>
+    <div class="toolbar"><input class="search-input" id="search-assets" placeholder="بحث في الأصول..."></div>
+    ${body}
+  `;
+}
+function attachAssetsEvents(){
+  const searchInput = document.getElementById('search-assets');
+  if(searchInput){
+    searchInput.addEventListener('input', ()=>{
+      const q = searchInput.value.trim().toLowerCase();
+      document.querySelectorAll('#tbody-assets tr').forEach(tr=>{
+        tr.style.display = tr.textContent.toLowerCase().includes(q) ? '' : 'none';
+      });
+    });
+  }
+  document.querySelectorAll('[data-openasset]').forEach(tr=>{
+    tr.addEventListener('click', ()=>openAssetDetail(tr.dataset.openasset));
+  });
+}
+function renderAssetDetail(id){
+  const a = DATA.assets.find(x=>x._id===id);
+  if(!a){ selectedAssetId=null; return renderAssetsPage(); }
+  const editable = canEdit('assets');
+  const canModify = isAdmin();
+  const totalExpenses = computeAssetExpensesTotal(a);
+  const expenses = (a.expenses||[]).slice().sort((x,y)=>(y.date||'').localeCompare(x.date||''));
+  const lastMaintenance = (a.expenses||[]).filter(e=>e.kind==='صيانة' && e.date).sort((x,y)=>(y.date||'').localeCompare(x.date||''))[0];
+
+  return `
+    <button class="btn secondary small" onclick="backToAssetsList()" style="margin-bottom:16px;">→ رجوع لكل الأصول</button>
+    <div class="page-head">
+      <div>
+        <div class="page-title">${a.name}</div>
+        <div class="page-desc">${a.type?a.type+' — ':''}${assetStatusBadge(a.status)}</div>
+      </div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        ${canModify ? `<button class="btn secondary" onclick="openAssetForm('${a._id}')">تعديل بيانات الأصل</button>` : ''}
+        <button class="btn secondary" onclick="printAssetStatement('${a._id}')">🖨 طباعة كشف الأصل</button>
+      </div>
+    </div>
+    <div class="kpi-grid" style="margin-bottom:24px;">
+      <div class="kpi"><div class="kpi-label">القيمة</div><div class="kpi-value">${fmtMoney(a.value)}</div></div>
+      <div class="kpi"><div class="kpi-label">المشروع الحالي</div><div style="margin-top:6px; font-weight:700;">${a.project||'<span style="color:var(--text-dim)">بدون مشروع محدد</span>'}</div></div>
+      <div class="kpi ${totalExpenses>0?'alert':'ok'}"><div class="kpi-label">إجمالي المصاريف المسجلة</div><div class="kpi-value">${fmtMoney(totalExpenses)}</div></div>
+      <div class="kpi"><div class="kpi-label">آخر صيانة</div><div class="kpi-value" style="font-size:16px;">${lastMaintenance?lastMaintenance.date:'—'}</div></div>
+    </div>
+    <div class="table-wrap" style="padding:16px 18px; margin-bottom:24px;">
+      <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:14px; font-size:13.5px;">
+        <div><div style="color:var(--text-dim); font-size:12px; margin-bottom:4px;">تاريخ الشراء</div>${a.purchaseDate||'—'}</div>
+        <div><div style="color:var(--text-dim); font-size:12px; margin-bottom:4px;">النوع</div>${a.type||'—'}</div>
+        <div><div style="color:var(--text-dim); font-size:12px; margin-bottom:4px;">الحالة</div>${assetStatusBadge(a.status)}</div>
+      </div>
+    </div>
+    <div class="section-title" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+      <span>🔧 مصاريف الأصل (صيانة، زيت، غاز، قطع غيار...)</span>
+      ${editable ? `<button class="btn secondary small" onclick="openAssetExpenseForm('${a._id}')">+ تسجيل مصروف</button>` : ''}
+    </div>
+    ${expenses.length ? `
+    <div class="table-wrap" style="margin-bottom:28px;"><div class="table-scroll"><table>
+      <thead><tr><th>التاريخ</th><th>النوع</th><th>المبلغ</th><th>المشروع</th><th>ملاحظة</th><th></th></tr></thead>
+      <tbody>
+        ${expenses.map(e=>`<tr>
+          <td>${e.date||'—'}</td>
+          <td><span class="badge b-warn">${e.kind||'—'}</span></td>
+          <td style="font-weight:700;">${fmtMoney(e.amount)}</td>
+          <td>${e.project||'<span style="color:var(--text-dim)">—</span>'}</td>
+          <td>${e.note||'—'}</td>
+          <td class="row-actions">
+            ${canModify ? `<button class="btn secondary small" onclick="openAssetExpenseForm('${a._id}','${e.id}')">تعديل</button>
+            <button class="btn danger small" onclick="deleteAssetExpense('${a._id}','${e.id}')">حذف</button>` : ''}
+          </td>
+        </tr>`).join('')}
+      </tbody>
+    </table></div></div>
+    ` : `<div class="table-wrap" style="margin-bottom:28px;"><div class="empty-state">لا توجد مصاريف مسجلة بعد على هذا الأصل</div></div>`}
+  `;
+}
+function attachAssetDetailEvents(){}
+
+let assetFormState = {editId:null};
+function openAssetForm(editId){
+  if(editId && !isAdmin()) return;
+  assetFormState.editId = editId||null;
+  const rec = editId ? DATA.assets.find(a=>a._id===editId) : null;
+  document.getElementById('assetModalTitle').textContent = editId?'تعديل أصل':'إضافة أصل جديد';
+  document.getElementById('asset-name').value = rec?rec.name:'';
+  populateAssetTypeOptions();
+  document.getElementById('asset-type').value = rec?(rec.type||''):(DATA.assetTypes[0]||'');
+  document.getElementById('asset-status').value = rec?(rec.status||'متاح'):'متاح';
+  populateAssetProjectSelect('asset-project', rec?(rec.project||''):'');
+  document.getElementById('asset-purchase-date').value = rec?(rec.purchaseDate||''):'';
+  document.getElementById('asset-value').value = rec?(rec.value||''):'';
+  document.getElementById('assetOverlay').classList.add('open');
+}
+function closeAssetModal(){ document.getElementById('assetOverlay').classList.remove('open'); }
+function saveAsset(){
+  const name = document.getElementById('asset-name').value.trim();
+  if(!name){ alert('من فضلك أدخل اسم الأصل'); return; }
+  const type = document.getElementById('asset-type').value;
+  const status = document.getElementById('asset-status').value;
+  const project = document.getElementById('asset-project').value;
+  const purchaseDate = document.getElementById('asset-purchase-date').value;
+  const value = document.getElementById('asset-value').value;
+  if(assetFormState.editId){
+    const rec = DATA.assets.find(a=>a._id===assetFormState.editId);
+    Object.assign(rec, {name, type, status, project, purchaseDate, value});
+    logAudit('تعديل', 'أصل/معدة', name);
+  }else{
+    const {n, id} = nextId('assets');
+    DATA.assets.push({_id:id, _n:n, name, type, status, project, purchaseDate, value, expenses:[]});
+    logAudit('إضافة', 'أصل/معدة', name);
+  }
+  saveData();
+  closeAssetModal();
+  renderPage();
+}
+function deleteAsset(id){
+  if(!isAdmin()) return;
+  if(!confirm('هل أنت متأكد من حذف هذا الأصل؟ هيتحذف معاه كل مصاريفه المسجلة.')) return;
+  const rec = DATA.assets.find(a=>a._id===id);
+  DATA.assets = DATA.assets.filter(a=>a._id!==id);
+  logAudit('حذف', 'أصل/معدة', rec?rec.name:id);
+  saveData();
+  renderPage();
+}
+
+let assetExpenseFormState = {assetId:null, editId:null};
+function openAssetExpenseForm(assetId, editId){
+  if(editId && !isAdmin()) return;
+  assetExpenseFormState = {assetId, editId: editId||null};
+  const a = DATA.assets.find(x=>x._id===assetId);
+  const rec = (a && editId) ? (a.expenses||[]).find(e=>e.id===editId) : null;
+  document.getElementById('assetExpenseModalTitle').textContent = editId?'تعديل مصروف':'تسجيل مصروف على الأصل';
+  populateAssetExpenseKindOptions();
+  document.getElementById('assetexp-kind').value = rec?(rec.kind||''):(DATA.assetExpenseKinds[0]||'');
+  document.getElementById('assetexp-date').value = rec?(rec.date||''):todayStr();
+  document.getElementById('assetexp-amount').value = rec?(rec.amount||''):'';
+  populateAssetProjectSelect('assetexp-project', rec?(rec.project||''):(a?(a.project||''):''));
+  document.getElementById('assetexp-note').value = rec?(rec.note||''):'';
+  document.getElementById('assetExpenseOverlay').classList.add('open');
+}
+function closeAssetExpenseModal(){ document.getElementById('assetExpenseOverlay').classList.remove('open'); }
+function saveAssetExpense(){
+  const a = DATA.assets.find(x=>x._id===assetExpenseFormState.assetId);
+  if(!a) return;
+  if(!Array.isArray(a.expenses)) a.expenses=[];
+  const kind = document.getElementById('assetexp-kind').value;
+  const date = document.getElementById('assetexp-date').value;
+  const amount = document.getElementById('assetexp-amount').value;
+  const project = document.getElementById('assetexp-project').value;
+  const note = document.getElementById('assetexp-note').value;
+  if(!amount || Number(amount)<=0){ alert('من فضلك أدخل مبلغ المصروف'); return; }
+  if(assetExpenseFormState.editId){
+    const rec = a.expenses.find(e=>e.id===assetExpenseFormState.editId);
+    Object.assign(rec, {kind, date, amount, project, note});
+  }else{
+    const n = (a.expenses.length ? Math.max(...a.expenses.map(r=>r._n||0)) : 0)+1;
+    a.expenses.push({id:'AEX-'+a._id+'-'+n, _n:n, kind, date, amount, project, note});
+  }
+  logAudit(assetExpenseFormState.editId?'تعديل':'إضافة', 'مصروف أصل', a.name, `${kind} - ${fmtMoney(Number(amount)||0)}`);
+  saveData();
+  closeAssetExpenseModal();
+  renderPage();
+}
+function deleteAssetExpense(assetId, expenseId){
+  if(!isAdmin()) return;
+  const a = DATA.assets.find(x=>x._id===assetId);
+  if(!a) return;
+  if(!confirm('هل أنت متأكد من حذف هذا المصروف؟')) return;
+  a.expenses = (a.expenses||[]).filter(e=>e.id!==expenseId);
+  logAudit('حذف', 'مصروف أصل', a.name);
+  saveData();
+  renderPage();
+}
+function printAssetStatement(id){
+  const a = DATA.assets.find(x=>x._id===id);
+  if(!a) return;
+  const expenses = (a.expenses||[]).slice().sort((x,y)=>(x.date||'').localeCompare(y.date||''));
+  const info = `<table>
+    <tbody>
+      <tr><td style="font-weight:700; width:180px;">النوع</td><td>${a.type||'—'}</td></tr>
+      <tr><td style="font-weight:700;">الحالة</td><td>${a.status||'—'}</td></tr>
+      <tr><td style="font-weight:700;">المشروع الحالي</td><td>${a.project||'—'}</td></tr>
+      <tr><td style="font-weight:700;">تاريخ الشراء</td><td>${a.purchaseDate||'—'}</td></tr>
+      <tr><td style="font-weight:700;">القيمة</td><td>${fmtMoney(a.value)}</td></tr>
+      <tr><td style="font-weight:700;">إجمالي المصاريف</td><td>${fmtMoney(computeAssetExpensesTotal(a))}</td></tr>
+    </tbody>
+  </table>`;
+  const rowsHtml = expenses.length ? expenses.map(e=>`<tr>
+      <td>${e.date||'—'}</td><td>${e.kind||'—'}</td><td>${fmtMoney(e.amount)}</td><td>${e.project||'—'}</td><td>${e.note||'—'}</td>
+    </tr>`).join('') : `<tr><td colspan="5" style="text-align:center;">لا توجد مصاريف مسجلة</td></tr>`;
+  openPrintDocument('كشف حساب أصل — '+a.name, a.type||'', info + buildStatementTable(['التاريخ','النوع','المبلغ','المشروع','ملاحظة'], rowsHtml));
 }
 
 /* ================= Accounting engine ================= */
@@ -3218,12 +5762,49 @@ function syncInvoicePayments(rec){
   syncInvoiceStatus(rec);
 }
 
+// يزامن بنود عقود مقاولي الباطن (اللي بيتم تسعيرها من داخل العقد) مع سجل "عمل" فى كشف حساب المقاول (assignments/entries)
+// عشان القيمة تظهر كمصروف على المشروع، ويتحسب "الباقي له" صح لو اتسددت دفعة قبل ما يتسجل أي عمل يدوي
+function syncSubContractItemEntries(){
+  const existingContractIds = new Set(DATA.contracts.map(c=>c._id));
+  DATA.subs.forEach(sub=>{
+    (sub.assignments||[]).forEach(a=>{
+      if(!Array.isArray(a.entries)) a.entries = [];
+      a.entries = a.entries.filter(e=> !e._syncContractId || existingContractIds.has(e._syncContractId));
+    });
+  });
+  DATA.contracts.forEach(c=>{
+    if(c.contractType!=='مقاول_باطن') return;
+    const sub = DATA.subs.find(s=>s._id===c.subId);
+    if(!sub) return;
+    if(!Array.isArray(sub.assignments)) sub.assignments = [];
+    const a = sub.assignments.find(x=>x.linkedContractId===c._id);
+    if(!a) return;
+    if(!Array.isArray(a.entries)) a.entries = [];
+    const currentItemIds = new Set((c.items||[]).map(it=>it.id));
+    a.entries = a.entries.filter(e=> e._syncContractId!==c._id || currentItemIds.has(e._syncItemId));
+    (c.items||[]).forEach(it=>{
+      const amount = computeContractItemValue(it);
+      let e = a.entries.find(x=>x._syncContractId===c._id && x._syncItemId===it.id);
+      if(e){
+        e.kind = 'عمل';
+        e.description = 'بند عقد: '+(it.description||it.code||'');
+        e.quantity = it.quantity; e.unitPrice = it.unitPrice; e.amount = amount;
+      }else{
+        const n = (a.entries.length ? Math.max(...a.entries.map(x=>x._n||0)) : 0) + 1;
+        a.entries.push({id:'CIT-'+it.id+'-'+c._id, _n:n, kind:'عمل', date:c.startDate||'', description:'بند عقد: '+(it.description||it.code||''), quantity:it.quantity, unitPrice:it.unitPrice, amount, _syncContractId:c._id, _syncItemId:it.id});
+      }
+    });
+  });
+}
 function generateAutoEntries(){
+  syncSubContractItemEntries();
   DATA.finance.forEach(inv=>syncInvoiceStatus(inv));
   const validSources = new Set();
   DATA.finance.filter(inv=>invoicePaidTotal(inv)>0).forEach(inv=>validSources.add('finance:'+inv._id));
+  // مصروفات مقاولي الباطن على المشروع = المبالغ المدفوعة فعليًا لهم فقط (نفس منطق فواتير العميل اللي بتتحسب من المحصّل فعليًا لا من قيمة الفاتورة الكاملة)
+  // القيمة المتفق عليها (بنود العقد / بنود العمل المسجلة) بتفضل تتحسب كـ"مستحق" فى كشف حساب المقاول نفسه، لكن معتبرتش مصروف فعلي على المشروع غير وقت السداد
   DATA.subs.forEach(s=>(s.assignments||[]).forEach(a=>(a.entries||[]).forEach(e=>{
-    if(['عمل','إضافي','مكافأة','خصم'].includes(e.kind)) validSources.add('subwork:'+s._id+':'+a.id+':'+e.id);
+    if(e.kind==='دفعة') validSources.add('subwork:'+s._id+':'+a.id+':'+e.id);
   })));
   DATA.hr.forEach(h=>(h.payrollRuns||[]).forEach(pr=>{
     if(!pr.paid) return;
@@ -3237,6 +5818,9 @@ function generateAutoEntries(){
   DATA.generalExpenses.forEach(ge=>validSources.add('general:'+ge._id));
   DATA.materials.forEach(m=>(m.movements||[]).forEach(mv=>{
     if(m.isRawMaterial && mv.type==='خروج' && mv.project) validSources.add('matout:'+m._id+':'+mv.id);
+  }));
+  DATA.assets.forEach(a=>(a.expenses||[]).forEach(e=>{
+    if(e.project && Number(e.amount)>0) validSources.add('assetexp:'+a._id+':'+e.id);
   }));
 
   DATA.ledger = DATA.ledger.filter(e=> !e.source || validSources.has(e.source));
@@ -3254,11 +5838,11 @@ function generateAutoEntries(){
     upsert('finance:'+inv._id, {date:inv.issueDate, type:'إيراد', account:'إيرادات المشاريع', amount:paidAmount, project:inv.project, description:'فاتورة عميل: '+(inv.client||'')+(isPartial?' (محصّل جزئيًا)':'')});
   });
   DATA.subs.forEach(s=>(s.assignments||[]).forEach(a=>(a.entries||[]).forEach(e=>{
-    if(!['عمل','إضافي','مكافأة','خصم'].includes(e.kind)) return;
+    if(e.kind!=='دفعة') return;
     const account = 'مقاولي الباطن - ' + (s.specialty && s.specialty.trim() ? s.specialty.trim() : 'عام');
-    const amount = e.kind==='خصم' ? -(Number(e.amount)||0) : (Number(e.amount)||0);
-    const kindLabel = (ENTRY_KINDS[e.kind]||{label:e.kind}).label;
-    upsert('subwork:'+s._id+':'+a.id+':'+e.id, {date:e.date, type:'مصروف', account, amount, project:a.project, description:kindLabel+' — مقاول الباطن: '+s.name+(e.description?(' - '+e.description):'')});
+    const amount = Number(e.amount)||0;
+    if(!amount) return;
+    upsert('subwork:'+s._id+':'+a.id+':'+e.id, {date:e.date, type:'مصروف', account, amount, project:a.project, description:'دفعة لمقاول الباطن: '+s.name+(e.description?(' - '+e.description):'')});
   })));
   DATA.hr.forEach(h=>(h.payrollRuns||[]).forEach(pr=>{
     if(!pr.paid) return;
@@ -3282,7 +5866,19 @@ function generateAutoEntries(){
     if(!amount) return;
     upsert('matout:'+m._id+':'+mv.id, {date:mv.date, type:'مصروف', account:'تكلفة مواد خام - '+m.name, amount, project:mv.project, description:'صرف '+mv.quantity+' '+(m.unit||'')+' من '+m.name+' لمشروع '+mv.project});
   }));
+  DATA.assets.forEach(a=>(a.expenses||[]).forEach(e=>{
+    if(!e.project) return;
+    const amount = Number(e.amount)||0;
+    if(!amount) return;
+    upsert('assetexp:'+a._id+':'+e.id, {date:e.date, type:'مصروف', account:'صيانة ومعدات', amount, project:e.project, description:(e.kind||'مصروف معدات')+' — '+a.name+(e.note?(' - '+e.note):'')});
+  }));
 }
+function ensureAssetShape(a){
+  if(!Array.isArray(a.expenses)) a.expenses = [];
+  a.expenses.forEach((e,idx)=>{ if(!e.id) e.id = 'AEX-'+(idx+1); if(e.kind===undefined) e.kind = 'صيانة'; if(e.project===undefined) e.project = ''; if(e.note===undefined) e.note = ''; });
+  if(a.type && !DATA.assetTypes.includes(a.type)) DATA.assetTypes.push(a.type);
+}
+function computeAssetExpensesTotal(a){ return (a.expenses||[]).reduce((s,e)=>s+(Number(e.amount)||0),0); }
 function totalAssetsValue(){ return DATA.assets.reduce((s,a)=>s+(Number(a.value)||0),0); }
 function totalInventoryValue(){ return DATA.materials.reduce((s,m)=>s+computeMaterialValue(m),0); }
 function groupSum(entries){
@@ -3366,6 +5962,11 @@ function computeProjectDeductions(p){
 const ATTENDANCE_STATUSES = ['حاضر','غائب','إجازة','نصف يوم'];
 function monthKey(dateStr){ return (dateStr||'').slice(0,7); }
 function todayStr(){ return new Date().toISOString().slice(0,10); }
+function addDaysStr(dateStr, days){
+  const d = new Date((dateStr||todayStr())+'T00:00:00');
+  d.setDate(d.getDate()+(Number(days)||0));
+  return d.toISOString().slice(0,10);
+}
 function todayMonth(){ return new Date().toISOString().slice(0,7); }
 function monthLabel(m){
   if(!m) return '—';
@@ -3729,6 +6330,7 @@ function saveInvoicePayment(){
     inv.payments.push({id:inv._id+'-PMT'+n, _n:n, date, amount, note});
   }
   syncInvoiceStatus(inv);
+  logAudit(editId?'تعديل':'إضافة', 'دفعة فاتورة', inv.client, fmtMoney(amount));
   saveData();
   closeInvoicePaymentModal();
   renderPage();
@@ -3740,6 +6342,7 @@ function deleteInvoicePayment(invId, paymentId){
   if(!confirm('هل أنت متأكد من حذف هذه الدفعة؟')) return;
   inv.payments = (inv.payments||[]).filter(p=>p.id!==paymentId);
   syncInvoiceStatus(inv);
+  logAudit('حذف', 'دفعة فاتورة', inv.client);
   saveData();
   renderPage();
 }
@@ -3871,6 +6474,7 @@ function saveAttendance(){
     const n = (h.attendance.length ? Math.max(...h.attendance.map(x=>x._n||0)) : 0)+1;
     h.attendance.push({id:h._id+'-ATT'+n, _n:n, date, status, note, project});
   }
+  logAudit(editId?'تعديل':'إضافة', 'حضور موظف', h.name, `${date} - ${status}`);
   saveData();
   closeAttendanceModal();
   renderPage();
@@ -3906,6 +6510,7 @@ function deleteAttendance(empId, entryId){
   const h = DATA.hr.find(r=>r._id===empId);
   if(!h) return;
   h.attendance = (h.attendance||[]).filter(a=>a.id!==entryId);
+  logAudit('حذف', 'حضور موظف', h.name);
   saveData();
   renderPage();
 }
@@ -3944,6 +6549,7 @@ function savePayEntry(){
     const n = (h.payrollEntries.length ? Math.max(...h.payrollEntries.map(x=>x._n||0)) : 0)+1;
     h.payrollEntries.push({id:h._id+'-PAY'+n, _n:n, date, type, amount, note});
   }
+  logAudit(editId?'تعديل':'إضافة', 'سلفة/خصم موظف', h.name, `${type} - ${fmtMoney(amount)}`);
   saveData();
   closePayEntryModal();
   renderPage();
@@ -3954,6 +6560,7 @@ function deletePayEntry(empId, entryId){
   const h = DATA.hr.find(r=>r._id===empId);
   if(!h) return;
   h.payrollEntries = (h.payrollEntries||[]).filter(e=>e.id!==entryId);
+  logAudit('حذف', 'سلفة/خصم موظف', h.name);
   saveData();
   renderPage();
 }
@@ -3970,6 +6577,7 @@ function paySalary(empId, month){
     h.payrollRuns.push(run);
   }
   Object.assign(run, {baseAmount:base, deductionsTotal:deductions, netAmount:net, paid:true, paidDate:todayStr()});
+  logAudit('صرف راتب', 'راتب موظف', h.name, `${month} - ${fmtMoney(net)}`);
   saveData();
   renderPage();
 }
@@ -3979,6 +6587,7 @@ function unpaySalary(empId, month){
   const h = DATA.hr.find(r=>r._id===empId);
   if(!h) return;
   h.payrollRuns = (h.payrollRuns||[]).filter(r=>r.month!==month);
+  logAudit('إلغاء صرف راتب', 'راتب موظف', h.name, month);
   saveData();
   renderPage();
 }
@@ -4328,6 +6937,8 @@ function toggleNewAccountInput(which){
 function accountSelectIdFor(which){
   if(which==='phase') return 'phase-name';
   if(which==='matcat') return 'material-category';
+  if(which==='assettype') return 'asset-type';
+  if(which==='assetexpkind') return 'assetexp-kind';
   return which+'-account';
 }
 function confirmNewAccount(which){
@@ -4337,6 +6948,8 @@ function confirmNewAccount(which){
   let list;
   if(which==='phase') list = DATA.procedureTypes;
   else if(which==='matcat') list = DATA.materialCategories;
+  else if(which==='assettype') list = DATA.assetTypes;
+  else if(which==='assetexpkind') list = DATA.assetExpenseKinds;
   else if(which==='ledger') list = document.getElementById('ledger-type').value==='إيراد' ? DATA.revenueAccounts : DATA.expenseAccounts;
   else list = DATA.expenseAccounts;
   if(!list.includes(name)) list.push(name);
@@ -4345,6 +6958,8 @@ function confirmNewAccount(which){
   else if(which==='ge') populateGeAccountOptions();
   else if(which==='phase') populatePhaseNameOptions();
   else if(which==='matcat') populateMaterialCategoryOptions();
+  else if(which==='assettype') populateAssetTypeOptions();
+  else if(which==='assetexpkind') populateAssetExpenseKindOptions();
   document.getElementById(accountSelectIdFor(which)).value = name;
   nameInput.value = '';
   document.getElementById(which+'-new-account-row').style.display = 'none';
@@ -4355,6 +6970,25 @@ function populateMaterialCategoryOptions(){
   const current = sel.value;
   sel.innerHTML = '<option value="">بدون تصنيف</option>' + DATA.materialCategories.map(c=>`<option value="${c}">${c}</option>`).join('');
   if(current) sel.value = current;
+}
+function populateAssetTypeOptions(){
+  const sel = document.getElementById('asset-type');
+  if(!sel) return;
+  const current = sel.value;
+  sel.innerHTML = DATA.assetTypes.map(t=>`<option value="${t}">${t}</option>`).join('');
+  if(current) sel.value = current;
+}
+function populateAssetExpenseKindOptions(){
+  const sel = document.getElementById('assetexp-kind');
+  if(!sel) return;
+  const current = sel.value;
+  sel.innerHTML = DATA.assetExpenseKinds.map(t=>`<option value="${t}">${t}</option>`).join('');
+  if(current) sel.value = current;
+}
+function populateAssetProjectSelect(selId, selectedName){
+  const sel = document.getElementById(selId);
+  if(!sel) return;
+  sel.innerHTML = '<option value="">بدون مشروع محدد</option>' + DATA.projects.map(p=>`<option value="${p.name}" ${p.name===selectedName?'selected':''}>${p.name}</option>`).join('');
 }
 function updateLedgerPhaseOptions(){
   const projectName = document.getElementById('ledger-project').value;
@@ -4407,6 +7041,7 @@ function saveLedgerRecord(){
     const n = (DATA.ledger.length ? Math.max(...DATA.ledger.map(r=>r._n||0)) : 0)+1;
     DATA.ledger.push({_id:'LED-'+String(n).padStart(3,'0'), _n:n, date, type, account, amount, project, description, phase});
   }
+  logAudit(ledgerFormState.editId?'تعديل':'إضافة', 'قيد محاسبي', account, `${type} - ${fmtMoney(Number(amount)||0)}`);
   saveData();
   closeLedgerModal();
   renderPage();
@@ -4414,7 +7049,9 @@ function saveLedgerRecord(){
 function deleteLedgerRecord(id){
   if(!isAdmin()) return;
   if(!confirm('هل أنت متأكد من حذف هذا القيد؟')) return;
+  const rec = DATA.ledger.find(r=>r._id===id);
   DATA.ledger = DATA.ledger.filter(r=>r._id!==id);
+  logAudit('حذف', 'قيد محاسبي', rec?rec.account:id);
   saveData();
   renderPage();
 }
@@ -4458,6 +7095,7 @@ function saveGeneralExpense(){
     const n = (DATA.generalExpenses.length ? Math.max(...DATA.generalExpenses.map(r=>r._n||0)) : 0)+1;
     DATA.generalExpenses.push({_id:'GEN-'+String(n).padStart(3,'0'), _n:n, date, account, amount, description, targetProjects});
   }
+  logAudit(generalExpenseFormState.editId?'تعديل':'إضافة', 'مصروف ثابت/عام', account, fmtMoney(Number(amount)||0));
   saveData();
   closeGeneralExpenseModal();
   renderPage();
@@ -4465,7 +7103,9 @@ function saveGeneralExpense(){
 function deleteGeneralExpense(id){
   if(!isAdmin()) return;
   if(!confirm('هل أنت متأكد من حذف هذا المصروف الثابت/العام؟')) return;
+  const rec = DATA.generalExpenses.find(r=>r._id===id);
   DATA.generalExpenses = DATA.generalExpenses.filter(r=>r._id!==id);
+  logAudit('حذف', 'مصروف ثابت/عام', rec?rec.account:id);
   saveData();
   renderPage();
 }
@@ -4533,7 +7173,7 @@ function phaseStatus(ph){
 function computeProjectAlerts(p){
   const alerts = [];
   const today = new Date().toISOString().slice(0,10);
-  const contractValue = Number(p.budget)||0;
+  const contractValue = projectContractValue(p);
   const directExpense = DATA.ledger.filter(e=>e.type==='مصروف' && e.project===p.name).reduce((s,e)=>s+(Number(e.amount)||0),0);
   const totalExpense = directExpense + computeOverheadShare(p.name);
   if(contractValue>0){
@@ -4598,6 +7238,7 @@ function savePhase(){
     const n = (p.phases.length ? Math.max(...p.phases.map(ph=>ph._n||0)) : 0)+1;
     p.phases.push({id:'PH-'+p._id+'-'+n, _n:n, name, plannedBudget, startDate, endDate, progressPct});
   }
+  logAudit(phaseFormState.editId?'تعديل':'إضافة', 'بند عمل بمشروع', p.name, name);
   saveData();
   closePhaseModal();
   renderPage();
@@ -4608,6 +7249,7 @@ function deletePhase(projectId, phaseId){
   if(!p) return;
   if(!confirm('هل أنت متأكد من حذف بند العمل ده؟')) return;
   p.phases = (p.phases||[]).filter(ph=>ph.id!==phaseId);
+  logAudit('حذف', 'بند عمل بمشروع', p.name);
   saveData();
   renderPage();
 }
@@ -4659,6 +7301,7 @@ function saveCollectionRecord(){
     const n = (DATA.collections.length ? Math.max(...DATA.collections.map(r=>r._n||0)) : 0)+1;
     DATA.collections.push({_id:'COL-'+String(n).padStart(3,'0'), _n:n, project, method, amount, date, note});
   }
+  logAudit(collectionFormState.editId?'تعديل':'إضافة', 'تحصيل إيراد', project, fmtMoney(Number(amount)||0));
   saveData();
   closeCollectionModal();
   renderPage();
@@ -4666,7 +7309,9 @@ function saveCollectionRecord(){
 function deleteCollectionRecord(id){
   if(!isAdmin()) return;
   if(!confirm('هل أنت متأكد من حذف سجل التحصيل ده؟')) return;
+  const rec = DATA.collections.find(r=>r._id===id);
   DATA.collections = DATA.collections.filter(r=>r._id!==id);
+  logAudit('حذف', 'تحصيل إيراد', rec?rec.project:id);
   saveData();
   renderPage();
 }
@@ -4677,7 +7322,9 @@ function renderProjectDetail(id){
   if(!p){ selectedProjectId=null; return renderModulePage('projects'); }
 
   const collected = computeProjectCollected(p.name);
-  const contractValue = Number(p.budget)||0;
+  const linkedClientContract = primaryClientContractForProject(p._id);
+  const linkedContracts = contractsForProject(p._id);
+  const contractValue = projectContractValue(p);
   const deductions = computeProjectDeductions(p);
   const adjustedContractValue = contractValue - deductions.total;
   const remaining = adjustedContractValue - collected;
@@ -4732,7 +7379,7 @@ function renderProjectDetail(id){
     </div>` : ''}
 
     <div class="kpi-grid" style="margin-bottom:10px;">
-      <div class="kpi"><div class="kpi-label">قيمة العقد الأصلية</div><div class="kpi-value">${fmtMoney(contractValue)}</div></div>
+      <div class="kpi"><div class="kpi-label">قيمة العقد الأصلية</div><div class="kpi-value">${fmtMoney(contractValue)}</div><div class="kpi-sub">${linkedClientContract ? 'من عقد رقم '+linkedClientContract.number : 'لا يوجد عقد مربوط — القيمة من حقل الميزانية'}</div></div>
       ${deductions.total>0 ? `<div class="kpi alert"><div class="kpi-label">إجمالي الخصومات/الغرامات/التأمين</div><div class="kpi-value">${fmtMoney(deductions.total)}</div><div class="kpi-sub">القيمة بعد التعديل: ${fmtMoney(adjustedContractValue)}</div></div>` : ''}
       <div class="kpi ok"><div class="kpi-label">إجمالي المحصّل</div><div class="kpi-value">${fmtMoney(collected)}</div><div class="kpi-sub">${pct}% من قيمة العقد بعد التعديل</div></div>
       <div class="kpi ${remaining>0?'alert':'ok'}"><div class="kpi-label">المتبقي من العقد</div><div class="kpi-value">${fmtMoney(remaining)}</div></div>
@@ -4757,6 +7404,42 @@ function renderProjectDetail(id){
       </div>
       ${p.description?`<div style="margin-top:14px; font-size:13px; color:var(--text-dim); border-top:1px solid var(--border); padding-top:12px;">${p.description}</div>`:''}
     </div>
+
+    <div class="page-head" style="margin-bottom:12px;">
+      <div class="section-title" style="margin:0;">🔗 العقود المرتبطة بهذا المشروع</div>
+      ${editable ? `<button class="btn secondary small" onclick="goTo('contracts'); openContractForm(null,'${p._id}');">+ عقد جديد لهذا المشروع</button>` : ''}
+    </div>
+    ${linkedContracts.length ? `
+    <div class="table-wrap" style="margin-bottom:16px;"><div class="table-scroll"><table>
+      <thead><tr><th>رقم العقد</th><th>النوع</th><th>الطرف الآخر</th><th>القيمة الحالية</th><th>عدد البنود</th><th></th></tr></thead>
+      <tbody>
+        ${linkedContracts.map(lc=>`<tr>
+          <td>${lc.number||'—'}</td>
+          <td>${contractTypeBadge(lc)}</td>
+          <td>${contractPartyName(lc)}</td>
+          <td style="font-weight:700;">${fmtMoney(computeContractValue(lc))}</td>
+          <td>${(lc.items||[]).length}</td>
+          <td class="row-actions"><button class="btn secondary small" onclick="openContractFromProject('${lc._id}')">عرض العقد</button></td>
+        </tr>`).join('')}
+      </tbody>
+    </table></div></div>
+    <div class="section-title">📋 بنود العقود المرتبطة</div>
+    <div class="table-wrap" style="margin-bottom:24px;"><div class="table-scroll"><table>
+      <thead><tr><th>من عقد</th><th>البند</th><th>طريقة الحساب</th><th>الوحدة</th><th>الكمية</th><th>سعر الوحدة</th><th>القيمة</th></tr></thead>
+      <tbody>
+        ${linkedContracts.flatMap(lc=>(lc.items||[]).map(it=>`<tr>
+          <td>${lc.number||'—'} <span style="color:var(--text-dim); font-size:11px;">(${lc.contractType==='عميل'?'عميل':'مقاول باطن'})</span></td>
+          <td>${it.description||'—'}</td>
+          <td>${it.method||'—'}</td>
+          <td>${it.unit||'—'}</td>
+          <td>${it.quantity||0}</td>
+          <td>${fmtMoney(it.unitPrice)}</td>
+          <td style="font-weight:700;">${fmtMoney(computeContractItemValue(it))}</td>
+        </tr>`)).join('') || `<tr><td colspan="7" style="text-align:center;">لا توجد بنود بعد</td></tr>`}
+      </tbody>
+    </table></div></div>
+    ` : `<div class="table-wrap" style="margin-bottom:24px;"><div class="empty-state">لا يوجد عقد مربوط بهذا المشروع حتى الآن<br>
+      ${editable ? `<button class="btn small" style="margin-top:12px" onclick="goTo('contracts'); openContractForm(null,'${p._id}');">إضافة عقد لهذا المشروع</button>` : ''}</div></div>`}
 
     <div class="page-head" style="margin-bottom:12px;">
       <div class="section-title" style="margin:0;">مراحل المشروع وبنود الأعمال</div>
@@ -4954,6 +7637,7 @@ function saveAdjustment(){
     const n = (p.adjustments.length ? Math.max(...p.adjustments.map(a=>a._n||0)) : 0)+1;
     p.adjustments.push({id:'ADJ-'+p._id+'-'+n, _n:n, type, date, amount, note});
   }
+  logAudit(adjustmentFormState.editId?'تعديل':'إضافة', 'تسوية مشروع', p.name, `${type} - ${fmtMoney(Number(amount)||0)}`);
   saveData();
   closeAdjustmentModal();
   renderPage();
@@ -4964,6 +7648,7 @@ function deleteAdjustment(projectId, id){
   const p = DATA.projects.find(r=>r._id===projectId);
   if(!p) return;
   p.adjustments = (p.adjustments||[]).filter(a=>a.id!==id);
+  logAudit('حذف', 'تسوية مشروع', p.name);
   saveData();
   renderPage();
 }
@@ -4976,10 +7661,13 @@ function openListSettings(kind){
     ? JSON.parse(JSON.stringify(DATA.projectStatuses))
     : kind==='contractTypes'
       ? DATA.contractTypes.map(name=>({name}))
-      : DATA.procedureTypes.map(name=>({name}));
+      : kind==='assetTypes'
+        ? DATA.assetTypes.map(name=>({name}))
+        : DATA.procedureTypes.map(name=>({name}));
   document.getElementById('listSettingsTitle').textContent =
     kind==='statuses' ? 'إدارة حالات المشاريع' :
     kind==='contractTypes' ? 'إدارة أنواع التعاقد مع مقاولي الباطن' :
+    kind==='assetTypes' ? 'إدارة أنواع الأصول' :
     'إدارة بنود الأعمال (الإجراءات)';
   renderListSettingsRows();
   document.getElementById('listSettingsOverlay').classList.add('open');
@@ -5020,9 +7708,12 @@ function saveListSettings(){
     DATA.projectStatuses = cleaned.map(it=>({name:it.name.trim(), cls:it.cls||'b-neutral'}));
   }else if(listSettingsState.kind==='contractTypes'){
     DATA.contractTypes = cleaned.map(it=>it.name.trim());
+  }else if(listSettingsState.kind==='assetTypes'){
+    DATA.assetTypes = cleaned.map(it=>it.name.trim());
   }else{
     DATA.procedureTypes = cleaned.map(it=>it.name.trim());
   }
+  logAudit('تعديل', 'إعدادات قوائم', listSettingsState.kind);
   saveData();
   closeListSettings();
   renderPage();
@@ -5062,7 +7753,7 @@ const CUSTOM_SOURCES = {
   contracts:{label:'العقود', records:()=>DATA.contracts, nameOf:r=>r.number, fields:[
     {key:'endDate', label:'تاريخ الانتهاء', type:'date'},
     {key:'startDate', label:'تاريخ البدء', type:'date'},
-    {key:'value', label:'القيمة', type:'number'},
+    {key:'value', label:'القيمة الحالية للعقد', type:'number', compute:r=>computeContractValue(r)},
   ]},
   assets:{label:'الأصول والمعدات', records:()=>DATA.assets, nameOf:r=>r.name, fields:[
     {key:'purchaseDate', label:'تاريخ الشراء', type:'date'},
@@ -5148,6 +7839,14 @@ function evaluateAlerts(){
           triggered.push({ruleId:rule.id, ruleLabel:rule.label, key:'custom:'+rule.id+':'+rec._id, message: msg});
         }
       });
+    }
+  });
+  (DATA.reminders||[]).forEach(r=>{
+    if(isReminderDue(r)){
+      const late = daysLate(r.dueDate);
+      const statusText = late>0 ? `متأخر ${late} يوم` : (late===0 ? 'اليوم' : `بعد ${-late} يوم`);
+      triggered.push({ruleId:'REMINDER', ruleLabel:'تذكير: '+r.title, key:'reminder:'+r._id,
+        message:`🔔 تذكير: ${r.title} — الاستحقاق ${r.dueDate} (${statusText}).${r.note?(' — '+r.note):''}`});
     }
   });
   return triggered;
@@ -5255,6 +7954,7 @@ function saveWhatsappSettings(){
   DATA.whatsappSettings.accessToken = document.getElementById('wa-token').value.trim();
   DATA.whatsappSettings.phoneNumberId = document.getElementById('wa-phoneid').value.trim();
   DATA.whatsappSettings.businessAccountId = document.getElementById('wa-bizid').value.trim();
+  logAudit('تعديل', 'إعدادات واتساب', '');
   saveData();
   alert('تم حفظ بيانات الاتصال');
 }
@@ -5270,12 +7970,15 @@ function saveRecipient(){
   if(!phone){ alert('من فضلك أدخل رقم الواتساب بالصيغة الدولية، مثال: 201021100036'); return; }
   const n = (DATA.whatsappSettings.recipients.length ? Math.max(...DATA.whatsappSettings.recipients.map(r=>r._n||0)) : 0)+1;
   DATA.whatsappSettings.recipients.push({id:'RCP-'+n, _n:n, name, phone});
+  logAudit('إضافة', 'مستلم تنبيهات واتساب', name||phone);
   saveData();
   closeRecipientForm();
   renderPage();
 }
 function deleteRecipient(id){
+  const rec = DATA.whatsappSettings.recipients.find(r=>r.id===id);
   DATA.whatsappSettings.recipients = DATA.whatsappSettings.recipients.filter(r=>r.id!==id);
+  logAudit('حذف', 'مستلم تنبيهات واتساب', rec?(rec.name||rec.phone):id);
   saveData();
   renderPage();
 }
@@ -5358,13 +8061,16 @@ function saveAlertRule(){
   }else if(type!=='lowStock'){
     rule.thresholdDays = rule.thresholdDays || 3;
   }
+  logAudit(alertRuleFormState.editId?'تعديل':'إضافة', 'قاعدة تنبيه', label);
   saveData();
   closeAlertRuleForm();
   renderPage();
 }
 function deleteAlertRule(id){
   if(!confirm('هل أنت متأكد من حذف هذا التنبيه؟')) return;
+  const rule = DATA.alertRules.find(r=>r.id===id);
   DATA.alertRules = DATA.alertRules.filter(r=>r.id!==id);
+  logAudit('حذف', 'قاعدة تنبيه', rule?rule.label:id);
   saveData();
   renderPage();
 }
@@ -5453,7 +8159,7 @@ async function sendTestWhatsapp(){
 const PERM_LABELS = {
   projects:'المشاريع', subs:'مقاولو الباطن', materials:'المخزون والمشتريات',
   hr:'الموارد البشرية', finance:'الحسابات والفواتير', accounting:'المحاسبة والتقارير المالية',
-  contracts:'العقود', assets:'الأصول والمعدات',
+  contracts:'العقود', assets:'الأصول والمعدات', quotations:'عروض الأسعار',
 };
 const PERM_MODULE_KEYS = Object.keys(PERM_LABELS);
 
@@ -5574,6 +8280,7 @@ async function saveUserRecord(){
     }
     await loadUsers();
   }catch(e){ alert(e.message); return; }
+  if(typeof logAudit==='function'){ logAudit(userFormState.editId?'تعديل':'إضافة', 'مستخدم', name, `صلاحية: ${role}`); saveData(); }
   const me = DATA.users.find(u=>currentUser && u._id===currentUser._id);
   if(me){ currentUser = me; document.getElementById('userBarName').textContent = `${me.name} (${me.role})`; }
   closeUserModal();
@@ -5590,6 +8297,7 @@ async function deleteUserRecord(id){
     await rpc('admin_delete_user', {p_id:id});
     await loadUsers();
   }catch(e){ alert(e.message); return; }
+  if(typeof logAudit==='function'){ logAudit('حذف', 'مستخدم', target?target.name:id); saveData(); }
   renderPage();
 }
 
@@ -5680,10 +8388,15 @@ async function attemptLogin(){
     return;
   }
   loginBusy = false;
-  try{ await startSession(); }catch(e){ renderConnError(e); }
+  try{ await startSession(); }catch(e){ renderConnError(e); return; }
+  if(currentUser && typeof logAudit==='function'){ logAudit('تسجيل دخول', 'مستخدم', currentUser.name); saveData(); }
 }
 async function logout(){
   if((syncQueue.length || syncRunning) && !confirm('فيه تعديلات لسه بتتحفظ. لو خرجت دلوقتي ممكن تضيع. تخرج برضه؟')) return;
+  if(currentUser && typeof logAudit==='function'){
+    logAudit('تسجيل خروج', 'مستخدم', currentUser.name); saveData();
+    for(let i=0; i<40 && (syncQueue.length || syncRunning); i++) await new Promise(r=>setTimeout(r,100));
+  }
   stopPolling();
   if(typeof stopAlertsAutoSync==='function') stopAlertsAutoSync();
   syncQueue = [];
@@ -5694,6 +8407,7 @@ async function logout(){
   selectedSubId = null;
   selectedMaterialId = null;
   selectedEmployeeId = null;
+  if(typeof selectedInvoiceId!=='undefined') selectedInvoiceId = null;
   await cloudSignOut();
   renderLogin();
 }
@@ -5779,12 +8493,46 @@ function loadDemoData(){
     {_id:'INV-003', _n:3, project:'برج النيل السكني', client:'شركة دلتا للتطوير', amount:'1200000', issueDate:'2026-08-01', dueDate:'2026-09-01', status:'متأخرة'},
   ];
   DATA.contracts = [
-    {_id:'CNT-001', _n:1, number:'C-2026-014', project:'برج النيل السكني', party:'شركة دلتا للتطوير', type:'عميل', value:'12000000', startDate:'2026-01-05', endDate:'2026-12-30', status:'ساري'},
-    {_id:'CNT-002', _n:2, number:'C-2026-018', project:'مجمع مخازن العاشر', party:'مقاولات الأساسات الحديثة', type:'مقاول من الباطن', value:'900000', startDate:'2025-08-10', endDate:'2026-01-01', status:'منتهي'},
+    {_id:'CNT-001', _n:1, number:'C-2026-014', contractType:'عميل', projectId:'PRJ-001', clientName:'شركة دلتا للتطوير', startDate:'2026-01-05', endDate:'2026-12-30', status:'ساري', notes:'',
+      items:[
+        {id:'ITM-1', code:'1', description:'أعمال الحفر والأساسات', method:'مقطوعية', unit:'مقطوعية', quantity:1, unitPrice:1200000, linkedContractId:null, linkedItemId:null},
+        {id:'ITM-2', code:'2', description:'أعمال مباني', method:'بالمتر', unit:'م²', quantity:2000, unitPrice:400, linkedContractId:null, linkedItemId:null},
+        {id:'ITM-3', code:'3', description:'تشطيبات', method:'مقطوعية', unit:'مقطوعية', quantity:1, unitPrice:9200000, linkedContractId:null, linkedItemId:null},
+      ],
+      changeOrders:[
+        {id:'CO-1', date:'2026-05-01', description:'زيادة أعمال تشطيبات إضافية بناءً على طلب العميل', amountDelta:200000, approved:true, approvedDate:'2026-05-05'},
+      ],
+      deductionRules:[
+        {id:'DED-1', type:'احتجاز ضمان', mode:'percent', value:5, note:'ضمان حسن التنفيذ — يُرد بعد التسليم النهائي'},
+        {id:'DED-2', type:'ضريبة', mode:'percent', value:14, note:'ضريبة القيمة المضافة'},
+      ],
+      extracts:[]},
+    {_id:'CNT-002', _n:2, number:'C-2026-018', contractType:'مقاول_باطن', projectId:'PRJ-001', subId:'SUB-001', startDate:'2026-01-10', endDate:'2026-06-01', status:'ساري', notes:'',
+      items:[
+        {id:'ITM-1', code:'1', description:'تنفيذ أعمال الحفر والأساسات', method:'مقطوعية', unit:'مقطوعية', quantity:1, unitPrice:850000, linkedContractId:'CNT-001', linkedItemId:'ITM-1'},
+      ],
+      changeOrders:[],
+      deductionRules:[
+        {id:'DED-1', type:'احتجاز ضمان', mode:'percent', value:5, note:'ضمان حسن التنفيذ'},
+      ],
+      extracts:[]},
   ];
   DATA.assets = [
-    {_id:'AST-001', _n:1, name:'رافعة برجية', type:'رافعة', status:'قيد الاستخدام', project:'برج النيل السكني', purchaseDate:'2023-02-01', value:'2200000'},
-    {_id:'AST-002', _n:2, name:'خلاطة خرسانة', type:'معدة صب', status:'صيانة', project:'—', purchaseDate:'2022-06-15', value:'350000'},
+    {_id:'AST-001', _n:1, name:'رافعة برجية', type:'معدة', status:'قيد الاستخدام', project:'برج النيل السكني', purchaseDate:'2023-02-01', value:'2200000', expenses:[
+      {id:'AEX-AST-001-1', _n:1, kind:'صيانة', date:'2026-04-10', amount:'12000', project:'برج النيل السكني', note:'صيانة دورية + لحام جزء من الهيكل'},
+    ]},
+    {_id:'AST-002', _n:2, name:'خلاطة خرسانة', type:'معدة', status:'صيانة', project:'', purchaseDate:'2022-06-15', value:'350000', expenses:[
+      {id:'AEX-AST-002-1', _n:1, kind:'زيت وزيوت', date:'2026-05-02', amount:'900', project:'', note:'تغيير زيت الموتور'},
+      {id:'AEX-AST-002-2', _n:2, kind:'قطع غيار', date:'2026-06-20', amount:'4500', project:'', note:'استبدال سير الخلاط'},
+    ]},
+    {_id:'AST-003', _n:3, name:'سيارة نقل عمال', type:'سيارة', status:'قيد الاستخدام', project:'برج النيل السكني', purchaseDate:'2024-01-10', value:'420000', expenses:[
+      {id:'AEX-AST-003-1', _n:1, kind:'غاز ووقود', date:'2026-06-01', amount:'1800', project:'برج النيل السكني', note:'تعبئة بنزين شهر يونيو'},
+      {id:'AEX-AST-003-2', _n:2, kind:'صيانة', date:'2026-07-05', amount:'3200', project:'برج النيل السكني', note:'تغيير إطارات'},
+    ]},
+    {_id:'AST-004', _n:4, name:'جهاز قياس ليزر (ميزان مستوى)', type:'أخرى', status:'متاح', project:'', purchaseDate:'2024-09-01', value:'28000', expenses:[
+      {id:'AEX-AST-004-1', _n:1, kind:'صيانة', date:'2026-03-15', amount:'700', project:'', note:'معايرة الجهاز'},
+    ]},
+    {_id:'AST-005', _n:5, name:'أثاث مكتب الموقع', type:'أثاث', status:'متاح', project:'برج النيل السكني', purchaseDate:'2023-05-20', value:'45000', expenses:[]},
   ];
   DATA.subs = [
     {_id:'SUB-001', _n:1, name:'شركة الأساسات الحديثة', specialty:'أعمال الحفر والأساسات', phone:'01100000001', assignments:[
@@ -5832,6 +8580,19 @@ function loadDemoData(){
     {_id:'COL-001', _n:1, project:'برج النيل السكني', method:'تحويل بنكي', amount:'2000000', date:'2026-02-15', note:'دفعة مقدمة'},
     {_id:'COL-002', _n:2, project:'برج النيل السكني', method:'شيك', amount:'1500000', date:'2026-05-10', note:'دفعة عند إنجاز 30%'},
     {_id:'COL-003', _n:3, project:'مجمع مخازن العاشر', method:'نقدي', amount:'900000', date:'2026-08-20', note:''},
+  ];
+  DATA.quotations = [
+    {_id:'QUO-001', _n:1, number:'Q-2026-005', date:'2025-12-01', validUntil:'2026-01-15', clientName:'عميل خاص', status:'مقبول', projectId:'PRJ-003', terms:'الدفعة المقدمة 30% عند التوقيع، والباقي على دفعات حسب نسب الإنجاز.', notes:'', contractId:null, items:[
+      {id:'QIT-1', section:'أعمال تسويق وتصميم', code:'1', description:'تصميمات معمارية وإنشائية مبدئية', unit:'مقطوعية', quantity:1, unitPrice:200000},
+      {id:'QIT-2', section:'أعمال تسويق وتصميم', code:'2', description:'تسويق عقاري للوحدات', unit:'مقطوعية', quantity:1, unitPrice:150000},
+    ]},
+  ];
+  DATA.contracts.forEach(ensureContractShape);
+  DATA.quotations.forEach(ensureQuotationShape);
+  syncSubContractItemEntries();
+  DATA.reminders = [
+    {_id:'REM-001', _n:1, title:'شيك مستحق لمورد الحديد', dueDate: addDaysStr(todayStr(), 2), leadDays:3, note:'شيك رقم 00456', done:false},
+    {_id:'REM-002', _n:2, title:'تسليم مستخلص مقاول الهيكل', dueDate: addDaysStr(todayStr(), 6), leadDays:3, note:'', done:false},
   ];
   saveData();
   renderPage();
