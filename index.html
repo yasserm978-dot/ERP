@@ -1973,6 +1973,7 @@ function normalizeData(){
   if(!Array.isArray(DATA.generalExpenses)) DATA.generalExpenses = [];
   if(!Array.isArray(DATA.revenueAccounts)) DATA.revenueAccounts = DEFAULT_REVENUE_ACCOUNTS.slice();
   if(!Array.isArray(DATA.expenseAccounts)) DATA.expenseAccounts = DEFAULT_EXPENSE_ACCOUNTS.slice();
+  ['أجور ومرتبات','سلف الموظفين'].forEach(acc=>{ if(!DATA.expenseAccounts.includes(acc)) DATA.expenseAccounts.push(acc); });
   if(!Array.isArray(DATA.collections)) DATA.collections = [];
   if(DATA.capital===undefined || DATA.capital===null) DATA.capital = '0';
   if(!DATA.overheadAllocationBasis) DATA.overheadAllocationBasis = 'equal';
@@ -5807,7 +5808,7 @@ function printAssetStatement(id){
 
 /* ================= Accounting engine ================= */
 const DEFAULT_REVENUE_ACCOUNTS = ['إيرادات المشاريع','إيرادات أخرى'];
-const DEFAULT_EXPENSE_ACCOUNTS = ['مصروفات مقاولي الباطن','أجور العمالة','مشتريات ومصروفات تشغيلية','صيانة ومعدات','مصروفات إدارية وعمومية','مصروفات أخرى'];
+const DEFAULT_EXPENSE_ACCOUNTS = ['مصروفات مقاولي الباطن','أجور العمالة','أجور ومرتبات','سلف الموظفين','مشتريات ومصروفات تشغيلية','صيانة ومعدات','مصروفات إدارية وعمومية','مصروفات أخرى'];
 
 let accountingTab = 'ledger';
 let incomeFilterProject = '';
@@ -5908,6 +5909,11 @@ function generateAutoEntries(){
   DATA.assets.forEach(a=>(a.expenses||[]).forEach(e=>{
     if(e.project && Number(e.amount)>0) validSources.add('assetexp:'+a._id+':'+e.id);
   }));
+  // السلف (سلفة) هي مبلغ نقدي بيتصرف فعليًا للموظف قبل يوم الراتب، فلازم تظهر كمصروف نقدي فعلي
+  // بتاريخها هي (مش بس تتخصم من صافي الراتب وقت الصرف) — عشان إجمالي المصروف = السلفة + صافي الراتب = الأساسي، بالظبط
+  DATA.hr.forEach(h=>(h.payrollEntries||[]).forEach(e=>{
+    if(e.type==='سلفة' && Number(e.amount)>0 && e.date) validSources.add('advance:'+h._id+':'+e.id);
+  }));
 
   DATA.ledger = DATA.ledger.filter(e=> !e.source || validSources.has(e.source));
 
@@ -5959,6 +5965,12 @@ function generateAutoEntries(){
     const amount = Number(e.amount)||0;
     if(!amount) return;
     upsert('assetexp:'+a._id+':'+e.id, {date:e.date, type:'مصروف', account:'صيانة ومعدات', amount, project:e.project, description:(e.kind||'مصروف معدات')+' — '+a.name+(e.note?(' - '+e.note):'')});
+  }));
+  DATA.hr.forEach(h=>(h.payrollEntries||[]).forEach(e=>{
+    if(e.type!=='سلفة') return;
+    const amount = Number(e.amount)||0;
+    if(!amount || !e.date) return;
+    upsert('advance:'+h._id+':'+e.id, {date:e.date, type:'مصروف', account:'سلف الموظفين', amount, project:h.project||'', description:'سلفة لـ'+h.name+(e.note?(' - '+e.note):'')+' (تُخصم من صافي راتب '+monthLabel(monthKey(e.date))+')'+(h.project?'':' (مصروف عام — بدون مشروع محدد)')});
   }));
 }
 function ensureAssetShape(a){
@@ -6032,6 +6044,14 @@ function computeOverheadShare(projectName){
       if(!unassigned || !unassigned.amount) return;
       const targets = activeProjectNames();
       share += allocateShare(unassigned.amount, targets, projectName, basis);
+    });
+    // نصيب "بدون مشروع" من سلف الموظفين اللي بدون مشروع ثابت (نفس منطق راتبهم بالظبط)
+    (h.payrollEntries||[]).forEach(e=>{
+      if(e.type!=='سلفة' || h.project) return;
+      const amount = Number(e.amount)||0;
+      if(!amount) return;
+      const targets = activeProjectNames();
+      share += allocateShare(amount, targets, projectName, basis);
     });
   });
   return share;
