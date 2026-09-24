@@ -5894,8 +5894,10 @@ function generateAutoEntries(){
     if(!pr.paid) return;
     const amount = Number(pr.netAmount)||0;
     if(!amount) return;
+    // ملحوظة: مرتب موظف بدون مشروع ثابت (زي مدير مالي/محاسب/سواق) لازم برضو يظهر كمصروف عام
+    // في السجلات العامة، مش بس لما يكون مربوط بمشروع
     payrollProjectSplit(h, pr.month, amount).forEach((s,idx)=>{
-      if(s.project && s.amount) validSources.add('payroll:'+h._id+':'+pr.id+':'+idx);
+      if(s.amount) validSources.add('payroll:'+h._id+':'+pr.id+':'+idx);
     });
   }));
   DATA.collections.forEach(c=>validSources.add('collection:'+c._id));
@@ -5933,8 +5935,10 @@ function generateAutoEntries(){
     const amount = Number(pr.netAmount)||0;
     if(!amount) return;
     payrollProjectSplit(h, pr.month, amount).forEach((s,idx)=>{
-      if(!s.project || !s.amount) return;
-      upsert('payroll:'+h._id+':'+pr.id+':'+idx, {date:pr.paidDate, type:'مصروف', account:'أجور ومرتبات', amount:s.amount, project:s.project, description:'راتب '+monthLabel(pr.month)+' — '+h.name});
+      if(!s.amount) return;
+      // مرتب بدون مشروع محدد (موظف عام زي مدير مالي/محاسب/سواق) بيتسجل كمصروف عام (project فاضي)
+      // بنفس منطق "المصاريف الثابتة والعامة" — بيظهر في قائمة الدخل والسجلات العامة، وبيتوزع على المشاريع الجارية بس في تقارير كل مشروع لوحده
+      upsert('payroll:'+h._id+':'+pr.id+':'+idx, {date:pr.paidDate, type:'مصروف', account:'أجور ومرتبات', amount:s.amount, project:s.project||'', description:'راتب '+monthLabel(pr.month)+' — '+h.name+(s.project?'':' (مصروف عام — بدون مشروع محدد)')});
     });
   }));
   DATA.collections.forEach(c=>{
@@ -6058,6 +6062,33 @@ function monthLabel(m){
   const names = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
   const idx = (Number(mo)||1)-1;
   return (names[idx]||mo)+' '+y;
+}
+function daysInMonthOf(dateStr){
+  const parts = String(dateStr||'').split('-').map(Number);
+  const y = parts[0], m = parts[1];
+  if(!y || !m) return 30;
+  return new Date(y, m, 0).getDate();
+}
+// خصم يوم الغياب: بيتسجل تلقائيًا كبند "خصم" في سلف وخصومات الموظف بقيمة يوم واحد من الراتب الشهري
+// (الراتب الشهري ÷ عدد أيام الشهر بتاريخ يوم الغياب)، ومربوط بسجل الحضور نفسه (fromAttendance)
+// عشان لو الحالة اتغيّرت أو السجل اتمسح، الخصم يتحدّث/يتشال تلقائيًا معاه.
+// الموظف اليومي مش محتاج لخصم منفصل لأنه أصلاً مبيتقاضاش أجر عن يوم مسجل "غائب".
+function syncAbsenceDeduction(h, rec){
+  if(!Array.isArray(h.payrollEntries)) h.payrollEntries = [];
+  const existingIdx = h.payrollEntries.findIndex(e=>e.fromAttendance===rec.id);
+  const shouldHaveDeduction = h.employeeType!=='يومي' && rec.status==='غائب' && rec.date;
+  if(!shouldHaveDeduction){
+    if(existingIdx>-1) h.payrollEntries.splice(existingIdx,1);
+    return;
+  }
+  const dayAmount = Math.round(((Number(h.monthlySalary)||0) / daysInMonthOf(rec.date)) * 100) / 100;
+  if(existingIdx>-1){
+    const e = h.payrollEntries[existingIdx];
+    e.date = rec.date; e.amount = dayAmount; e.note = 'خصم تلقائي — يوم غياب بتاريخ '+rec.date;
+  }else{
+    const n = (h.payrollEntries.length ? Math.max(...h.payrollEntries.map(x=>x._n||0)) : 0)+1;
+    h.payrollEntries.push({id:h._id+'-PAY'+n, _n:n, date:rec.date, type:'خصم', amount:dayAmount, note:'خصم تلقائي — يوم غياب بتاريخ '+rec.date, fromAttendance:rec.id, auto:true});
+  }
 }
 function computeMonthlyPayroll(emp, month){
   let base = 0;
@@ -6503,14 +6534,21 @@ function quickMarkToday(empId){
   // موظف يومي بدون مشروع ثابت: نفتحله نافذة التسجيل عشان يقدر يحدد المشروع اللي اشتغل فيه النهاردة.
   if(h.employeeType==='يومي' && !h.project){ openAttendanceForm(empId); return; }
   const today = todayStr();
-  let a = (h.attendance||[]).find(x=>x.date===today);
-  if(a){ a.status = 'حاضر'; }
-  else{
-    const n = (h.attendance.length ? Math.max(...h.attendance.map(x=>x._n||0)) : 0)+1;
-    h.attendance.push({id:h._id+'-ATT'+n, _n:n, date:today, status:'حاضر', note:''});
+  if(!Array.isArray(h.attendance)) h.attendance = [];
+  const existing = h.attendance.find(x=>x.date===today);
+  // اليوم اللي تم إثبات حضوره قبل كده متسجّلش تاني إلا لو المدير حذفه الأول
+  if(existing){
+    alert('تم إثبات حضور اليوم ('+today+') بالفعل — الحالة المسجلة: '+existing.status+'.\nمينفعش تسجيله تاني إلا لو المدير حذف السجل ده الأول.');
+    return;
   }
+  const n = (h.attendance.length ? Math.max(...h.attendance.map(x=>x._n||0)) : 0)+1;
+  const rec = {id:h._id+'-ATT'+n, _n:n, date:today, status:'حاضر', note:''};
+  h.attendance.push(rec);
+  syncAbsenceDeduction(h, rec);
+  logAudit('إضافة', 'حضور موظف', h.name, today+' - حاضر');
   saveData();
   renderPage();
+  alert('تم إثبات حضور اليوم بنجاح ✅');
 }
 let attendanceFormState = {empId:null, editId:null};
 function openAttendanceForm(empId, editId){
@@ -6551,13 +6589,22 @@ function saveAttendance(){
   const project = h.employeeType==='يومي' ? document.getElementById('att-project').value : '';
   if(!date){ alert('من فضلك اختر التاريخ'); return; }
   if(!Array.isArray(h.attendance)) h.attendance = [];
+  let rec;
   if(editId){
-    const rec = h.attendance.find(a=>a.id===editId);
+    rec = h.attendance.find(a=>a.id===editId);
     if(rec){ rec.date=date; rec.status=status; rec.note=note; rec.project=project; }
   }else{
+    // اليوم اللي تم إثبات حضوره/تسجيله قبل كده متسجّلش تاني إلا لو المدير حذفه الأول
+    const dup = h.attendance.find(a=>a.date===date);
+    if(dup){
+      alert('يوجد بالفعل سجل حضور بتاريخ '+date+' لهذا الموظف (الحالة: '+dup.status+').\nمينفعش تسجيله تاني إلا لو المدير حذف السجل ده الأول.');
+      return;
+    }
     const n = (h.attendance.length ? Math.max(...h.attendance.map(x=>x._n||0)) : 0)+1;
-    h.attendance.push({id:h._id+'-ATT'+n, _n:n, date, status, note, project});
+    rec = {id:h._id+'-ATT'+n, _n:n, date, status, note, project};
+    h.attendance.push(rec);
   }
+  if(rec) syncAbsenceDeduction(h, rec);
   logAudit(editId?'تعديل':'إضافة', 'حضور موظف', h.name, `${date} - ${status}`);
   saveData();
   closeAttendanceModal();
@@ -6590,10 +6637,12 @@ function confirmAttendanceEmployeePick(){
 }
 function deleteAttendance(empId, entryId){
   if(!isAdmin()) return;
-  if(!confirm('هل أنت متأكد من حذف يوم الحضور ده؟')) return;
+  if(!confirm('هل أنت متأكد من حذف يوم الحضور ده؟\n(لو كان يوم غياب وليه خصم تلقائي مرتبط بيه، هيتشال الخصم برضو)')) return;
   const h = DATA.hr.find(r=>r._id===empId);
   if(!h) return;
   h.attendance = (h.attendance||[]).filter(a=>a.id!==entryId);
+  // شيل أي خصم غياب تلقائي كان مرتبط بيوم الحضور المحذوف ده
+  h.payrollEntries = (h.payrollEntries||[]).filter(e=>e.fromAttendance!==entryId);
   logAudit('حذف', 'حضور موظف', h.name);
   saveData();
   renderPage();
