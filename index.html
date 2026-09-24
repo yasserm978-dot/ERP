@@ -222,11 +222,18 @@ tbody tr:hover{background:var(--surface-2);}
 #printModalBody th,#printModalBody td{border:1px solid #999; padding:7px; text-align:right;}
 #printModalBody th{background:#eee; color:#000;}
 @media print{
+  @page{ margin:12mm 10mm; }
   body > *:not(#printOverlay){display:none !important;}
   #printOverlay{position:static !important; background:none !important; padding:0 !important; inset:auto !important; display:block !important;}
   #printOverlay .modal{max-width:100% !important; max-height:none !important; overflow:visible !important; border:none !important; box-shadow:none !important; width:100% !important;}
-  #printOverlay .modal-head, #printOverlay .modal-foot{display:none !important;}
+  #printOverlay .modal-head, #printOverlay .modal-foot, .no-print{display:none !important;}
   #printOverlay .modal-body{padding:0 !important;}
+  /* تأكيد ظهور كل أعمدة وصفوف الجداول كاملة بدون قص، ومنع تقطيع أي صف بين صفحتين */
+  #printModalBody{width:100% !important;}
+  #printModalBody table{width:100% !important; table-layout:auto !important;}
+  #printModalBody th, #printModalBody td{white-space:normal !important; word-break:break-word !important; overflow-wrap:break-word !important;}
+  #printModalBody tr{page-break-inside:avoid; break-inside:avoid;}
+  #printModalBody table, #printModalBody h2, #printModalBody h3{page-break-inside:avoid;}
 }
 
 @media(max-width:820px){
@@ -776,7 +783,7 @@ tbody tr:hover{background:var(--surface-2);}
       <button class="modal-close" onclick="closePrintModal()">×</button>
     </div>
     <div class="modal-body" style="padding:0; display:flex; flex-direction:column; gap:0;">
-      <div style="padding:10px 20px 0;">
+      <div class="no-print" style="padding:10px 20px 0;">
         <div id="printModalHint" style="font-size:12px; color:var(--text-dim); background:var(--bg); border:1px solid var(--border); border-radius:6px; padding:8px 12px;">
           اضغط "طباعة" لفتح نافذة الطباعة مباشرة. لو ما فتحتش، اضغط "تحديد ونسخ النص" ثم الصق (Ctrl+V) الكشف في وورد أو أي برنامج تاني واطبعه من هناك.
         </div>
@@ -1196,6 +1203,10 @@ tbody tr:hover{background:var(--surface-2);}
         </div>
       </div>
       <div class="field">
+        <label>الموجه إليه (اختياري — تظهر في الطباعة كـ"عناية السيد/...")</label>
+        <input id="quotation-attn" type="text" placeholder="مثال: عناية السيد المهندس/ أحمد محمد">
+      </div>
+      <div class="field">
         <label>المشروع (اختياري — يمكن تحديده لاحقًا قبل التحويل إلى عقد)</label>
         <div style="display:flex; gap:6px;">
           <select id="quotation-project" style="flex:1;"></select>
@@ -1216,6 +1227,25 @@ tbody tr:hover{background:var(--surface-2);}
     <div class="modal-foot">
       <button class="btn secondary" onclick="closeQuotationModal()">إلغاء</button>
       <button class="btn" onclick="saveQuotationRecord()">حفظ</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="companyInfoOverlay">
+  <div class="modal">
+    <div class="modal-head">
+      <h3>بيانات الشركة (تظهر أعلى عروض الأسعار المطبوعة)</h3>
+      <button class="modal-close" onclick="closeCompanyInfoModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="field"><label>اسم الشركة</label><input id="company-name" type="text" placeholder="مثال: شركة الحجازي للمقاولات"></div>
+      <div class="field"><label>رقم الهاتف (اختياري)</label><input id="company-phone" type="text"></div>
+      <div class="field"><label>العنوان (اختياري)</label><input id="company-address" type="text"></div>
+      <div class="field"><label>اسم مقدّم العرض (يظهر أسفل التوقيع)</label><input id="company-signer" type="text"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn secondary" onclick="closeCompanyInfoModal()">إلغاء</button>
+      <button class="btn" onclick="saveCompanyInfo()">حفظ</button>
     </div>
   </div>
 </div>
@@ -1316,7 +1346,7 @@ const q = v=>encodeURIComponent(v);
 
 /* ---------- تحميل ومزامنة البيانات ---------- */
 const SYNC_COLLECTIONS = ['projects','hr','finance','contracts','assets','subs','ledger','generalExpenses','collections','purchases','materials','quotations','boq','reminders','auditLog'];
-const SYNC_SETTINGS = ['revenueAccounts','expenseAccounts','capital','overheadAllocationBasis','projectStatuses','procedureTypes','contractTypes','materialCategories','alertRules','alertLog','contractCalcMethods','assetTypes','assetExpenseKinds'];
+const SYNC_SETTINGS = ['revenueAccounts','expenseAccounts','capital','overheadAllocationBasis','projectStatuses','procedureTypes','contractTypes','materialCategories','alertRules','alertLog','contractCalcMethods','assetTypes','assetExpenseKinds','companyInfo'];
 // إعدادات حساسة (زي رمز واتساب) — بتتخزن في جدول المدير بس يقدر يقراه
 const ADMIN_SETTINGS = ['whatsappSettings'];
 function settingsTable(key){ return ADMIN_SETTINGS.includes(key) ? 'erp_admin_settings' : 'erp_settings'; }
@@ -1996,6 +2026,12 @@ function normalizeData(){
   if(!Array.isArray(DATA.contractCalcMethods) || !DATA.contractCalcMethods.length) DATA.contractCalcMethods = ['بالمتر','يومية','مقطوعية'];
   if(!Array.isArray(DATA.quotations)) DATA.quotations = [];
   DATA.quotations.forEach(ensureQuotationShape);
+  // بيانات الشركة مقدمة العرض — تظهر في أعلى مطبوعة عرض السعر
+  if(!DATA.companyInfo || typeof DATA.companyInfo!=='object') DATA.companyInfo = {};
+  if(DATA.companyInfo.name===undefined) DATA.companyInfo.name = '';
+  if(DATA.companyInfo.phone===undefined) DATA.companyInfo.phone = '';
+  if(DATA.companyInfo.address===undefined) DATA.companyInfo.address = '';
+  if(DATA.companyInfo.signerName===undefined) DATA.companyInfo.signerName = 'م. محمد حجازي';
   if(!Array.isArray(DATA.boq)) DATA.boq = [];
   DATA.boq.forEach(b=>{ if(!Array.isArray(b.items)) b.items = []; });
   DATA.contracts.forEach(ensureContractShape);
@@ -2226,14 +2262,16 @@ function runConfirmModalCallback(){
   closeConfirmModal();
   if(cb) cb();
 }
-function openPrintDocument(title, subtitle, extraHtml){
+function openPrintDocument(title, subtitle, extraHtml, headerHtml){
   // بيئة معاينة الأرتيفاكت بتمنع أي حفظ ملف مباشر (رابط تحميل تلقائي أو فتح نافذة جديدة)،
   // فبدل الحفظ، بنعرض كشف الحساب جوه نافذة منبثقة (Modal) في نفس الصفحة، وزر الطباعة بيستخدم
   // خاصية طباعة المتصفح العادية (window.print) مع تنسيق CSS خاص (@media print) يخفي باقي الصفحة
   // ويطبع محتوى الكشف بس — الأسلوب ده مايحتاجش أي إذن أو صلاحية خاصة.
+  // headerHtml (اختياري): محتوى يظهر أعلى كل حاجة تانية (زي بيانات الشركة في عروض الأسعار).
   const dateStr = new Date().toLocaleDateString('ar-EG');
   document.getElementById('printModalTitle').textContent = title;
   document.getElementById('printModalBody').innerHTML = `
+    ${headerHtml||''}
     <h2 style="margin:0 0 4px; color:#111;">${title}</h2>
     ${subtitle?`<div style="color:#555; margin-bottom:6px;">${subtitle}</div>`:''}
     <div style="color:#888; font-size:11px; margin-bottom:14px;">تاريخ الطباعة: ${dateStr}</div>
@@ -2247,16 +2285,25 @@ function closePrintModal(){ document.getElementById('printOverlay').classList.re
 function tryPrintModal(){
   // بيئة معاينة الأرتيفاكت ممكن تمنع نافذة الطباعة الأصلية للمتصفح (window.print) لأسباب أمنية.
   // بنحاول أول حاجة، ولو محصلش حاجة خلال ثانية (يعني الطباعة اتمنعت بصمت)، بنرشّح للمستخدم يستخدم زر النسخ بدلاً منها.
+  // بنغيّر عنوان الصفحة مؤقتًا وقت الطباعة عشان هيدر/فوتر المتصفح (لو مفعّل) يطبع عنوان المطبوعة
+  // نفسه بدل "نظام إدارة المقاولات" — ولو المتصفح لسه بيطبع تاريخ/رابط في الهيدر، ده اختيار
+  // "رؤوس وتذييلات الصفحة" (Headers and footers) في نافذة الطباعة نفسها ولازم يتقفل من هناك يدويًا.
+  const prevDocTitle = document.title;
+  document.title = document.getElementById('printModalTitle').textContent || '';
+  const restoreTitle = ()=>{ document.title = prevDocTitle; };
   const hint = document.getElementById('printModalHint');
   let printed = false;
-  const onAfterPrint = ()=>{ printed = true; window.removeEventListener('afterprint', onAfterPrint); };
+  const onAfterPrint = ()=>{ printed = true; restoreTitle(); window.removeEventListener('afterprint', onAfterPrint); };
   window.addEventListener('afterprint', onAfterPrint);
   try{ window.print(); }catch(e){}
   setTimeout(()=>{
     window.removeEventListener('afterprint', onAfterPrint);
     if(!printed && hint){
+      restoreTitle();
       hint.innerHTML = '⚠️ يبدو إن نافذة الطباعة اتمنعت في هذه البيئة. اضغط زرار "📋 تحديد ونسخ النص" تحت، ثم افتح وورد أو أي محرر نصوص والصق فيه (Ctrl+V)، وبعدين اطبع من هناك أو احفظه PDF.';
       hint.style.color = 'var(--bad)';
+    }else if(printed){
+      restoreTitle();
     }
   }, 1200);
 }
@@ -5103,6 +5150,7 @@ function ensureQuotationShape(q){
   if(q.projectId===undefined) q.projectId = null;
   if(q.contractId===undefined) q.contractId = null;
   if(q.validUntil===undefined) q.validUntil = '';
+  if(q.attentionTo===undefined) q.attentionTo = '';
   q.items.forEach((it,idx)=>{
     if(!it.id) it.id = 'QIT-'+(idx+1);
     if(it.section===undefined) it.section = '';
@@ -5164,6 +5212,7 @@ function renderQuotationsPage(){
         <div class="page-desc">نقطة البداية لأي عقد أو مشروع — عرّض على العميل، وبعد الموافقة حوّله مباشرة إلى عقد ببنوده كاملة</div>
       </div>
       <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        ${canModify ? `<button class="btn secondary" onclick="openCompanyInfoForm()">🏢 بيانات الشركة</button>` : ''}
         ${editable ? `<button class="btn" onclick="openQuotationForm()">+ إضافة عرض سعر</button>` : ''}
       </div>
     </div>
@@ -5267,6 +5316,7 @@ function openQuotationForm(editId){
   document.getElementById('quotation-date').value = q ? (q.date||'') : todayStr();
   document.getElementById('quotation-validuntil').value = q ? (q.validUntil||'') : '';
   document.getElementById('quotation-client').value = q ? (q.clientName||'') : '';
+  document.getElementById('quotation-attn').value = q ? (q.attentionTo||'') : '';
   document.getElementById('quotation-status').value = q ? (q.status||'مسودة') : 'مسودة';
   populateQuotationProjectSelect(q ? q.projectId : '');
   document.getElementById('quotation-terms').value = q ? (q.terms||'') : '';
@@ -5285,6 +5335,7 @@ function saveQuotationRecord(){
   const date = document.getElementById('quotation-date').value;
   const validUntil = document.getElementById('quotation-validuntil').value;
   const clientName = document.getElementById('quotation-client').value.trim();
+  const attentionTo = document.getElementById('quotation-attn').value.trim();
   const status = document.getElementById('quotation-status').value;
   const projectId = document.getElementById('quotation-project').value || null;
   const terms = document.getElementById('quotation-terms').value.trim();
@@ -5307,14 +5358,39 @@ function saveQuotationRecord(){
   if(!items.length){ alert('من فضلك أضف بند واحد على الأقل ببيان صحيح'); return; }
   if(quotationFormState.editId){
     const q = DATA.quotations.find(r=>r._id===quotationFormState.editId);
-    Object.assign(q, {number, date, validUntil, clientName, status, projectId, terms, notes, items});
+    Object.assign(q, {number, date, validUntil, clientName, attentionTo, status, projectId, terms, notes, items});
   }else{
     const {n,id} = nextId('quotations');
-    DATA.quotations.push({_id:id, _n:n, number, date, validUntil, clientName, status, projectId, terms, notes, items, contractId:null});
+    DATA.quotations.push({_id:id, _n:n, number, date, validUntil, clientName, attentionTo, status, projectId, terms, notes, items, contractId:null});
   }
   logAudit(quotationFormState.editId?'تعديل':'إضافة', 'عرض سعر', number, clientName);
   saveData();
   closeQuotationModal();
+  renderPage();
+}
+
+/* ---- بيانات الشركة (تظهر أعلى مطبوعة عرض السعر) ---- */
+function openCompanyInfoForm(){
+  if(!isAdmin()) return;
+  const c = DATA.companyInfo || {};
+  document.getElementById('company-name').value = c.name||'';
+  document.getElementById('company-phone').value = c.phone||'';
+  document.getElementById('company-address').value = c.address||'';
+  document.getElementById('company-signer').value = c.signerName||'';
+  document.getElementById('companyInfoOverlay').classList.add('open');
+}
+function closeCompanyInfoModal(){ document.getElementById('companyInfoOverlay').classList.remove('open'); }
+function saveCompanyInfo(){
+  if(!isAdmin()) return;
+  DATA.companyInfo = {
+    name: document.getElementById('company-name').value.trim(),
+    phone: document.getElementById('company-phone').value.trim(),
+    address: document.getElementById('company-address').value.trim(),
+    signerName: document.getElementById('company-signer').value.trim(),
+  };
+  logAudit('تعديل', 'بيانات الشركة', DATA.companyInfo.name || '—');
+  saveData();
+  closeCompanyInfoModal();
   renderPage();
 }
 
@@ -5357,7 +5433,7 @@ function renderQuotationDetail(id){
     <div class="page-head">
       <div>
         <div class="page-title">${q.number} ${badgeFor('quotations', q.status)}</div>
-        <div class="page-desc">${q.clientName||'—'} — ${quotationProjectName(q)}${q.date?' · '+q.date:''}${q.validUntil?' · صالح حتى '+q.validUntil:''}</div>
+        <div class="page-desc">${q.clientName||'—'} — ${quotationProjectName(q)}${q.date?' · '+q.date:''}${q.validUntil?' · صالح حتى '+q.validUntil:''}${q.attentionTo?' · '+q.attentionTo:''}</div>
       </div>
       <div style="display:flex; gap:8px; flex-wrap:wrap;">
         ${canModify ? `<button class="btn secondary" onclick="openQuotationForm('${q._id}')">تعديل عرض السعر</button>` : ''}
@@ -5381,6 +5457,14 @@ function attachQuotationDetailEvents(){ /* الأزرار مربوطة عبر on
 function printQuotation(id){
   const q = DATA.quotations.find(r=>r._id===id);
   if(!q) return;
+  const c = DATA.companyInfo || {};
+  // خانة بيانات شركتنا (مقدّم العرض) — تظهر في أعلى المطبوعة فوق أي حاجة تانية
+  const companyHeaderHtml = c.name ? `<div style="text-align:center; border-bottom:2px solid #333; padding-bottom:10px; margin-bottom:16px;">
+    <div style="font-size:20px; font-weight:800; color:#111;">${c.name}</div>
+    ${(c.phone||c.address) ? `<div style="font-size:12px; color:#555; margin-top:4px;">${[c.address,c.phone].filter(Boolean).join(' — ')}</div>` : ''}
+  </div>` : '';
+  // خانة الموجه إليه العرض (عناية السيد/...)
+  const attnHtml = q.attentionTo ? `<div style="margin:2px 0 14px; font-size:14px; font-weight:700;">${q.attentionTo}</div>` : '';
   const info = `<table style="width:100%; border-collapse:collapse; font-size:13px;">
     <tbody>
       <tr><td style="padding:7px; border:1px solid #ccc; font-weight:700; width:160px;">رقم العرض</td><td style="padding:7px; border:1px solid #ccc;">${q.number||'—'}</td></tr>
@@ -5406,11 +5490,11 @@ function printQuotation(id){
   const totalsHtml = `<div style="text-align:left; font-weight:700; font-size:16px; margin-top:14px; border-top:2px solid #333; padding-top:10px;">الإجمالي الكلي لعرض السعر: ${fmtMoney(total)}</div>`;
   const termsHtml = q.terms ? `<h3 style="margin:20px 0 4px;">الشروط والأحكام</h3><div style="border:1px solid #ccc; padding:10px; font-size:13px;">${q.terms}</div>` : '';
   const sigHtml = `<div style="display:flex; justify-content:space-between; margin-top:50px; font-size:13px;">
-    <div>توقيع مقدم العرض<br><br>....................................</div>
+    <div>مقدمه لسيادتكم${c.signerName ? ('<br>'+c.signerName) : ''}<br><br>....................................</div>
     <div>توقيع العميل بالموافقة<br><br>....................................</div>
   </div>`;
-  const body = info + sectionsHtml + totalsHtml + termsHtml + sigHtml;
-  openPrintDocument('عرض سعر رقم '+(q.number||q._id), q.clientName||'', body);
+  const body = attnHtml + info + sectionsHtml + totalsHtml + termsHtml + sigHtml;
+  openPrintDocument('عرض سعر رقم '+(q.number||q._id), q.clientName||'', body, companyHeaderHtml);
 }
 // تحديد عرض السعر كـ"مقبول" مباشرة من صفحة تفاصيله (بدون فتح فورم التعديل الكامل)
 function markQuotationAccepted(id){
