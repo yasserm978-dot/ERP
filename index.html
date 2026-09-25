@@ -689,7 +689,7 @@ tbody tr:hover{background:var(--surface-2);}
     <div class="modal-body">
       <div class="field"><label>التاريخ</label><input id="att-date" type="date"></div>
       <div class="field"><label>الحالة</label>
-        <select id="att-status">
+        <select id="att-status" onchange="updateAttUnitsVisibility()">
           <option value="حاضر">حاضر</option>
           <option value="غائب">غائب</option>
           <option value="إجازة">إجازة</option>
@@ -700,6 +700,11 @@ tbody tr:hover{background:var(--surface-2);}
         <label>المشروع (لليوم ده تحديدًا)</label>
         <select id="att-project"></select>
         <div style="font-size:11.5px; color:var(--text-dim); margin-top:5px;">لو الموظف مش تابع لمشروع ثابت، اختار هنا المشروع اللي اشتغل فيه اليوم ده عشان يتحسب عليه — واتركها "بدون تحديد" لو عايز التكلفة تتوزع تلقائيًا على كل المشاريع.</div>
+      </div>
+      <div class="field" id="att-units-wrap">
+        <label>عدد الأيام المستحقة عن هذا التاريخ</label>
+        <input id="att-units" type="number" min="0.5" step="0.5" value="1">
+        <div style="font-size:11.5px; color:var(--text-dim); margin-top:5px;">لو الموظف استحق أكتر من يوم عادي بنفس التاريخ ده (يوم ونص، يومين...) اكتب العدد هنا وهيتضرب في الأجر اليومي تلقائيًا.</div>
       </div>
       <div class="field"><label>ملاحظة</label><input id="att-note" type="text"></div>
     </div>
@@ -733,7 +738,7 @@ tbody tr:hover{background:var(--surface-2);}
 <div class="overlay" id="payEntryOverlay">
   <div class="modal">
     <div class="modal-head">
-      <h3 id="payEntryModalTitle">إضافة سلفة أو خصم</h3>
+      <h3 id="payEntryModalTitle">إضافة بند على الراتب</h3>
       <button class="modal-close" onclick="closePayEntryModal()">×</button>
     </div>
     <div class="modal-body">
@@ -741,6 +746,8 @@ tbody tr:hover{background:var(--surface-2);}
         <select id="pay-type">
           <option value="سلفة">سلفة (تُخصم من الراتب)</option>
           <option value="خصم">خصم</option>
+          <option value="إضافي">إضافي (يُضاف على الراتب — مثلاً نص يوم زيادة أو مكافأة)</option>
+          <option value="مواصلات">مواصلات (تُضاف على الراتب)</option>
         </select>
       </div>
       <div class="field"><label>التاريخ</label><input id="pay-date" type="date"></div>
@@ -2579,23 +2586,23 @@ function printEmployeeStatement(id){
 
   const cards = statCardsRow([
     statCard('إجمالي ما تم صرفه فعليًا', fmtMoney(totalPaid), '#27ae60'),
-    statCard('عدد أيام الحضور المسجلة', attendance.filter(a=>a.status==='حاضر').length, '#2980b9'),
+    statCard('عدد أيام الحضور المسجلة', (()=>{ const u = attendance.filter(a=>a.status==='حاضر'||a.status==='نصف يوم').reduce((s,a)=>s+attendanceUnits(a),0); return Number.isInteger(u)?u:u.toFixed(1); })(), '#2980b9'),
     statCard('عدد أيام الغياب المسجلة', attendance.filter(a=>a.status==='غائب').length, '#c0392b'),
   ]);
 
   const showProjCol = h.employeeType==='يومي';
   const attRows = attendance.length ? attendance.map(a=>`<tr>
-      <td>${a.date||'—'}</td><td>${a.status}</td>${showProjCol?`<td>${a.project||(h.project?'(افتراضي: '+h.project+')':'غير محدد')}</td>`:''}<td>${a.note||'—'}</td>
+      <td>${a.date||'—'}</td><td>${a.status}${fmtDayUnits(a)}</td>${showProjCol?`<td>${a.project||(h.project?'(افتراضي: '+h.project+')':'غير محدد')}</td>`:''}<td>${a.note||'—'}</td>
     </tr>`).join('') : `<tr><td colspan="${showProjCol?4:3}" style="text-align:center;">لا يوجد حضور مسجل</td></tr>`;
 
   const payRows = payrollEntries.length ? payrollEntries.map(e=>`<tr>
-      <td>${e.date||'—'}</td><td>${e.type}</td><td style="color:#c0392b; font-weight:700;">- ${fmtMoney(e.amount)}</td><td>${e.note||'—'}</td>
-    </tr>`).join('') : `<tr><td colspan="4" style="text-align:center;">لا توجد سلف أو خصومات</td></tr>`;
+      <td>${e.date||'—'}</td><td>${e.type}</td><td style="color:${PAYROLL_ADDITION_TYPES.includes(e.type)?'#4F9C74':'#c0392b'}; font-weight:700;">${PAYROLL_ADDITION_TYPES.includes(e.type)?'+ ':'- '}${fmtMoney(e.amount)}</td><td>${e.note||'—'}</td>
+    </tr>`).join('') : `<tr><td colspan="4" style="text-align:center;">لا توجد بنود على الراتب</td></tr>`;
 
   const monthlyRows = months.map(m=>{
     const p = computeMonthlyPayroll(h, m);
     return `<tr>
-      <td>${monthLabel(m)}</td><td>${fmtMoney(p.base)}</td><td>${p.deductions?('- '+fmtMoney(p.deductions)):'—'}</td>
+      <td>${monthLabel(m)}</td><td>${fmtMoney(p.base)}</td><td>${fmtPayrollAdjustments(p)}</td>
       <td style="font-weight:700;">${fmtMoney(p.net)}</td>
       <td>${p.paid ? 'تم الصرف'+(p.run&&p.run.paidDate?' — '+p.run.paidDate:'') : 'لم يُصرف'}</td>
     </tr>`;
@@ -2603,8 +2610,8 @@ function printEmployeeStatement(id){
 
   const body = info + cards
     + `<h3 style="margin:20px 0 4px;">📅 الحضور والانصراف</h3>` + buildStatementTable(showProjCol?['التاريخ','الحالة','المشروع','ملاحظة']:['التاريخ','الحالة','ملاحظة'], attRows)
-    + `<h3 style="margin:20px 0 4px;">💸 السلف والخصومات</h3>` + buildStatementTable(['التاريخ','النوع','المبلغ','ملاحظة'], payRows)
-    + `<h3 style="margin:20px 0 4px;">💰 الرواتب الشهرية</h3>` + buildStatementTable(['الشهر','الأساسي','السلف/الخصومات','الصافي','الحالة'], monthlyRows);
+    + `<h3 style="margin:20px 0 4px;">💸 بنود الراتب (سلف / خصومات / إضافات)</h3>` + buildStatementTable(['التاريخ','النوع','المبلغ','ملاحظة'], payRows)
+    + `<h3 style="margin:20px 0 4px;">💰 الرواتب الشهرية</h3>` + buildStatementTable(['الشهر','الأساسي','الإضافات/الخصومات','الصافي','الحالة'], monthlyRows);
 
   openPrintDocument('كشف حساب — '+h.name, 'موظف / عامل', body);
 }
@@ -6643,6 +6650,19 @@ function computeProjectDeductions(p){
 
 /* ================= الموارد البشرية: الحضور والسلف والرواتب الشهرية ================= */
 const ATTENDANCE_STATUSES = ['حاضر','غائب','إجازة','نصف يوم'];
+// عدد "أيام الأجر" المستحقة عن سجل حضور واحد — "حاضر" بيستخدم قيمة units المخصصة (1 افتراضيًا، ممكن تبقى 1.5 أو 2...)،
+// "نصف يوم" قيمته ثابتة 0.5، وأي حالة تانية (غياب/إجازة) قيمتها صفر لأنها مالهاش أجر
+function attendanceUnits(a){
+  if(a.status==='حاضر') return (Number(a.units)>0 ? Number(a.units) : 1);
+  if(a.status==='نصف يوم') return 0.5;
+  return 0;
+}
+// نص مختصر لعرض عدد الأيام بجانب الحالة في الجداول (بيتشال لو القيمة 1 العادية عشان ميزحمش الشاشة)
+function fmtDayUnits(a){
+  const u = attendanceUnits(a);
+  if(a.status!=='حاضر' || u===1) return '';
+  return ' ('+ (Number.isInteger(u)?u:u.toFixed(1)) +' يوم)';
+}
 function monthKey(dateStr){ return (dateStr||'').slice(0,7); }
 // تاريخ "اليوم" لازم يتحسب بتوقيت جهاز المستخدم المحلي مش بتوقيت UTC — استخدام toISOString() مباشرة كان بيرجّع
 // تاريخ UTC، فقريب من نص الليل (لمستخدم بتوقيت متقدم عن UTC زي القاهرة +3) كان النظام بيفضل شغال على تاريخ "أمس"
@@ -6709,21 +6729,30 @@ function syncAbsenceDeduction(h, rec){
     h.payrollEntries.push({id:h._id+'-PAY'+n, _n:n, date:rec.date, type:'خصم', amount:dayAmount, note:'خصم تلقائي — يوم غياب بتاريخ '+rec.date, fromAttendance:rec.id, auto:true});
   }
 }
+// أنواع بنود الراتب اللي بتُضاف (مش تُخصم) — "إضافي" لأي زيادة عامة (مكافأة، يوم زيادة...) و"مواصلات" لبدل الانتقال
+const PAYROLL_ADDITION_TYPES = ['إضافي','مواصلات'];
 function computeMonthlyPayroll(emp, month){
   let base = 0;
   if(emp.employeeType==='يومي'){
     const days = (emp.attendance||[]).filter(a=>monthKey(a.date)===month);
-    const full = days.filter(a=>a.status==='حاضر').length;
-    const half = days.filter(a=>a.status==='نصف يوم').length;
-    base = (Number(emp.dailyWage)||0) * (full + half*0.5);
+    base = (Number(emp.dailyWage)||0) * days.reduce((s,a)=>s+attendanceUnits(a),0);
   }else{
     base = Number(emp.monthlySalary)||0;
   }
   const entries = (emp.payrollEntries||[]).filter(e=>monthKey(e.date)===month).slice().sort((x,y)=>(x.date||'').localeCompare(y.date||''));
-  const deductions = entries.reduce((s,e)=>s+(Number(e.amount)||0),0);
-  const net = base - deductions;
+  // بنود الإضافة (إضافي/مواصلات) بتتضاف للراتب — أي نوع تاني (سلفة/خصم) بيُخصم
+  const additions = entries.filter(e=>PAYROLL_ADDITION_TYPES.includes(e.type)).reduce((s,e)=>s+(Number(e.amount)||0),0);
+  const deductions = entries.filter(e=>!PAYROLL_ADDITION_TYPES.includes(e.type)).reduce((s,e)=>s+(Number(e.amount)||0),0);
+  const net = base + additions - deductions;
   const run = (emp.payrollRuns||[]).find(r=>r.month===month);
-  return {base, deductions, net, entries, run, paid: !!(run && run.paid)};
+  return {base, additions, deductions, net, entries, run, paid: !!(run && run.paid)};
+}
+// نص/HTML مختصر بيعرض صافي الإضافات والخصومات على راتب شهر معين (مستخدم في كل الأماكن اللي بتعرض ملخص الراتب)
+function fmtPayrollAdjustments(p){
+  const parts = [];
+  if(p.additions) parts.push(`<span style="color:var(--good); font-weight:700;">+ ${fmtMoney(p.additions)}</span>`);
+  if(p.deductions) parts.push(`<span style="color:var(--bad); font-weight:700;">- ${fmtMoney(p.deductions)}</span>`);
+  return parts.length ? parts.join(' &nbsp;/&nbsp; ') : '—';
 }
 function payrollProjectSplit(emp, month, totalAmount){
   // بيوزّع مبلغ الراتب المدفوع على المشاريع اللي اشتغل فيها الموظف فعليًا في الشهر ده.
@@ -6737,9 +6766,7 @@ function payrollProjectSplit(emp, month, totalAmount){
   const units = {};
   let totalUnits = 0;
   days.forEach(a=>{
-    let u = 0;
-    if(a.status==='حاضر') u = 1;
-    else if(a.status==='نصف يوم') u = 0.5;
+    const u = attendanceUnits(a);
     if(!u) return;
     const proj = (a.project && a.project.trim()) ? a.project.trim() : (emp.project || '');
     units[proj] = (units[proj]||0) + u;
@@ -6758,7 +6785,8 @@ function getEmployeeMonths(emp){
 function attendanceSummaryForMonth(emp, month){
   const days = (emp.attendance||[]).filter(a=>monthKey(a.date)===month);
   const count = s => days.filter(a=>a.status===s).length;
-  return {present:count('حاضر'), absent:count('غائب'), leave:count('إجازة'), half:count('نصف يوم')};
+  const totalUnits = days.reduce((s,a)=>s+attendanceUnits(a),0);
+  return {present:count('حاضر'), absent:count('غائب'), leave:count('إجازة'), half:count('نصف يوم'), totalUnits};
 }
 
 /* ---- تفاصيل شهر بعينه من جدول "الرواتب الشهرية" (مودال يعرض الحضور والغياب وتفاصيل المرتب والخصم والسلف لهذا الشهر فقط) ---- */
@@ -6780,24 +6808,24 @@ function renderEmployeeMonthDetailBody(h, month){
   const attColspan = h.employeeType==='يومي' ? 4 : 3;
   const attRows = attendance.length ? attendance.map(a=>`<tr>
       <td>${a.date||'—'}</td>
-      <td><span class="badge ${a.status==='حاضر'?'b-good':a.status==='غائب'?'b-bad':'b-warn'}">${a.status}</span></td>
+      <td><span class="badge ${a.status==='حاضر'?'b-good':a.status==='غائب'?'b-bad':'b-warn'}">${a.status}</span>${fmtDayUnits(a)}</td>
       ${h.employeeType==='يومي'?`<td>${a.project||'—'}</td>`:''}
       <td>${a.note||'—'}</td>
     </tr>`).join('') : `<tr><td colspan="${attColspan}" style="text-align:center;">لا يوجد حضور مسجل في هذا الشهر</td></tr>`;
   const payRows = entries.length ? entries.map(e=>`<tr>
       <td>${e.date||'—'}</td>
-      <td><span class="badge b-bad">${e.type}</span></td>
-      <td style="font-weight:700; color:var(--bad);">- ${fmtMoney(e.amount)}</td>
+      <td><span class="badge ${PAYROLL_ADDITION_TYPES.includes(e.type)?'b-good':'b-bad'}">${e.type}</span></td>
+      <td style="font-weight:700; color:${PAYROLL_ADDITION_TYPES.includes(e.type)?'var(--good)':'var(--bad)'};">${PAYROLL_ADDITION_TYPES.includes(e.type)?'+ ':'- '}${fmtMoney(e.amount)}</td>
       <td>${e.note||'—'}</td>
-    </tr>`).join('') : `<tr><td colspan="4" style="text-align:center;">لا توجد سلف أو خصومات في هذا الشهر</td></tr>`;
+    </tr>`).join('') : `<tr><td colspan="4" style="text-align:center;">لا توجد بنود على الراتب في هذا الشهر</td></tr>`;
   return `
     <div class="kpi-grid" style="margin-bottom:20px;">
-      <div class="kpi"><div class="kpi-label">أيام الحضور</div><div class="kpi-value">${att.present}${att.half?(' + '+att.half+' نصف'):''}</div></div>
+      <div class="kpi"><div class="kpi-label">أيام الحضور</div><div class="kpi-value">${Number.isInteger(att.totalUnits)?att.totalUnits:att.totalUnits.toFixed(1)}</div></div>
       <div class="kpi ${att.absent>0?'alert':'ok'}"><div class="kpi-label">أيام الغياب</div><div class="kpi-value">${att.absent}</div></div>
       <div class="kpi"><div class="kpi-label">إجازات</div><div class="kpi-value">${att.leave}</div></div>
       ${!attOnly?`<div class="kpi"><div class="kpi-label">${h.employeeType==='يومي'?'أجر الأيام المحسوبة':'الأساسي'}</div><div class="kpi-value">${fmtMoney(p.base)}</div></div>`:''}
-      ${!attOnly?`<div class="kpi"><div class="kpi-label">السلف/الخصومات</div><div class="kpi-value" style="color:var(--bad);">${p.deductions?('- '+fmtMoney(p.deductions)):'—'}</div></div>`:''}
-      ${!attOnly?`<div class="kpi ok"><div class="kpi-label">الصافي</div><div class="kpi-value">${fmtMoney(p.net)}</div></div>`:''}
+      ${!attOnly?`<div class="kpi"><div class="kpi-label">الإضافات/الخصومات</div><div class="kpi-value" style="font-size:15px;">${fmtPayrollAdjustments(p)}</div></div>`:''}
+      ${!attOnly?`<div class="kpi ${p.paid?'ok':(p.net>0?'alert':'')}"><div class="kpi-label">${p.paid?'الصافي (تم صرفه)':'الصافي المستحق'}</div><div class="kpi-value">${fmtMoney(p.paid?0:p.net)}</div>${p.paid?`<div class="kpi-sub">تم صرف ${fmtMoney(p.net)} بالكامل</div>`:''}</div>`:''}
       ${!attOnly?`<div class="kpi ${p.paid?'ok':'alert'}"><div class="kpi-label">حالة الصرف</div><div class="kpi-value" style="font-size:15px;">${p.paid?('تم الصرف ✅'+(p.run&&p.run.paidDate?' — '+p.run.paidDate:'')):'لم يُصرف بعد'}</div></div>`:''}
     </div>
     <div class="section-title">📅 تفاصيل الحضور والغياب — ${monthLabel(month)}</div>
@@ -6806,7 +6834,7 @@ function renderEmployeeMonthDetailBody(h, month){
       <tbody>${attRows}</tbody>
     </table></div></div>
     ${attOnly ? '' : `
-    <div class="section-title">💸 تفاصيل السلف والخصومات — ${monthLabel(month)}</div>
+    <div class="section-title">💸 تفاصيل بنود الراتب — ${monthLabel(month)}</div>
     <div class="table-wrap"><div class="table-scroll"><table>
       <thead><tr><th>التاريخ</th><th>النوع</th><th>المبلغ</th><th>ملاحظة</th></tr></thead>
       <tbody>${payRows}</tbody>
@@ -6922,9 +6950,9 @@ function renderEmployeeDetail(id){
     </div>
     <div class="kpi-grid" style="margin-bottom:24px;">
       ${!attOnly ? `<div class="kpi"><div class="kpi-label">${h.employeeType==='يومي'?'الأجر اليومي':'الراتب الشهري'}</div><div class="kpi-value">${fmtMoney(h.employeeType==='يومي'?h.dailyWage:h.monthlySalary)}</div></div>` : ''}
-      <div class="kpi"><div class="kpi-label">أيام الحضور — ${monthLabel(month)}</div><div class="kpi-value">${att.present}${att.half?(' + '+att.half+' نصف'):''}</div></div>
+      <div class="kpi"><div class="kpi-label">أيام الحضور — ${monthLabel(month)}</div><div class="kpi-value">${Number.isInteger(att.totalUnits)?att.totalUnits:att.totalUnits.toFixed(1)}</div></div>
       <div class="kpi ${att.absent>0?'alert':'ok'}"><div class="kpi-label">أيام الغياب — ${monthLabel(month)}</div><div class="kpi-value">${att.absent}</div></div>
-      ${!attOnly ? `<div class="kpi"><div class="kpi-label">صافي مستحق — ${monthLabel(month)}</div><div class="kpi-value">${fmtMoney(net)}</div></div>` : ''}
+      ${!attOnly ? `<div class="kpi ${paid?'ok':(net>0?'alert':'')}"><div class="kpi-label">صافي مستحق — ${monthLabel(month)}</div><div class="kpi-value">${fmtMoney(paid?0:net)}</div>${paid?`<div class="kpi-sub">تم صرف ${fmtMoney(net)} بالكامل</div>`:''}</div>` : ''}
       ${!attOnly ? `<div class="kpi ${paid?'ok':'alert'}"><div class="kpi-label">حالة راتب هذا الشهر</div><div class="kpi-value" style="font-size:15px;">${paid?'تم الصرف ✅':'لم يُصرف بعد'}</div></div>` : ''}
     </div>
 
@@ -6941,7 +6969,7 @@ function renderEmployeeDetail(id){
       <tbody>
         ${attendance.map(a=>`<tr>
           <td>${a.date||'—'}</td>
-          <td><span class="badge ${a.status==='حاضر'?'b-good':a.status==='غائب'?'b-bad':'b-warn'}">${a.status}</span></td>
+          <td><span class="badge ${a.status==='حاضر'?'b-good':a.status==='غائب'?'b-bad':'b-warn'}">${a.status}</span>${fmtDayUnits(a)}</td>
           ${h.employeeType==='يومي'?`<td>${a.project || '<span style="color:var(--text-dim)">'+(h.project?'(افتراضي: '+h.project+')':'غير محدد — يوزّع تلقائي')+'</span>'}</td>`:''}
           <td>${a.note||'—'}</td>
           <td class="row-actions">
@@ -6955,18 +6983,18 @@ function renderEmployeeDetail(id){
 
     ${attOnly ? '' : `
     <div class="section-title" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
-      <span>💸 السلف والخصومات</span>
-      ${editable ? `<button class="btn secondary small" onclick="openPayEntryForm('${h._id}')">+ إضافة سلفة / خصم</button>` : ''}
+      <span>💸 بنود الراتب (سلف / خصومات / إضافات)</span>
+      ${editable ? `<button class="btn secondary small" onclick="openPayEntryForm('${h._id}')">+ إضافة سلفة / خصم / إضافي</button>` : ''}
     </div>
     ${payrollEntries.length ? `
     <div class="table-wrap" style="margin-bottom:28px;"><div class="table-scroll"><table>
-      <thead><tr><th>التاريخ</th><th>الشهر المخصوم منه</th><th>النوع</th><th>المبلغ</th><th>ملاحظة</th><th></th></tr></thead>
+      <thead><tr><th>التاريخ</th><th>الشهر</th><th>النوع</th><th>المبلغ</th><th>ملاحظة</th><th></th></tr></thead>
       <tbody>
         ${payrollEntries.map(e=>`<tr>
           <td>${e.date||'—'}</td>
           <td>${monthLabel(monthKey(e.date))}</td>
-          <td><span class="badge b-bad">${e.type}</span></td>
-          <td style="font-weight:700; color:var(--bad);">- ${fmtMoney(e.amount)}</td>
+          <td><span class="badge ${PAYROLL_ADDITION_TYPES.includes(e.type)?'b-good':'b-bad'}">${e.type}</span></td>
+          <td style="font-weight:700; color:${PAYROLL_ADDITION_TYPES.includes(e.type)?'var(--good)':'var(--bad)'};">${PAYROLL_ADDITION_TYPES.includes(e.type)?'+ ':'- '}${fmtMoney(e.amount)}</td>
           <td>${e.note||'—'}</td>
           <td class="row-actions">
             ${canModify ? `<button class="btn secondary small" data-payedit="${h._id}|${e.id}">تعديل</button>
@@ -6979,14 +7007,14 @@ function renderEmployeeDetail(id){
 
     <div class="section-title">💰 الرواتب الشهرية</div>
     <div class="table-wrap" style="margin-bottom:28px;"><div class="table-scroll"><table>
-      <thead><tr><th>الشهر</th><th>الأساسي</th><th>السلف/الخصومات</th><th>الصافي</th><th>الحالة</th><th></th></tr></thead>
+      <thead><tr><th>الشهر</th><th>الأساسي</th><th>الإضافات/الخصومات</th><th>الصافي</th><th>الحالة</th><th></th></tr></thead>
       <tbody>
         ${months.map(m=>{
           const p = computeMonthlyPayroll(h, m);
           return `<tr style="cursor:pointer;" onclick="openEmployeeMonthDetail('${h._id}','${m}')" title="اضغط لعرض تفاصيل الشهر بالكامل">
             <td style="color:var(--accent); font-weight:700; text-decoration:underline;">${monthLabel(m)}</td>
             <td>${fmtMoney(p.base)}</td>
-            <td>${p.deductions?('- '+fmtMoney(p.deductions)):'—'}</td>
+            <td>${fmtPayrollAdjustments(p)}</td>
             <td style="font-weight:700;">${fmtMoney(p.net)}</td>
             <td>${p.paid ? `<span class="badge b-good">تم الصرف${p.run&&p.run.paidDate?' — '+p.run.paidDate:''}</span>` : '<span class="badge b-warn">لم يُصرف</span>'}</td>
             <td class="row-actions" onclick="event.stopPropagation();">
@@ -7564,6 +7592,7 @@ function openAttendanceForm(empId, editId){
   document.getElementById('att-date').value = rec ? rec.date : todayStr();
   document.getElementById('att-status').value = rec ? rec.status : 'حاضر';
   document.getElementById('att-note').value = rec ? (rec.note||'') : '';
+  document.getElementById('att-units').value = (rec && Number(rec.units)>0) ? rec.units : 1;
   const projectWrap = document.getElementById('att-project-wrap');
   const projectSelect = document.getElementById('att-project');
   if(h.employeeType==='يومي'){
@@ -7576,7 +7605,16 @@ function openAttendanceForm(empId, editId){
     projectWrap.style.display = 'none';
     projectSelect.innerHTML = '';
   }
+  updateAttUnitsVisibility();
   document.getElementById('attendanceOverlay').classList.add('open');
+}
+// عدد الأيام (يوم / يوم ونص / يومين...) بينفع بس للموظف اليومي وهو "حاضر" — الحالات التانية (غياب/إجازة) مالهاش قيمة أجر، و"نصف يوم" قيمتها ثابتة 0.5
+function updateAttUnitsVisibility(){
+  const h = DATA.hr.find(r=>r._id===attendanceFormState.empId);
+  const wrap = document.getElementById('att-units-wrap');
+  if(!wrap) return;
+  const status = document.getElementById('att-status').value;
+  wrap.style.display = (h && h.employeeType==='يومي' && status==='حاضر') ? '' : 'none';
 }
 function closeAttendanceModal(){ document.getElementById('attendanceOverlay').classList.remove('open'); }
 function saveAttendance(){
@@ -7589,12 +7627,18 @@ function saveAttendance(){
   const status = document.getElementById('att-status').value;
   const note = document.getElementById('att-note').value.trim();
   const project = h.employeeType==='يومي' ? document.getElementById('att-project').value : '';
+  // عدد الأيام المستحقة (1 عادي، 1.5 يوم ونص، 2 يومين...) — بينطبق بس على الموظف اليومي وهو "حاضر"
+  let units = 1;
+  if(h.employeeType==='يومي' && status==='حاضر'){
+    const raw = Number(document.getElementById('att-units').value);
+    units = raw>0 ? raw : 1;
+  }
   if(!date){ alert('من فضلك اختر التاريخ'); return; }
   if(!Array.isArray(h.attendance)) h.attendance = [];
   let rec;
   if(editId){
     rec = h.attendance.find(a=>a.id===editId);
-    if(rec){ rec.date=date; rec.status=status; rec.note=note; rec.project=project; }
+    if(rec){ rec.date=date; rec.status=status; rec.note=note; rec.project=project; rec.units=units; }
   }else{
     // اليوم اللي تم إثبات حضوره/تسجيله قبل كده متسجّلش تاني إلا لو المدير حذفه الأول
     const dup = h.attendance.find(a=>a.date===date);
@@ -7603,7 +7647,7 @@ function saveAttendance(){
       return;
     }
     const n = (h.attendance.length ? Math.max(...h.attendance.map(x=>x._n||0)) : 0)+1;
-    rec = {id:h._id+'-ATT'+n, _n:n, date, status, note, project};
+    rec = {id:h._id+'-ATT'+n, _n:n, date, status, note, project, units};
     h.attendance.push(rec);
   }
   if(rec) syncAbsenceDeduction(h, rec);
@@ -7657,7 +7701,7 @@ function openPayEntryForm(empId, editId){
   payEntryFormState = {empId, editId: editId || null};
   const h = DATA.hr.find(r=>r._id===empId);
   const rec = editId ? (h.payrollEntries||[]).find(e=>e.id===editId) : null;
-  document.getElementById('payEntryModalTitle').textContent = editId ? 'تعديل سلفة/خصم' : 'إضافة سلفة أو خصم';
+  document.getElementById('payEntryModalTitle').textContent = editId ? 'تعديل بند الراتب' : 'إضافة بند على الراتب';
   document.getElementById('pay-date').value = rec ? rec.date : todayStr();
   document.getElementById('pay-type').value = rec ? rec.type : 'سلفة';
   document.getElementById('pay-amount').value = rec ? rec.amount : '';
