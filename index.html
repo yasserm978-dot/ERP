@@ -508,6 +508,10 @@ tbody tr:hover{background:var(--surface-2);}
       <div class="field"><label>الاسم</label><input id="user-name" type="text"></div>
       <div class="field"><label>اسم المستخدم</label><input id="user-username" type="text"></div>
       <div class="field"><label>كلمة المرور</label><input id="user-password" type="password"></div>
+      <div class="field"><label>PIN لتطبيق تسجيل الحضور بالموبايل (اختياري — 4 أرقام)</label>
+        <input id="user-pin" type="text" inputmode="numeric" maxlength="6" placeholder="مثال: 1234">
+        <div style="font-size:11.5px; color:var(--text-dim); margin-top:4px;">لو هذا المستخدم مشرف هيثبت الحضور من صفحة الموبايل (بصمة + موقع)، حدد له PIN مختلف عن كلمة المرور.</div>
+      </div>
       <div class="field"><label>الدور</label>
         <select id="user-role" onchange="togglePermsVisibility()">
           <option value="مستخدم">مستخدم</option>
@@ -1476,7 +1480,7 @@ const q = v=>encodeURIComponent(v);
 const SYNC_COLLECTIONS = ['projects','hr','finance','contracts','assets','subs','ledger','generalExpenses','collections','purchases','materials','quotations','boq','reminders','auditLog','suppliers'];
 const SYNC_SETTINGS = ['revenueAccounts','expenseAccounts','capital','overheadAllocationBasis','projectStatuses','procedureTypes','contractTypes','materialCategories','alertRules','alertLog','contractCalcMethods','assetTypes','assetExpenseKinds','companyInfo'];
 // إعدادات حساسة (زي رمز واتساب) — بتتخزن في جدول المدير بس يقدر يقراه
-const ADMIN_SETTINGS = ['whatsappSettings'];
+const ADMIN_SETTINGS = ['whatsappSettings','userPins'];
 function settingsTable(key){ return ADMIN_SETTINGS.includes(key) ? 'erp_admin_settings' : 'erp_settings'; }
 function settingsKeysForMe(){ return isAdmin() ? SYNC_SETTINGS.concat(ADMIN_SETTINGS) : SYNC_SETTINGS; }
 let syncedRecords = new Map();   // "collection|id" -> {json, rev}
@@ -1819,7 +1823,8 @@ function escapeHtmlCloud(s){ return String(s).replace(/[&<>"']/g, c=>({'&':'&amp
 /* ---------- المستخدمين ---------- */
 async function loadUsers(){
   const rows = await api('GET', 'app_users?select=id,username,name,role,permissions&order=created_at.asc');
-  DATA.users = rows.map(u=>({ _id:u.id, name:u.name, username:u.username, role:u.role, permissions:u.permissions || {} }));
+  const pins = (DATA.userPins && typeof DATA.userPins==='object') ? DATA.userPins : {};
+  DATA.users = rows.map(u=>({ _id:u.id, name:u.name, username:u.username, role:u.role, permissions:u.permissions || {}, pin: pins[u.id] || '' }));
 }
 
 /* ---------- تشغيل السيستم ---------- */
@@ -3107,6 +3112,8 @@ function renderModulePage(moduleKey){
           <button class="btn secondary" onclick="openExpenseForm()">+ إضافة مصروف</button>
         ` : ''}
         ${isHr && canRecordAttendance() ? `<button class="btn secondary" onclick="openAttendanceEmployeePicker()">✓ إثبات حضور</button>` : ''}
+        ${isHr && canRecordAttendance() ? `<button class="btn secondary" id="syncAttendanceBtn" onclick="syncAttendance()">🔄 مزامنة الحضور (تسجيل الموبايل)</button>` : ''}
+        ${isHr && isAdmin() ? `<button class="btn secondary" onclick="openCheckinAppLink()">📱 صفحة تسجيل الحضور للمشرفين</button>` : ''}
         ${isFinance ? `<button class="btn secondary" onclick="printFinanceList()">🖨 طباعة قائمة الفواتير</button>` : ''}
         ${editable ? `<button class="btn" onclick="openForm('${moduleKey}')">+ إضافة</button>` : ''}
       </div>
@@ -6859,6 +6866,27 @@ function refreshMonthDetailActions(empId, month){
 /* ================= مزامنة تسجيل الحضور من صفحة الموبايل (Supabase) ================= */
 const SUPABASE_URL = 'https://rzpnyntgigmfxrncdbps.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_ZVBtA6kUeutOuTARAw8dWg_XpZJuMKf';
+const CHECKIN_APP_URL = 'https://claude.ai/artifact/JbN9T1CFpxHmsDe4Sfuk1q';
+function openCheckinAppLink(){
+  if(CHECKIN_APP_URL==='CHECKIN_APP_URL_PLACEHOLDER'){ alert('رابط صفحة تسجيل الحضور لسه مش متاح، تواصل مع الدعم.'); return; }
+  openConfirmModal('هيتم فتح صفحة تسجيل الحضور للمشرفين في تبويب جديد. افتح نفس الرابط من موبايل كل مشرف وضيفه للشاشة الرئيسية.', ()=>{ window.open(CHECKIN_APP_URL, '_blank'); });
+}
+async function syncSupervisorsToServer(){
+  try{
+    const payload = DATA.users.filter(u=>u.pin).map(u=>({id:u._id, name:u.name, pin:u.pin}));
+    if(!payload.length) return;
+    await fetch(SUPABASE_URL+'/rest/v1/checkin_supervisors', {
+      method:'POST',
+      headers:{
+        'apikey': SUPABASE_KEY,
+        'Authorization': 'Bearer '+SUPABASE_KEY,
+        'Content-Type': 'application/json',
+        'Prefer': 'resolution=merge-duplicates',
+      },
+      body: JSON.stringify(payload),
+    });
+  }catch(e){ /* best effort — لو مفيش نت هيحصل المزامنة تاني مرة الكونكشن يرجع */ }
+}
 async function syncAttendance(){
   if(!canRecordAttendance()) return;
   const btn = document.getElementById('syncAttendanceBtn');
@@ -6878,6 +6906,7 @@ async function syncAttendance(){
       });
       if(!pushRes.ok) throw new Error('تعذّر رفع بيانات الموظفين');
     }
+    await syncSupervisorsToServer();
     const res = await fetch(SUPABASE_URL+'/rest/v1/attendance_checkins?select=*&order=checkin_at.asc', {
       headers:{ 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer '+SUPABASE_KEY },
     });
@@ -6896,8 +6925,10 @@ async function syncAttendance(){
       if(already) return;
       const n = (h.attendance.length ? Math.max(...h.attendance.map(x=>x._n||0)) : 0)+1;
       const locNote = (row.lat!=null && row.lng!=null) ? ('الموقع: '+Number(row.lat).toFixed(5)+', '+Number(row.lng).toFixed(5)) : 'بدون موقع مسجل';
+      const status = row.status || 'حاضر';
+      const units = Number(row.units)>0 ? Number(row.units) : 1;
       h.attendance.push({
-        id: h._id+'-ATT'+n, _n:n, date:dateStr, status:'حاضر',
+        id: h._id+'-ATT'+n, _n:n, date:dateStr, status:status, units:units,
         note: 'تسجيل موبايل ('+(row.device_verified?'بصمة مؤكدة':'بدون تأكيد بصمة')+') — '+locNote,
         fromCheckin:true,
       });
@@ -6945,6 +6976,7 @@ function renderEmployeeDetail(id){
       </div>
       <div style="display:flex; gap:8px; flex-wrap:wrap;">
         ${canModify ? `<button class="btn secondary" onclick="openForm('hr','${h._id}')">تعديل بيانات الموظف</button>` : ''}
+        ${attEdit ? `<button class="btn secondary" id="syncAttendanceBtn" onclick="syncAttendance()">🔄 مزامنة الحضور</button>` : ''}
         ${!attOnly ? `<button class="btn secondary" onclick="printEmployeeStatement('${h._id}')">🖨 طباعة كشف حساب</button>` : ''}
       </div>
     </div>
@@ -9469,6 +9501,7 @@ function openUserForm(editId){
   document.getElementById('user-username').value = rec ? rec.username : '';
   document.getElementById('user-password').value = '';
   document.getElementById('user-password').placeholder = editId ? 'اتركها فارغة للإبقاء على نفس كلمة المرور' : '';
+  document.getElementById('user-pin').value = rec ? (rec.pin||'') : '';
   document.getElementById('user-role').value = rec ? rec.role : 'مستخدم';
   renderPermsGrid(rec ? rec.permissions : {});
   togglePermsVisibility();
@@ -9482,20 +9515,29 @@ async function saveUserRecord(){
   const name = document.getElementById('user-name').value.trim();
   const username = document.getElementById('user-username').value.trim();
   const password = document.getElementById('user-password').value;
+  const pinEl = document.getElementById('user-pin');
+  const pin = pinEl ? pinEl.value.trim() : '';
   const role = document.getElementById('user-role').value;
   if(!name || !username){ alert('من فضلك أدخل الاسم واسم المستخدم'); return; }
+  if(pin){
+    const dupPin = DATA.users.find(u=>u.pin===pin && u._id!==userFormState.editId);
+    if(dupPin){ alert('الـPIN ده مُستخدم بالفعل مع مستخدم تاني، من فضلك اختر رقم مختلف'); return; }
+  }
   const dup = DATA.users.find(u=>u.username.toLowerCase()===username.toLowerCase() && u._id!==userFormState.editId);
   if(dup){ alert('اسم المستخدم ده مُستخدم بالفعل، من فضلك اختر اسم تاني'); return; }
   if(password && password.length<6){ alert('كلمة المرور لازم تكون 6 حروف أو أرقام على الأقل'); return; }
   const permissions = {};
   document.querySelectorAll('.perm-select').forEach(el=>{ permissions[el.dataset.perm] = el.value; });
   try{
+    let savedId = userFormState.editId;
     if(userFormState.editId){
       await rpc('admin_update_user', {p_id:userFormState.editId, p_username:username, p_name:name, p_role:role, p_permissions:permissions, p_password:password||null});
     }else{
       if(!password){ alert('من فضلك أدخل كلمة مرور للمستخدم الجديد'); return; }
-      await rpc('admin_create_user', {p_username:username, p_password:password, p_name:name, p_role:role, p_permissions:permissions});
+      savedId = await rpc('admin_create_user', {p_username:username, p_password:password, p_name:name, p_role:role, p_permissions:permissions});
     }
+    if(!DATA.userPins || typeof DATA.userPins!=='object') DATA.userPins = {};
+    if(savedId){ if(pin) DATA.userPins[savedId] = pin; else delete DATA.userPins[savedId]; }
     await loadUsers();
   }catch(e){ alert(e.message); return; }
   if(typeof logAudit==='function'){ logAudit(userFormState.editId?'تعديل':'إضافة', 'مستخدم', name, `صلاحية: ${role}`); saveData(); }
@@ -9505,6 +9547,7 @@ async function saveUserRecord(){
   renderPage();
   buildNav();
   showToast('تم حفظ المستخدم ✓', 'good');
+  if(typeof syncSupervisorsToServer==='function') syncSupervisorsToServer();
 }
 async function deleteUserRecord(id){
   if(!isAdmin()) return;
@@ -9513,6 +9556,7 @@ async function deleteUserRecord(id){
   if(!confirm('هل أنت متأكد من حذف هذا المستخدم؟')) return;
   try{
     await rpc('admin_delete_user', {p_id:id});
+    if(DATA.userPins && DATA.userPins[id]){ delete DATA.userPins[id]; saveData(); }
     await loadUsers();
   }catch(e){ alert(e.message); return; }
   if(typeof logAudit==='function'){ logAudit('حذف', 'مستخدم', target?target.name:id); saveData(); }
