@@ -2576,7 +2576,11 @@ function printEmployeeStatement(id){
   const attendance = (h.attendance||[]).slice().sort((x,y)=>(x.date||'').localeCompare(y.date||''));
   const payrollEntries = (h.payrollEntries||[]).slice().sort((x,y)=>(x.date||'').localeCompare(y.date||''));
   const months = getEmployeeMonths(h);
-  const totalPaid = (h.payrollRuns||[]).filter(r=>r.paid).reduce((s,r)=>s+(Number(r.netAmount)||0),0);
+  // إجمالي ما وصل فعليًا لجيب الموظف = صافي كل رواتب اتصرفت رسميًا + كل السلف (لأن السلفة بتتصرف نقدًا لحظة تسجيلها، قبل يوم الراتب)
+  const totalAdvancesPaid = payrollEntries.filter(e=>e.type==='سلفة').reduce((s,e)=>s+(Number(e.amount)||0),0);
+  const totalPaid = (h.payrollRuns||[]).filter(r=>r.paid).reduce((s,r)=>s+(Number(r.netAmount)||0),0) + totalAdvancesPaid;
+  // المتبقي له = صافي الشهور اللي لسه ما اتصرفتش (بدون احتساب الشهور المصروفة بالفعل)
+  const totalRemaining = months.reduce((s,m)=>{ const pm = computeMonthlyPayroll(h, m); return s + (pm.paid ? 0 : Math.max(pm.net, 0)); }, 0);
 
   const info = `<table style="width:100%; border-collapse:collapse; font-size:13px;">
     <tbody>
@@ -2590,7 +2594,8 @@ function printEmployeeStatement(id){
   </table>`;
 
   const cards = statCardsRow([
-    statCard('إجمالي ما تم صرفه فعليًا', fmtMoney(totalPaid), '#27ae60'),
+    statCard('إجمالي ما تم صرفه فعليًا (رواتب + سلف)', fmtMoney(totalPaid), '#27ae60'),
+    statCard('المتبقي له من مرتبه (غير مصروف)', fmtMoney(totalRemaining), totalRemaining>0?'#c0392b':'#27ae60'),
     statCard('عدد أيام الحضور المسجلة', (()=>{ const u = attendance.filter(a=>a.status==='حاضر'||a.status==='نصف يوم').reduce((s,a)=>s+attendanceUnits(a),0); return Number.isInteger(u)?u:u.toFixed(1); })(), '#2980b9'),
     statCard('عدد أيام الغياب المسجلة', attendance.filter(a=>a.status==='غائب').length, '#c0392b'),
   ]);
@@ -6872,10 +6877,10 @@ function openCheckinAppLink(){
   openConfirmModal('هيتم فتح صفحة تسجيل الحضور للمشرفين في تبويب جديد. افتح نفس الرابط من موبايل كل مشرف وضيفه للشاشة الرئيسية.', ()=>{ window.open(CHECKIN_APP_URL, '_blank'); });
 }
 async function syncSupervisorsToServer(){
+  const payload = DATA.users.filter(u=>u.pin).map(u=>({id:u._id, name:u.name, pin:u.pin}));
+  if(!payload.length) return {ok:true, count:0, skipped:true};
   try{
-    const payload = DATA.users.filter(u=>u.pin).map(u=>({id:u._id, name:u.name, pin:u.pin}));
-    if(!payload.length) return;
-    await fetch(SUPABASE_URL+'/rest/v1/checkin_supervisors', {
+    const res = await fetch(SUPABASE_URL+'/rest/v1/checkin_supervisors', {
       method:'POST',
       headers:{
         'apikey': SUPABASE_KEY,
@@ -6885,7 +6890,12 @@ async function syncSupervisorsToServer(){
       },
       body: JSON.stringify(payload),
     });
-  }catch(e){ /* best effort — لو مفيش نت هيحصل المزامنة تاني مرة الكونكشن يرجع */ }
+    if(!res.ok){
+      const errText = await res.text().catch(()=> '');
+      return {ok:false, count:payload.length, error: 'HTTP '+res.status+' — '+errText.slice(0,300)};
+    }
+    return {ok:true, count:payload.length};
+  }catch(e){ return {ok:false, count:payload.length, error: e.message}; }
 }
 async function syncAttendance(){
   if(!canRecordAttendance()) return;
@@ -6906,7 +6916,7 @@ async function syncAttendance(){
       });
       if(!pushRes.ok) throw new Error('تعذّر رفع بيانات الموظفين');
     }
-    await syncSupervisorsToServer();
+    const supResult = await syncSupervisorsToServer();
     const res = await fetch(SUPABASE_URL+'/rest/v1/attendance_checkins?select=*&order=checkin_at.asc', {
       headers:{ 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer '+SUPABASE_KEY },
     });
@@ -6936,7 +6946,11 @@ async function syncAttendance(){
     });
     saveData();
     renderPage();
-    alert(imported ? ('تمت مزامنة '+imported+' تسجيل حضور جديد ✅') : 'تمت المزامنة — لا توجد تسجيلات جديدة');
+    let supMsg = '';
+    if(supResult.skipped) supMsg = '\n\n⚠️ ملحوظة: مفيش أي مستخدم عنده PIN محدد، فمفيش مشرفين اتبعتوا لصفحة الموبايل.';
+    else if(!supResult.ok) supMsg = '\n\n⚠️ فشلت مزامنة المشرفين (صفحة الموبايل): '+supResult.error;
+    else supMsg = '\n\n✅ تمت مزامنة '+supResult.count+' مشرف/مستخدم له PIN لصفحة الموبايل بنجاح.';
+    alert((imported ? ('تمت مزامنة '+imported+' تسجيل حضور جديد ✅') : 'تمت المزامنة — لا توجد تسجيلات حضور جديدة') + supMsg);
   }catch(e){
     alert('تعذّرت المزامنة، تأكد من الاتصال بالإنترنت.\n('+e.message+')');
   }finally{
@@ -6966,6 +6980,10 @@ function renderEmployeeDetail(id){
   const attendance = (h.attendance||[]).slice().sort((x,y)=>(y.date||'').localeCompare(x.date||''));
   const payrollEntries = (h.payrollEntries||[]).slice().sort((x,y)=>(y.date||'').localeCompare(x.date||''));
   const months = getEmployeeMonths(h);
+  // إجمالي ما وصل فعليًا لجيب الموظف من أول يوم = صافي الرواتب المصروفة رسميًا + كل السلف (بتتصرف نقدًا لحظة تسجيلها)
+  const totalAdvancesPaidAll = payrollEntries.filter(e=>e.type==='سلفة').reduce((s,e)=>s+(Number(e.amount)||0),0);
+  const totalPaidAll = (h.payrollRuns||[]).filter(r=>r.paid).reduce((s,r)=>s+(Number(r.netAmount)||0),0) + totalAdvancesPaidAll;
+  const totalRemainingAll = months.reduce((s,m)=>{ const pm = computeMonthlyPayroll(h, m); return s + (pm.paid ? 0 : Math.max(pm.net, 0)); }, 0);
 
   return `
     <button class="btn secondary small" onclick="backToHrList()" style="margin-bottom:16px;">→ رجوع لكل الموارد البشرية</button>
@@ -6986,6 +7004,8 @@ function renderEmployeeDetail(id){
       <div class="kpi ${att.absent>0?'alert':'ok'}"><div class="kpi-label">أيام الغياب — ${monthLabel(month)}</div><div class="kpi-value">${att.absent}</div></div>
       ${!attOnly ? `<div class="kpi ${paid?'ok':(net>0?'alert':'')}"><div class="kpi-label">صافي مستحق — ${monthLabel(month)}</div><div class="kpi-value">${fmtMoney(paid?0:net)}</div>${paid?`<div class="kpi-sub">تم صرف ${fmtMoney(net)} بالكامل</div>`:''}</div>` : ''}
       ${!attOnly ? `<div class="kpi ${paid?'ok':'alert'}"><div class="kpi-label">حالة راتب هذا الشهر</div><div class="kpi-value" style="font-size:15px;">${paid?'تم الصرف ✅':'لم يُصرف بعد'}</div></div>` : ''}
+      ${!attOnly ? `<div class="kpi ok"><div class="kpi-label">إجمالي ما تم صرفه فعليًا (رواتب + سلف)</div><div class="kpi-value">${fmtMoney(totalPaidAll)}</div></div>` : ''}
+      ${!attOnly ? `<div class="kpi ${totalRemainingAll>0?'alert':'ok'}"><div class="kpi-label">إجمالي المتبقي له من مرتبه</div><div class="kpi-value">${fmtMoney(totalRemainingAll)}</div></div>` : ''}
     </div>
 
     <div class="section-title" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
