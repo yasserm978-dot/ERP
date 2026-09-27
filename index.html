@@ -6871,7 +6871,7 @@ function refreshMonthDetailActions(empId, month){
 /* ================= مزامنة تسجيل الحضور من صفحة الموبايل (Supabase) ================= */
 const SUPABASE_URL = 'https://rzpnyntgigmfxrncdbps.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_ZVBtA6kUeutOuTARAw8dWg_XpZJuMKf';
-const CHECKIN_APP_URL = 'https://claude.ai/artifact/JbN9T1CFpxHmsDe4Sfuk1q';
+const CHECKIN_APP_URL = 'https://yasserm978-dot.github.io/ERP/checkin.html';
 function openCheckinAppLink(){
   if(CHECKIN_APP_URL==='CHECKIN_APP_URL_PLACEHOLDER'){ alert('رابط صفحة تسجيل الحضور لسه مش متاح، تواصل مع الدعم.'); return; }
   openConfirmModal('هيتم فتح صفحة تسجيل الحضور للمشرفين في تبويب جديد. افتح نفس الرابط من موبايل كل مشرف وضيفه للشاشة الرئيسية.', ()=>{ window.open(CHECKIN_APP_URL, '_blank'); });

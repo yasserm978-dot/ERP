@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0f172a">
+<title>تسجيل الحضور</title>
+<style>
+  :root{
+    --bg:#0f172a; --panel:#16213a; --panel2:#1c2b4a; --border:#2a3b5e;
+    --text:#eef2ff; --text-dim:#93a1c4; --accent:#2f80ff; --good:#22c55e; --warn:#f59e0b; --bad:#ef4444;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Tahoma,Arial,sans-serif; background:var(--bg); color:var(--text); min-height:100vh;}
+  .wrap{max-width:520px; margin:0 auto; padding:16px 14px 90px; min-height:100vh;}
+  h1{font-size:19px; margin:6px 0 2px;}
+  .sub{color:var(--text-dim); font-size:13px; margin-bottom:18px;}
+  .card{background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:16px; margin-bottom:12px;}
+  .btn{display:block; width:100%; padding:14px; border-radius:10px; border:1px solid var(--border); background:var(--panel2); color:var(--text); font-size:15px; font-weight:600; cursor:pointer; margin-bottom:10px; text-align:center;}
+  .btn:active{transform:scale(0.98);}
+  .btn.primary{background:var(--accent); border-color:var(--accent); color:#fff;}
+  .btn.ghost{background:transparent;}
+  .pin-pad{display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin:14px 0;}
+  .pin-pad button{padding:16px; font-size:20px; border-radius:12px; border:1px solid var(--border); background:var(--panel2); color:var(--text);}
+  .pin-dots{display:flex; justify-content:center; gap:10px; margin:16px 0;}
+  .pin-dot{width:14px; height:14px; border-radius:50%; border:2px solid var(--text-dim);}
+  .pin-dot.filled{background:var(--accent); border-color:var(--accent);}
+  input[type=text], input[type=search]{width:100%; padding:12px; border-radius:10px; border:1px solid var(--border); background:var(--panel2); color:var(--text); font-size:15px;}
+  .emp-row{display:flex; align-items:center; justify-content:space-between; gap:10px; padding:12px 0; border-bottom:1px solid var(--border);}
+  .emp-info{flex:1; min-width:0;}
+  .emp-name{font-weight:700; font-size:14.5px;}
+  .emp-role{color:var(--text-dim); font-size:12px;}
+  .status-group{display:flex; gap:6px; flex-wrap:wrap;}
+  .status-btn{padding:7px 10px; border-radius:8px; border:1px solid var(--border); background:var(--panel2); color:var(--text-dim); font-size:12px; cursor:pointer; white-space:nowrap;}
+  .status-btn.active-present{background:var(--good); border-color:var(--good); color:#062; font-weight:700;}
+  .status-btn.active-half{background:var(--warn); border-color:var(--warn); color:#420; font-weight:700;}
+  .status-btn.active-absent{background:var(--bad); border-color:var(--bad); color:#200; font-weight:700;}
+  .units-input{width:56px; padding:6px; margin-right:4px; border-radius:6px; border:1px solid var(--border); background:var(--panel); color:var(--text); font-size:12.5px; text-align:center;}
+  .bottom-bar{position:fixed; bottom:0; left:0; right:0; background:var(--panel); border-top:1px solid var(--border); padding:12px 14px; max-width:520px; margin:0 auto;}
+  .badge{display:inline-block; padding:3px 8px; border-radius:20px; font-size:11px; background:var(--panel2); color:var(--text-dim); margin-bottom:8px;}
+  .center{text-align:center;}
+  .hidden{display:none !important;}
+  .err{color:var(--bad); font-size:13px; margin-top:8px; min-height:16px;}
+  .loading{color:var(--text-dim); font-size:13px; text-align:center; padding:30px 0;}
+  .top-bar{display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;}
+  .link-btn{background:none; border:none; color:var(--accent); font-size:13px; cursor:pointer; padding:6px;}
+  .count-pill{background:var(--accent); color:#fff; border-radius:20px; padding:2px 9px; font-size:12px; font-weight:700;}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+
+<script>
+const SUPABASE_URL = 'https://rzpnyntgigmfxrncdbps.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_ZVBtA6kUeutOuTARAw8dWg_XpZJuMKf';
+const HDRS = { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer '+SUPABASE_KEY };
+const HDRS_JSON = Object.assign({'Content-Type':'application/json'}, HDRS);
+
+let state = { screen:'loading', supervisors:[], employees:[], selectedSupervisor:null, pin:'', pinError:'', search:'', marks:{}, saving:false, debugInfo:'' };
+
+function render(){
+  const app = document.getElementById('app');
+  if(state.screen==='loading') app.innerHTML = renderLoading();
+  else if(state.screen==='pickSupervisor') app.innerHTML = renderPickSupervisor();
+  else if(state.screen==='pin') app.innerHTML = renderPin();
+  else if(state.screen==='employees') app.innerHTML = renderEmployees();
+  attachEvents();
+}
+
+function renderLoading(){
+  return `<div class="loading">⏳ جارِ التحميل...</div>`;
+}
+
+function renderPickSupervisor(){
+  if(!state.supervisors.length){
+    return `<h1>تسجيل الحضور</h1><div class="sub">للمشرفين فقط</div>
+      <div class="card center">
+        <div style="font-size:14px; color:var(--text-dim); line-height:1.7;">
+          مفيش مشرفين مسجلين لصفحة الموبايل حتى الآن.<br>
+          روح لصفحة "المستخدمون والصلاحيات" في النظام الأساسي وحدد PIN لكل مشرف، وهيظهر هنا تلقائيًا بعد أول مزامنة.
+        </div>
+        <button class="btn ghost" onclick="location.reload()" style="margin-top:14px;">🔄 تحديث</button>
+        ${state.debugInfo ? `<div style="margin-top:14px; font-size:11px; color:var(--text-dim); text-align:right; direction:ltr; background:var(--bg); border-radius:8px; padding:8px;">${state.debugInfo}</div>` : ''}
+      </div>`;
+  }
+  return `<h1>تسجيل الحضور</h1><div class="sub">اختر اسمك للمتابعة</div>
+    ${state.supervisors.map(s=>`<button class="btn" data-pick-sup="${s.id}">${s.name}</button>`).join('')}`;
+}
+
+function renderPin(){
+  const dots = [0,1,2,3].map(i=>`<div class="pin-dot ${state.pin.length>i?'filled':''}"></div>`).join('');
+  return `<div class="top-bar"><h1 style="margin:0;">${state.selectedSupervisor.name}</h1><button class="link-btn" data-back-sup="1">تغيير</button></div>
+    <div class="sub">أدخل PIN الخاص بك</div>
+    <div class="pin-dots">${dots}</div>
+    <div class="err">${state.pinError}</div>
+    <div class="pin-pad">
+      ${[1,2,3,4,5,6,7,8,9].map(n=>`<button data-pin-digit="${n}">${n}</button>`).join('')}
+      <button data-pin-clear="1" style="color:var(--bad);">مسح</button>
+      <button data-pin-digit="0">0</button>
+      <button data-pin-back="1">⌫</button>
+    </div>`;
+}
+
+function attendanceUnits(m){
+  if(!m) return 0;
+  if(m.status==='حاضر') return (Number(m.units)>0 ? Number(m.units) : 1);
+  if(m.status==='نصف يوم') return 0.5;
+  return 0;
+}
+
+function renderEmployees(){
+  const q = state.search.trim().toLowerCase();
+  const list = state.employees.filter(e=> !q || e.name.toLowerCase().includes(q));
+  const markedCount = Object.keys(state.marks).length;
+  return `
+    <div class="top-bar"><h1 style="margin:0;">${state.selectedSupervisor.name}</h1><button class="link-btn" data-logout="1">خروج</button></div>
+    <div class="sub">حدد حالة كل عامل، وبعد كده اضغط "حفظ التسجيلات" تحت</div>
+    <input type="search" placeholder="بحث بالاسم..." value="${state.search}" data-search="1" style="margin-bottom:10px;">
+    <div class="card" style="padding:4px 16px;">
+      ${list.length ? list.map(e=>{
+        const m = state.marks[e.id];
+        const st = m ? m.status : null;
+        return `<div class="emp-row">
+          <div class="emp-info"><div class="emp-name">${e.name}</div><div class="emp-role">${e.role||''}</div></div>
+          <div class="status-group">
+            <button class="status-btn ${st==='حاضر'?'active-present':''}" data-mark="${e.id}|حاضر">حاضر</button>
+            ${st==='حاضر' ? `<input class="units-input" type="number" step="0.5" min="0.5" value="${m.units||1}" data-units="${e.id}">` : ''}
+            <button class="status-btn ${st==='نصف يوم'?'active-half':''}" data-mark="${e.id}|نصف يوم">نصف يوم</button>
+            <button class="status-btn ${st==='غياب'?'active-absent':''}" data-mark="${e.id}|غياب">غياب</button>
+          </div>
+        </div>`;
+      }).join('') : `<div class="loading">لا يوجد عمال مطابقين</div>`}
+    </div>
+    <div style="height:70px;"></div>
+    <div class="bottom-bar">
+      <button class="btn primary" data-save="1" ${state.saving?'disabled':''}>
+        ${state.saving ? 'جارِ الحفظ...' : ('💾 حفظ التسجيلات' + (markedCount ? ` <span class="count-pill">${markedCount}</span>` : ''))}
+      </button>
+    </div>`;
+}
+
+function attachEvents(){
+  document.querySelectorAll('[data-pick-sup]').forEach(b=>b.addEventListener('click', ()=>{
+    state.selectedSupervisor = state.supervisors.find(s=>s.id===b.dataset.pickSup);
+    state.pin=''; state.pinError=''; state.screen='pin'; render();
+  }));
+  const backBtn = document.querySelector('[data-back-sup]');
+  if(backBtn) backBtn.addEventListener('click', ()=>{ state.screen='pickSupervisor'; state.selectedSupervisor=null; render(); });
+  document.querySelectorAll('[data-pin-digit]').forEach(b=>b.addEventListener('click', ()=>{
+    if(state.pin.length>=6) return;
+    state.pin += b.dataset.pinDigit;
+    state.pinError='';
+    render();
+    if(state.pin.length>=4) checkPin();
+  }));
+  const clearBtn = document.querySelector('[data-pin-clear]');
+  if(clearBtn) clearBtn.addEventListener('click', ()=>{ state.pin=''; state.pinError=''; render(); });
+  const backspaceBtn = document.querySelector('[data-pin-back]');
+  if(backspaceBtn) backspaceBtn.addEventListener('click', ()=>{ state.pin = state.pin.slice(0,-1); render(); });
+  const logoutBtn = document.querySelector('[data-logout]');
+  if(logoutBtn) logoutBtn.addEventListener('click', ()=>{ state.screen='pickSupervisor'; state.selectedSupervisor=null; state.marks={}; render(); });
+  const searchInput = document.querySelector('[data-search]');
+  if(searchInput){
+    searchInput.addEventListener('input', (e)=>{ state.search = e.target.value; render(); document.querySelector('[data-search]').focus(); document.querySelector('[data-search]').setSelectionRange(state.search.length, state.search.length); });
+  }
+  document.querySelectorAll('[data-mark]').forEach(b=>b.addEventListener('click', ()=>{
+    const [empId, status] = b.dataset.mark.split('|');
+    const cur = state.marks[empId];
+    if(cur && cur.status===status){ delete state.marks[empId]; }
+    else{
+      state.marks[empId] = { status, units: status==='حاضر' ? (cur&&cur.units?cur.units:1) : (status==='نصف يوم'?0.5:0) };
+    }
+    render();
+  }));
+  document.querySelectorAll('[data-units]').forEach(inp=>inp.addEventListener('change', ()=>{
+    const empId = inp.dataset.units;
+    if(state.marks[empId]) state.marks[empId].units = Number(inp.value)||1;
+  }));
+  const saveBtn = document.querySelector('[data-save]');
+  if(saveBtn) saveBtn.addEventListener('click', saveAll);
+}
+
+function checkPin(){
+  if(state.pin === state.selectedSupervisor.pin){
+    state.screen='employees'; state.marks={}; render();
+  }else{
+    state.pinError = 'PIN غير صحيح';
+    setTimeout(()=>{ state.pin=''; render(); }, 500);
+  }
+}
+
+async function requestLocation(){
+  return new Promise((resolve)=>{
+    if(!navigator.geolocation){ resolve(null); return; }
+    navigator.geolocation.getCurrentPosition(
+      pos => resolve({lat: pos.coords.latitude, lng: pos.coords.longitude}),
+      ()  => resolve(null),
+      { enableHighAccuracy:true, timeout:10000 }
+    );
+  });
+}
+
+async function requestBiometric(){
+  try{
+    if(!window.PublicKeyCredential || !PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable) return false;
+    const available = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+    if(!available) return false;
+    const challenge = new Uint8Array(32); crypto.getRandomValues(challenge);
+    const userId = new Uint8Array(16); crypto.getRandomValues(userId);
+    await navigator.credentials.create({
+      publicKey:{
+        challenge, rp:{ name:'تسجيل الحضور' },
+        user:{ id:userId, name: state.selectedSupervisor.name, displayName: state.selectedSupervisor.name },
+        pubKeyCredParams:[{ type:'public-key', alg:-7 }],
+        authenticatorSelection:{ authenticatorAttachment:'platform', userVerification:'required' },
+        timeout:60000,
+      }
+    });
+    return true;
+  }catch(e){ return false; }
+}
+
+async function saveAll(){
+  const entries = Object.entries(state.marks);
+  if(!entries.length){ alert('من فضلك حدد حالة حضور واحد على الأقل'); return; }
+  state.saving = true; render();
+  const loc = await requestLocation();
+  const verified = await requestBiometric();
+  const nowIso = new Date().toISOString();
+  const rows = entries.map(([employee_id, m])=>({
+    employee_id, checkin_at: nowIso,
+    lat: loc ? loc.lat : null, lng: loc ? loc.lng : null,
+    device_verified: verified,
+    status: m.status, units: attendanceUnits(m),
+  }));
+  try{
+    const res = await fetch(SUPABASE_URL+'/rest/v1/attendance_checkins', {
+      method:'POST', headers: HDRS_JSON, body: JSON.stringify(rows),
+    });
+    if(!res.ok) throw new Error('فشل الحفظ');
+    state.marks = {};
+    state.saving = false;
+    render();
+    alert('تم تسجيل '+rows.length+' حالة حضور ✅'+(loc?'':'\n(بدون تحديد الموقع الجغرافي)')+(verified?'':'\n(بدون تأكيد بصمة)'));
+  }catch(e){
+    state.saving = false; render();
+    alert('حصل خطأ في الحفظ، تأكد من الاتصال بالإنترنت وحاول تاني.');
+  }
+}
+
+async function boot(){
+  const debugLines = [];
+  try{
+    const supRes = await fetch(SUPABASE_URL+'/rest/v1/checkin_supervisors?select=*', { headers: HDRS });
+    debugLines.push('checkin_supervisors: HTTP '+supRes.status);
+    if(supRes.ok){
+      state.supervisors = await supRes.json();
+      debugLines.push('rows returned: '+state.supervisors.length);
+    }else{
+      state.supervisors = [];
+      const t = await supRes.text().catch(()=> '');
+      debugLines.push('error: '+t.slice(0,200));
+    }
+  }catch(e){ state.supervisors = []; debugLines.push('checkin_supervisors: fetch failed — '+e.message); }
+  try{
+    const empRes = await fetch(SUPABASE_URL+'/rest/v1/employees?select=*&order=name.asc', { headers: HDRS });
+    debugLines.push('employees: HTTP '+empRes.status);
+    state.employees = empRes.ok ? await empRes.json() : [];
+  }catch(e){ state.employees = []; debugLines.push('employees: fetch failed — '+e.message); }
+  state.debugInfo = debugLines.join('<br>');
+  state.screen = 'pickSupervisor';
+  render();
+}
+boot();
+</script>
+</body>
+</html>
