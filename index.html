@@ -2040,6 +2040,7 @@ const MODULES = {
       {key:'dailyWage', label:'الأجر اليومي (جنيه) — للموظف اليومي', type:'number'},
       {key:'phone', label:'رقم الهاتف', type:'text'},
       {key:'status', label:'الحالة', type:'select', options:['نشط','إجازة','منتهي التعاقد']},
+      {key:'mobileAttendance', label:'يظهر في صفحة حضور المشرفين بالموبايل؟ (لو سبتها "اختر..." يظهر العامل اليومي بس)', type:'select', options:['نعم','لا']},
     ],
     columns:['name','role','project','employeeType','status'],
   },
@@ -6876,6 +6877,12 @@ function openCheckinAppLink(){
   if(CHECKIN_APP_URL==='CHECKIN_APP_URL_PLACEHOLDER'){ alert('رابط صفحة تسجيل الحضور لسه مش متاح، تواصل مع الدعم.'); return; }
   openConfirmModal('هيتم فتح صفحة تسجيل الحضور للمشرفين في تبويب جديد. افتح نفس الرابط من موبايل كل مشرف وضيفه للشاشة الرئيسية.', ()=>{ window.open(CHECKIN_APP_URL, '_blank'); });
 }
+function showInMobileAttendance(h){
+  if(!h || h.status==='منتهي التعاقد') return false;
+  if(h.mobileAttendance==='نعم') return true;
+  if(h.mobileAttendance==='لا') return false;
+  return h.employeeType==='يومي';
+}
 async function syncSupervisorsToServer(){
   const payload = DATA.users.filter(u=>u.pin).map(u=>({id:u._id, name:u.name, pin:u.pin}));
   if(!payload.length) return {ok:true, count:0, skipped:true};
@@ -6902,7 +6909,7 @@ async function syncAttendance(){
   const btn = document.getElementById('syncAttendanceBtn');
   if(btn){ btn.disabled = true; btn.textContent = 'جارِ المزامنة...'; }
   try{
-    const employeesPayload = DATA.hr.map(h=>({id:h._id, name:h.name, role:h.role||''}));
+    const employeesPayload = DATA.hr.map(h=>({id:h._id, name:h.name, role:h.role||'', show_in_checkin: showInMobileAttendance(h)}));
     if(employeesPayload.length){
       const pushRes = await fetch(SUPABASE_URL+'/rest/v1/employees', {
         method:'POST',
@@ -6914,7 +6921,11 @@ async function syncAttendance(){
         },
         body: JSON.stringify(employeesPayload),
       });
-      if(!pushRes.ok) throw new Error('تعذّر رفع بيانات الموظفين');
+      if(!pushRes.ok){
+        const t = await pushRes.text().catch(()=> '');
+        if(t.includes('show_in_checkin')) throw new Error('محتاج تشغّل كود إضافة خانة show_in_checkin في مشروع Supabase الخاص بالحضور الأول');
+        throw new Error('تعذّر رفع بيانات الموظفين: '+t.slice(0,200));
+      }
     }
     const supResult = await syncSupervisorsToServer();
     const res = await fetch(SUPABASE_URL+'/rest/v1/attendance_checkins?select=*&order=checkin_at.asc', {

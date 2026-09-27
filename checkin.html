@@ -232,7 +232,9 @@ async function saveAll(){
   const loc = await requestLocation();
   const nowIso = new Date().toISOString();
   const rows = entries.map(([employee_id, m])=>({
-    employee_id, checkin_at: nowIso,
+    employee_id,
+    employee_name: ((state.employees.find(e=>e.id===employee_id)||{}).name) || '',
+    checkin_at: nowIso,
     lat: loc ? loc.lat : null, lng: loc ? loc.lng : null,
     device_verified: bio.ok,
     status: m.status, units: attendanceUnits(m),
@@ -272,7 +274,7 @@ async function boot(){
   try{
     const empRes = await fetch(SUPABASE_URL+'/rest/v1/employees?select=*&order=name.asc', { headers: HDRS });
     debugLines.push('employees: HTTP '+empRes.status);
-    state.employees = empRes.ok ? await empRes.json() : [];
+    state.employees = empRes.ok ? (await empRes.json()).filter(e=>e.show_in_checkin!==false) : [];
   }catch(e){ state.employees = []; debugLines.push('employees: fetch failed — '+e.message); }
   state.debugInfo = debugLines.join('<br>');
   state.screen = 'pickSupervisor';
