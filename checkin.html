@@ -205,9 +205,10 @@ async function requestLocation(){
 
 async function requestBiometric(){
   try{
-    if(!window.PublicKeyCredential || !PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable) return false;
+    if(!window.isSecureContext) return {ok:false, reason:'الصفحة لازم تتفتح عن طريق https عشان البصمة تشتغل'};
+    if(!window.PublicKeyCredential || !PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable) return {ok:false, reason:'المتصفح ده مش بيدعم التحقق بالبصمة (WebAuthn)'};
     const available = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
-    if(!available) return false;
+    if(!available) return {ok:false, reason:'الجهاز ده مفيهوش بصمة/فيس آيدي مفعّلة أو مُسجّلة في إعدادات القفل'};
     const challenge = new Uint8Array(32); crypto.getRandomValues(challenge);
     const userId = new Uint8Array(16); crypto.getRandomValues(userId);
     await navigator.credentials.create({
@@ -219,21 +220,21 @@ async function requestBiometric(){
         timeout:60000,
       }
     });
-    return true;
-  }catch(e){ return false; }
+    return {ok:true};
+  }catch(e){ return {ok:false, reason: (e.name||'خطأ')+': '+e.message}; }
 }
 
 async function saveAll(){
   const entries = Object.entries(state.marks);
   if(!entries.length){ alert('من فضلك حدد حالة حضور واحد على الأقل'); return; }
   state.saving = true; render();
+  const bio = await requestBiometric();
   const loc = await requestLocation();
-  const verified = await requestBiometric();
   const nowIso = new Date().toISOString();
   const rows = entries.map(([employee_id, m])=>({
     employee_id, checkin_at: nowIso,
     lat: loc ? loc.lat : null, lng: loc ? loc.lng : null,
-    device_verified: verified,
+    device_verified: bio.ok,
     status: m.status, units: attendanceUnits(m),
   }));
   try{
@@ -244,7 +245,7 @@ async function saveAll(){
     state.marks = {};
     state.saving = false;
     render();
-    alert('تم تسجيل '+rows.length+' حالة حضور ✅'+(loc?'':'\n(بدون تحديد الموقع الجغرافي)')+(verified?'':'\n(بدون تأكيد بصمة)'));
+    alert('تم تسجيل '+rows.length+' حالة حضور ✅'+(loc?'':'\n(بدون تحديد الموقع الجغرافي)')+(bio.ok?'':'\n⚠️ بدون تأكيد بصمة — '+bio.reason));
   }catch(e){
     state.saving = false; render();
     alert('حصل خطأ في الحفظ، تأكد من الاتصال بالإنترنت وحاول تاني.');
