@@ -196,6 +196,8 @@ tbody tr:hover{background:var(--surface-2);}
   position:fixed; inset:0; background:rgba(0,0,0,.55);
   display:none; align-items:center; justify-content:center; z-index:50; padding:20px;
 }
+/* نافذة التأكيد دايمًا فوق أي نافذة تانية مفتوحة */
+#confirmOverlay{ z-index:60; }
 .overlay.open{display:flex;}
 .modal{
   background:var(--surface); border:1px solid var(--border); border-radius:8px;
@@ -1477,7 +1479,7 @@ const rpc = (fn, args)=>api('POST', 'rpc/' + fn, args || {});
 const q = v=>encodeURIComponent(v);
 
 /* ---------- تحميل ومزامنة البيانات ---------- */
-const SYNC_COLLECTIONS = ['projects','hr','finance','contracts','assets','subs','ledger','generalExpenses','collections','purchases','materials','quotations','boq','reminders','auditLog','suppliers'];
+const SYNC_COLLECTIONS = ['projects','hr','finance','contracts','assets','subs','ledger','generalExpenses','collections','purchases','materials','quotations','boq','reminders','auditLog','suppliers','cashboxes'];
 const SYNC_SETTINGS = ['revenueAccounts','expenseAccounts','capital','overheadAllocationBasis','projectStatuses','procedureTypes','contractTypes','materialCategories','alertRules','alertLog','contractCalcMethods','assetTypes','assetExpenseKinds','companyInfo'];
 // إعدادات حساسة (زي رمز واتساب) — بتتخزن في جدول المدير بس يقدر يقراه
 const ADMIN_SETTINGS = ['whatsappSettings','userPins'];
@@ -1941,7 +1943,7 @@ function checkLegacyLocalData(){
   if(!isAdmin()) return;
   const data = readLegacyLocalData();
   if(!data) return;
-  const labels = {suppliers:'موردين', quotations:'عروض أسعار', boq:'مقايسات', reminders:'تذكيرات', auditLog:'سجل التدقيق', projects:'مشاريع', subs:'مقاولين باطن', materials:'أصناف مخزون', purchases:'فواتير شراء', hr:'موظفين', finance:'فواتير عملاء', ledger:'قيود يدوية', generalExpenses:'مصروفات عامة', collections:'دفعات محصّلة', contracts:'عقود', assets:'أصول'};
+  const labels = {cashboxes:'خزائن وعهد', suppliers:'موردين', quotations:'عروض أسعار', boq:'مقايسات', reminders:'تذكيرات', auditLog:'سجل التدقيق', projects:'مشاريع', subs:'مقاولين باطن', materials:'أصناف مخزون', purchases:'فواتير شراء', hr:'موظفين', finance:'فواتير عملاء', ledger:'قيود يدوية', generalExpenses:'مصروفات عامة', collections:'دفعات محصّلة', contracts:'عقود', assets:'أصول'};
   const rows = SYNC_COLLECTIONS.map(c=>{
     const local = Array.isArray(data[c]) ? data[c].filter(it=>isSyncable(c, it)).length : 0;
     const server = (DATA[c]||[]).filter(it=>isSyncable(c, it)).length;
@@ -2132,6 +2134,8 @@ function normalizeData(){
     s.assignments.forEach((a,idx)=>ensureAssignmentShape(a, s._id+'-ASG'+(idx+1)));
   });
   if(!Array.isArray(DATA.suppliers)) DATA.suppliers = [];
+  if(!Array.isArray(DATA.cashboxes)) DATA.cashboxes = [];
+  if(typeof ensureCashboxShape==='function') DATA.cashboxes.forEach(ensureCashboxShape);
   DATA.suppliers.forEach(ensureSupplierShape);
   if(!Array.isArray(DATA.purchases)) DATA.purchases = [];
   if(!Array.isArray(DATA.materials)) DATA.materials = [];
@@ -2156,6 +2160,9 @@ function normalizeData(){
     if(!Array.isArray(h.attendance)) h.attendance = [];
     if(!Array.isArray(h.payrollEntries)) h.payrollEntries = [];
     if(!Array.isArray(h.payrollRuns)) h.payrollRuns = [];
+    if(!Array.isArray(h.settlements)) h.settlements = [];
+    // تثبيت أجر اليوم: كل يوم حضور لعامل يومي بيتحفظ معاه الأجر وقت تسجيله، عشان تغيير اليومية بعد كده ميأثرش على الأيام القديمة
+    if(h.employeeType==='يومي') h.attendance.forEach(a=>{ if(a.rate===undefined || a.rate===null || a.rate==='') a.rate = Number(h.dailyWage)||0; });
   });
   if(!Array.isArray(DATA.syncedCheckinIds)) DATA.syncedCheckinIds = [];
   if(!DATA.whatsappSettings || typeof DATA.whatsappSettings!=='object') DATA.whatsappSettings = {};
@@ -2290,6 +2297,7 @@ function buildNav(){
     {key:'hr', label:MODULES.hr.label, icon:MODULES.hr.icon},
     {key:'finance', label:MODULES.finance.label, icon:MODULES.finance.icon},
     {key:'accounting', label:'المحاسبة والتقارير المالية', icon:ICONS.accounting},
+    {key:'cashbox', label:'الخزينة والعهد', icon:ICONS.cashbox||ICONS.finance},
     {key:'quotations', label:MODULES.quotations.label, icon:MODULES.quotations.icon},
     {key:'contracts', label:MODULES.contracts.label, icon:MODULES.contracts.icon},
     {key:'assets', label:MODULES.assets.label, icon:MODULES.assets.icon},
@@ -2325,6 +2333,7 @@ function goTo(key){
   selectedQuotationId = null;
   selectedAssetId = null;
   selectedSupplierId = null;
+  if(typeof selectedCashboxId!=='undefined'){ selectedCashboxId = null; cashboxMonthView = null; }
   buildNav();
   renderPage();
 }
@@ -2874,6 +2883,7 @@ function renderPage(){
   else if(currentPage==='contracts'){ pagesEl.innerHTML = renderContractsPage(); attachContractsEvents(); }
   else if(currentPage==='quotations' && selectedQuotationId){ pagesEl.innerHTML = renderQuotationDetail(selectedQuotationId); attachQuotationDetailEvents(); }
   else if(currentPage==='quotations'){ pagesEl.innerHTML = renderQuotationsPage(); attachQuotationsEvents(); }
+  else if(currentPage==='cashbox'){ pagesEl.innerHTML = renderCashboxPage(); }
   else if(currentPage==='assets' && selectedAssetId){ pagesEl.innerHTML = renderAssetDetail(selectedAssetId); attachAssetDetailEvents(); }
   else if(currentPage==='assets'){ pagesEl.innerHTML = renderAssetsPage(); attachAssetsEvents(); }
   else{ pagesEl.innerHTML = renderModulePage(currentPage); attachModuleEvents(currentPage); }
@@ -6466,7 +6476,7 @@ function generateAutoEntries(){
     if(!amount) return;
     // ملحوظة: مرتب موظف بدون مشروع ثابت (زي مدير مالي/محاسب/سواق) لازم برضو يظهر كمصروف عام
     // في السجلات العامة، مش بس لما يكون مربوط بمشروع
-    payrollProjectSplit(h, pr.month, amount).forEach((s,idx)=>{
+    payrollProjectSplit(h, pr.month, amount, pr).forEach((s,idx)=>{
       if(s.amount) validSources.add('payroll:'+h._id+':'+pr.id+':'+idx);
     });
   }));
@@ -6485,10 +6495,12 @@ function generateAutoEntries(){
   }));
   // فواتير الموردين (مواد خام: أسمنت، حديد، رمل، طوب...): بنفس منطق فواتير العميل ومقاولي الباطن —
   // المصروف الفعلي في السجلات = المبلغ اللي اتسدد فعليًا للمورد بتاريخ كل دفعة، مش قيمة الفاتورة كاملة
-  DATA.suppliers.forEach(s=>(s.invoices||[]).forEach(inv=>(inv.payments||[]).forEach(p=>{
-    if(Number(p.amount)>0 && p.date) validSources.add('supplierpay:'+s._id+':'+inv.id+':'+p.id);
-  })));
+  // فواتير الموردين: قيمة الفاتورة كاملة بتتحسب مصروف على المشروع بتاريخها، والمتبقي بيظهر "مستحق للموردين" في المركز المالي
+  DATA.suppliers.forEach(s=>(s.invoices||[]).forEach(inv=>{
+    if(Number(inv.amount)>0 && inv.date) validSources.add('supinv:'+s._id+':'+inv.id);
+  }));
 
+  if(typeof cashboxValidSources==='function') cashboxValidSources(validSources);
   DATA.ledger = DATA.ledger.filter(e=> !e.source || validSources.has(e.source));
 
   function upsert(source, data){
@@ -6498,6 +6510,7 @@ function generateAutoEntries(){
       DATA.ledger.push(Object.assign({_id:'AUTO:'+source, _n:0, source}, data));
     }
   }
+  if(typeof cashboxAutoEntries==='function') cashboxAutoEntries(upsert);
   DATA.finance.filter(inv=>invoicePaidTotal(inv)>0).forEach(inv=>{
     const paidAmount = invoicePaidTotal(inv);
     const isPartial = paidAmount < (Number(inv.amount)||0);
@@ -6514,11 +6527,11 @@ function generateAutoEntries(){
     if(!pr.paid) return;
     const amount = Number(pr.netAmount)||0;
     if(!amount) return;
-    payrollProjectSplit(h, pr.month, amount).forEach((s,idx)=>{
+    payrollProjectSplit(h, pr.month, amount, pr).forEach((s,idx)=>{
       if(!s.amount) return;
       // مرتب بدون مشروع محدد (موظف عام زي مدير مالي/محاسب/سواق) بيتسجل كمصروف عام (project فاضي)
       // بنفس منطق "المصاريف الثابتة والعامة" — بيظهر في قائمة الدخل والسجلات العامة، وبيتوزع على المشاريع الجارية بس في تقارير كل مشروع لوحده
-      upsert('payroll:'+h._id+':'+pr.id+':'+idx, {date:pr.paidDate, type:'مصروف', account:'أجور ومرتبات', amount:s.amount, project:s.project||'', description:'راتب '+monthLabel(pr.month)+' — '+h.name+(s.project?'':' (مصروف عام — بدون مشروع محدد)')});
+      upsert('payroll:'+h._id+':'+pr.id+':'+idx, {date:pr.paidDate, type:'مصروف', account:'أجور ومرتبات', amount:s.amount, project:s.project||'', description:(isPartialRun(pr)?'تصفية حساب حتى '+pr.upTo:'راتب '+monthLabel(pr.month))+' — '+h.name+(s.project?'':' (مصروف عام — بدون مشروع محدد)')});
     });
   }));
   DATA.collections.forEach(c=>{
@@ -6547,11 +6560,12 @@ function generateAutoEntries(){
     if(!amount || !e.date) return;
     upsert('advance:'+h._id+':'+e.id, {date:e.date, type:'مصروف', account:'سلف الموظفين', amount, project:h.project||'', description:'سلفة لـ'+h.name+(e.note?(' - '+e.note):'')+' (تُخصم من صافي راتب '+monthLabel(monthKey(e.date))+')'+(h.project?'':' (مصروف عام — بدون مشروع محدد)')});
   }));
-  DATA.suppliers.forEach(s=>(s.invoices||[]).forEach(inv=>(inv.payments||[]).forEach(p=>{
-    const amount = Number(p.amount)||0;
-    if(!amount || !p.date) return;
-    upsert('supplierpay:'+s._id+':'+inv.id+':'+p.id, {date:p.date, type:'مصروف', account:'مشتريات من الموردين', amount, project:inv.project||'', description:'سداد لمورد: '+s.name+' — فاتورة '+(inv.number||inv.id)+(p.note?(' - '+p.note):'')+(inv.project?'':' (مصروف عام — بدون مشروع محدد)')});
-  })));
+  DATA.suppliers.forEach(s=>(s.invoices||[]).forEach(inv=>{
+    const amount = Number(inv.amount)||0;
+    if(!amount || !inv.date) return;
+    const rem = supplierInvoiceRemaining(inv);
+    upsert('supinv:'+s._id+':'+inv.id, {date:inv.date, type:'مصروف', account:'مشتريات من الموردين', amount, project:inv.project||'', description:'فاتورة مورد: '+s.name+(inv.number?(' — رقم '+inv.number):'')+(inv.note?(' — '+inv.note):'')+(rem>0?(' (مستحق للمورد '+fmtMoney(rem)+')'):' (مسددة)')+(inv.project?'':' (مصروف عام — بدون مشروع محدد)')});
+  }));
 }
 function ensureAssetShape(a){
   if(!Array.isArray(a.expenses)) a.expenses = [];
@@ -6578,7 +6592,7 @@ function ledgerTotals(filterProject){
 function computeCash(){
   const {totalRevenue, totalExpense} = ledgerTotals();
   const capital = Number(DATA.capital)||0;
-  return capital + totalRevenue - totalExpense - totalAssetsValue() - totalInventoryValue();
+  return capital + totalRevenue - totalExpense - totalAssetsValue() - totalInventoryValue() + (typeof supplierPayablesTotal==='function' ? supplierPayablesTotal() : 0);
 }
 function activeProjectNames(){
   // المشروع اللي اتسجل له تاريخ تسليم فعلي بيتوقف عن استقبال أي مصروفات عامة/ثابتة موزّعة تلقائيًا —
@@ -6622,7 +6636,7 @@ function computeOverheadShare(projectName){
       if(!pr.paid) return;
       const amount = Number(pr.netAmount)||0;
       if(!amount) return;
-      const splits = payrollProjectSplit(h, pr.month, amount);
+      const splits = payrollProjectSplit(h, pr.month, amount, pr);
       const unassigned = splits.find(s=>!s.project);
       if(!unassigned || !unassigned.amount) return;
       const targets = activeProjectNames();
@@ -6752,21 +6766,50 @@ function syncAbsenceDeduction(h, rec){
 }
 // أنواع بنود الراتب اللي بتُضاف (مش تُخصم) — "إضافي" لأي زيادة عامة (مكافأة، يوم زيادة...) و"مواصلات" لبدل الانتقال
 const PAYROLL_ADDITION_TYPES = ['إضافي','مواصلات'];
+// أجر اليوم المحفوظ مع سجل الحضور (ولو سجل قديم مالوش أجر محفوظ، بنستخدم اليومية الحالية)
+function attendanceRate(emp, a){
+  if(a && a.rate!==undefined && a.rate!==null && a.rate!=='') return Number(a.rate)||0;
+  return Number(emp.dailyWage)||0;
+}
+function isPartialRun(r){ return !!(r && r.partial); }
+// أول يوم في الشهر لسه متصفّاش (بعد آخر تصفية جزئية في نفس الشهر) — للموظف الشهري
+function monthlyCoverageDays(emp, month){
+  const dim = daysInMonthOf(month+'-01');
+  let startDay = 1, endDay = dim;
+  (emp.payrollRuns||[]).filter(r=>isPartialRun(r) && r.month===month && r.upTo).forEach(r=>{
+    const d = Number(r.upTo.slice(8,10))||0;
+    if(d+1>startDay) startDay = d+1;
+  });
+  if(emp.contractEndDate){
+    const em = monthKey(emp.contractEndDate);
+    if(em < month) return {days:0, dim};
+    if(em===month) endDay = Math.min(endDay, Number(emp.contractEndDate.slice(8,10))||dim);
+  }
+  return {days: Math.max(0, endDay-startDay+1), dim, startDay, endDay};
+}
 function computeMonthlyPayroll(emp, month){
   let base = 0;
   if(emp.employeeType==='يومي'){
-    const days = (emp.attendance||[]).filter(a=>monthKey(a.date)===month);
-    base = (Number(emp.dailyWage)||0) * days.reduce((s,a)=>s+attendanceUnits(a),0);
+    // الأيام اللي اتصفّت قبل كده (تصفية حساب) متتحسبش تاني في مرتب الشهر
+    const days = (emp.attendance||[]).filter(a=>monthKey(a.date)===month && !a.settled);
+    base = days.reduce((s,a)=>s+attendanceUnits(a)*attendanceRate(emp,a),0);
   }else{
-    base = Number(emp.monthlySalary)||0;
+    const cov = monthlyCoverageDays(emp, month);
+    const salary = Number(emp.monthlySalary)||0;
+    base = cov.days>=cov.dim ? salary : Math.round(salary*cov.days/cov.dim*100)/100;
   }
-  const entries = (emp.payrollEntries||[]).filter(e=>monthKey(e.date)===month).slice().sort((x,y)=>(x.date||'').localeCompare(y.date||''));
+  base = Math.round(base*100)/100;
+  const entries = (emp.payrollEntries||[]).filter(e=>monthKey(e.date)===month && !e.settled).slice().sort((x,y)=>(x.date||'').localeCompare(y.date||''));
   // بنود الإضافة (إضافي/مواصلات) بتتضاف للراتب — أي نوع تاني (سلفة/خصم) بيُخصم
   const additions = entries.filter(e=>PAYROLL_ADDITION_TYPES.includes(e.type)).reduce((s,e)=>s+(Number(e.amount)||0),0);
   const deductions = entries.filter(e=>!PAYROLL_ADDITION_TYPES.includes(e.type)).reduce((s,e)=>s+(Number(e.amount)||0),0);
   const net = base + additions - deductions;
-  const run = (emp.payrollRuns||[]).find(r=>r.month===month);
-  return {base, additions, deductions, net, entries, run, paid: !!(run && run.paid)};
+  const run = (emp.payrollRuns||[]).find(r=>r.month===month && !isPartialRun(r));
+  const partialRuns = (emp.payrollRuns||[]).filter(r=>r.month===month && isPartialRun(r));
+  const partialPaid = partialRuns.reduce((s,r)=>s+(Number(r.netAmount)||0),0);
+  // شهر اتصفّى بالكامل بتصفية حساب ومفيش حاجة باقية عليه
+  const settledAll = !run && partialRuns.length>0 && !base && !entries.length;
+  return {base, additions, deductions, net, entries, run, paid: !!(run && run.paid), partialRuns, partialPaid, settledAll};
 }
 // نص/HTML مختصر بيعرض صافي الإضافات والخصومات على راتب شهر معين (مستخدم في كل الأماكن اللي بتعرض ملخص الراتب)
 function fmtPayrollAdjustments(p){
@@ -6775,7 +6818,7 @@ function fmtPayrollAdjustments(p){
   if(p.deductions) parts.push(`<span style="color:var(--bad); font-weight:700;">- ${fmtMoney(p.deductions)}</span>`);
   return parts.length ? parts.join(' &nbsp;/&nbsp; ') : '—';
 }
-function payrollProjectSplit(emp, month, totalAmount){
+function payrollProjectSplit(emp, month, totalAmount, run){
   // بيوزّع مبلغ الراتب المدفوع على المشاريع اللي اشتغل فيها الموظف فعليًا في الشهر ده.
   // لو موظف شهري: كله على المشروع الثابت بتاعه (أو '' لو مفيش، يعني يتوزع بالتساوي تلقائيًا).
   // لو موظف يومي: كل يوم حضور بيتحسب على المشروع المحدد له وقت تسجيل الحضور (لو محدد)،
@@ -6783,11 +6826,12 @@ function payrollProjectSplit(emp, month, totalAmount){
   if(emp.employeeType!=='يومي'){
     return [{project: emp.project||'', amount: totalAmount}];
   }
-  const days = (emp.attendance||[]).filter(a=>monthKey(a.date)===month);
+  // دفعة تصفية حساب: بتتوزع على الأيام اللي اتصفّت فيها بس — والراتب العادي على الأيام اللي متصفّتش
+  const days = (emp.attendance||[]).filter(a=>monthKey(a.date)===month && (isPartialRun(run) ? a.settled===run.id : !a.settled));
   const units = {};
   let totalUnits = 0;
   days.forEach(a=>{
-    const u = attendanceUnits(a);
+    const u = attendanceUnits(a) * (attendanceRate(emp,a)||1);
     if(!u) return;
     const proj = (a.project && a.project.trim()) ? a.project.trim() : (emp.project || '');
     units[proj] = (units[proj]||0) + u;
@@ -6797,7 +6841,8 @@ function payrollProjectSplit(emp, month, totalAmount){
   return Object.keys(units).map(proj=>({project:proj, amount: totalAmount * (units[proj]/totalUnits)}));
 }
 function getEmployeeMonths(emp){
-  const set = new Set([todayMonth()]);
+  const set = new Set();
+  if(!(emp.contractEndDate && monthKey(emp.contractEndDate) < todayMonth())) set.add(todayMonth());
   (emp.attendance||[]).forEach(a=>{ if(a.date) set.add(monthKey(a.date)); });
   (emp.payrollEntries||[]).forEach(e=>{ if(e.date) set.add(monthKey(e.date)); });
   (emp.payrollRuns||[]).forEach(r=>{ if(r.month) set.add(r.month); });
@@ -6872,7 +6917,7 @@ function refreshMonthDetailActions(empId, month){
   const editable = canEdit('hr');
   const canModify = isAdmin();
   box.innerHTML = `
-    ${(!p.paid && editable) ? `<button class="btn" onclick="paySalary('${empId}','${month}'); refreshMonthDetailActions('${empId}','${month}'); document.getElementById('monthDetailBody').innerHTML = renderEmployeeMonthDetailBody(DATA.hr.find(r=>r._id==='${empId}'),'${month}');">صرف الراتب</button>` : ''}
+    ${(!p.paid && !p.settledAll && editable) ? `<button class="btn" onclick="paySalary('${empId}','${month}'); refreshMonthDetailActions('${empId}','${month}'); document.getElementById('monthDetailBody').innerHTML = renderEmployeeMonthDetailBody(DATA.hr.find(r=>r._id==='${empId}'),'${month}');">صرف الراتب</button>` : ''}
     ${(p.paid && canModify) ? `<button class="btn danger" onclick="unpaySalary('${empId}','${month}'); refreshMonthDetailActions('${empId}','${month}'); document.getElementById('monthDetailBody').innerHTML = renderEmployeeMonthDetailBody(DATA.hr.find(r=>r._id==='${empId}'),'${month}');">إلغاء الصرف</button>` : ''}
   `;
 }
@@ -6880,7 +6925,7 @@ function refreshMonthDetailActions(empId, month){
 /* ================= مزامنة تسجيل الحضور من صفحة الموبايل (Supabase) ================= */
 const SUPABASE_URL = 'https://rzpnyntgigmfxrncdbps.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_ZVBtA6kUeutOuTARAw8dWg_XpZJuMKf';
-const CHECKIN_APP_URL = 'https://yasserm978-dot.github.io/ERP/checkin.html';
+const CHECKIN_APP_URL = new URL('checkin.html', location.href).href;
 function openCheckinAppLink(){
   if(CHECKIN_APP_URL==='CHECKIN_APP_URL_PLACEHOLDER'){ alert('رابط صفحة تسجيل الحضور لسه مش متاح، تواصل مع الدعم.'); return; }
   openConfirmModal('هيتم فتح صفحة تسجيل الحضور للمشرفين في تبويب جديد. افتح نفس الرابط من موبايل كل مشرف وضيفه للشاشة الرئيسية.', ()=>{ window.open(CHECKIN_APP_URL, '_blank'); });
@@ -6957,7 +7002,7 @@ async function syncAttendance(){
       const status = row.status || 'حاضر';
       const units = Number(row.units)>0 ? Number(row.units) : 1;
       h.attendance.push({
-        id: h._id+'-ATT'+n, _n:n, date:dateStr, status:status, units:units,
+        id: h._id+'-ATT'+n, _n:n, date:dateStr, status:status, units:units, rate:Number(h.dailyWage)||0,
         note: 'تسجيل موبايل ('+(row.device_verified?'بصمة مؤكدة':'بدون تأكيد بصمة')+') — '+locNote,
         fromCheckin:true,
       });
@@ -7015,6 +7060,7 @@ function renderEmployeeDetail(id){
         ${canModify ? `<button class="btn secondary" onclick="openForm('hr','${h._id}')">تعديل بيانات الموظف</button>` : ''}
         ${attEdit ? `<button class="btn secondary" id="syncAttendanceBtn" onclick="syncAttendance()">🔄 مزامنة الحضور</button>` : ''}
         ${!attOnly ? `<button class="btn secondary" onclick="printEmployeeStatement('${h._id}')">🖨 طباعة كشف حساب</button>` : ''}
+        ${(!attOnly && hrFullAccess() && editable) ? `<button class="btn" onclick="openSettlementForm('${h._id}')">💵 تصفية حساب</button>` : ''}
       </div>
     </div>
     <div class="kpi-grid" style="margin-bottom:24px;">
@@ -7040,11 +7086,11 @@ function renderEmployeeDetail(id){
       <tbody>
         ${attendance.map(a=>`<tr>
           <td>${a.date||'—'}</td>
-          <td><span class="badge ${a.status==='حاضر'?'b-good':a.status==='غائب'?'b-bad':'b-warn'}">${a.status}</span>${fmtDayUnits(a)}</td>
+          <td><span class="badge ${a.status==='حاضر'?'b-good':a.status==='غائب'?'b-bad':'b-warn'}">${a.status}</span>${fmtDayUnits(a)}${a.settled?' <span class="badge b-good" title="اتصفّى في تصفية حساب">✓ مصفّى</span>':''}</td>
           ${h.employeeType==='يومي'?`<td>${a.project || '<span style="color:var(--text-dim)">'+(h.project?'(افتراضي: '+h.project+')':'غير محدد — يوزّع تلقائي')+'</span>'}</td>`:''}
           <td>${a.note||'—'}</td>
           <td class="row-actions">
-            ${canModify ? `<button class="btn secondary small" data-attedit="${h._id}|${a.id}">تعديل</button>
+            ${(canModify && !a.settled) ? `<button class="btn secondary small" data-attedit="${h._id}|${a.id}">تعديل</button>
             <button class="btn danger small" data-attdel="${h._id}|${a.id}">حذف</button>` : ''}
           </td>
         </tr>`).join('')}
@@ -7066,9 +7112,9 @@ function renderEmployeeDetail(id){
           <td>${monthLabel(monthKey(e.date))}</td>
           <td><span class="badge ${PAYROLL_ADDITION_TYPES.includes(e.type)?'b-good':'b-bad'}">${e.type}</span></td>
           <td style="font-weight:700; color:${PAYROLL_ADDITION_TYPES.includes(e.type)?'var(--good)':'var(--bad)'};">${PAYROLL_ADDITION_TYPES.includes(e.type)?'+ ':'- '}${fmtMoney(e.amount)}</td>
-          <td>${e.note||'—'}</td>
+          <td>${e.note||'—'}${e.settled?' <span class="badge b-good">✓ مصفّى</span>':''}</td>
           <td class="row-actions">
-            ${canModify ? `<button class="btn secondary small" data-payedit="${h._id}|${e.id}">تعديل</button>
+            ${(canModify && !e.settled) ? `<button class="btn secondary small" data-payedit="${h._id}|${e.id}">تعديل</button>
             <button class="btn danger small" data-paydel="${h._id}|${e.id}">حذف</button>` : ''}
           </td>
         </tr>`).join('')}
@@ -7076,6 +7122,7 @@ function renderEmployeeDetail(id){
     </table></div></div>
     ` : `<div class="table-wrap" style="margin-bottom:28px;"><div class="empty-state">لا توجد سلف أو خصومات مسجلة</div></div>`}
 
+    ${renderEmployeeSettlementsSection(h)}
     <div class="section-title">💰 الرواتب الشهرية</div>
     <div class="table-wrap" style="margin-bottom:28px;"><div class="table-scroll"><table>
       <thead><tr><th>الشهر</th><th>الأساسي</th><th>الإضافات/الخصومات</th><th>الصافي</th><th>الحالة</th><th></th></tr></thead>
@@ -7087,9 +7134,9 @@ function renderEmployeeDetail(id){
             <td>${fmtMoney(p.base)}</td>
             <td>${fmtPayrollAdjustments(p)}</td>
             <td style="font-weight:700;">${fmtMoney(p.net)}</td>
-            <td>${p.paid ? `<span class="badge b-good">تم الصرف${p.run&&p.run.paidDate?' — '+p.run.paidDate:''}</span>` : '<span class="badge b-warn">لم يُصرف</span>'}</td>
+            <td>${p.settledAll ? '<span class="badge b-good">اتصفّى بالكامل</span>' : p.paid ? `<span class="badge b-good">تم الصرف${p.run&&p.run.paidDate?' — '+p.run.paidDate:''}</span>` : '<span class="badge b-warn">لم يُصرف</span>'}${p.partialPaid ? `<div style="font-size:11.5px; color:var(--text-dim); margin-top:3px;">اتصرف منه بتصفية: ${fmtMoney(p.partialPaid)}</div>` : ''}</td>
             <td class="row-actions" onclick="event.stopPropagation();">
-              ${(!p.paid && editable) ? `<button class="btn small" onclick="paySalary('${h._id}','${m}')">صرف الراتب</button>` : ''}
+              ${(!p.paid && !p.settledAll && editable) ? `<button class="btn small" onclick="paySalary('${h._id}','${m}')">صرف الراتب</button>` : ''}
               ${(p.paid && canModify) ? `<button class="btn danger small" onclick="unpaySalary('${h._id}','${m}')">إلغاء الصرف</button>` : ''}
             </td>
           </tr>`;
@@ -7643,7 +7690,7 @@ function quickMarkToday(empId){
     return;
   }
   const n = (h.attendance.length ? Math.max(...h.attendance.map(x=>x._n||0)) : 0)+1;
-  const rec = {id:h._id+'-ATT'+n, _n:n, date:today, status:'حاضر', note:''};
+  const rec = {id:h._id+'-ATT'+n, _n:n, date:today, status:'حاضر', note:'', rate:Number(h.dailyWage)||0};
   h.attendance.push(rec);
   syncAbsenceDeduction(h, rec);
   logAudit('إضافة', 'حضور موظف', h.name, today+' - حاضر');
@@ -7709,8 +7756,11 @@ function saveAttendance(){
   let rec;
   if(editId){
     rec = h.attendance.find(a=>a.id===editId);
+    if(rec && rec.settled){ alert('اليوم ده اتصفّى في تصفية حساب — مينفعش يتعدّل إلا لو التصفية اتلغت الأول'); return; }
+    if(rec && date!==rec.date && isDateSettledFor(h, date)){ alert('التاريخ ده داخل فترة اتصفّت بالفعل ('+date+') — مينفعش تنقل اليوم ليها'); return; }
     if(rec){ rec.date=date; rec.status=status; rec.note=note; rec.project=project; rec.units=units; }
   }else{
+    if(isDateSettledFor(h, date)){ alert('التاريخ '+date+' داخل فترة اتصفّت بالفعل في تصفية حساب — مينفعش تسجل عليه'); return; }
     // اليوم اللي تم إثبات حضوره/تسجيله قبل كده متسجّلش تاني إلا لو المدير حذفه الأول
     const dup = h.attendance.find(a=>a.date===date);
     if(dup){
@@ -7718,7 +7768,7 @@ function saveAttendance(){
       return;
     }
     const n = (h.attendance.length ? Math.max(...h.attendance.map(x=>x._n||0)) : 0)+1;
-    rec = {id:h._id+'-ATT'+n, _n:n, date, status, note, project, units};
+    rec = {id:h._id+'-ATT'+n, _n:n, date, status, note, project, units, rate:Number(h.dailyWage)||0};
     h.attendance.push(rec);
   }
   if(rec) syncAbsenceDeduction(h, rec);
@@ -7756,6 +7806,8 @@ function deleteAttendance(empId, entryId){
   if(!isAdmin()) return;
   const h = DATA.hr.find(r=>r._id===empId);
   if(!h) return;
+  const attRec = (h.attendance||[]).find(a=>a.id===entryId);
+  if(attRec && attRec.settled){ alert('اليوم ده اتصفّى في تصفية حساب — مينفعش يتحذف إلا لو التصفية اتلغت الأول'); return; }
   openConfirmModal('هل أنت متأكد من حذف يوم الحضور ده؟\n(لو كان يوم غياب وليه خصم تلقائي مرتبط بيه، هيتشال الخصم برضو)', ()=>{
     h.attendance = (h.attendance||[]).filter(a=>a.id!==entryId);
     // شيل أي خصم غياب تلقائي كان مرتبط بيوم الحضور المحذوف ده
@@ -7795,8 +7847,11 @@ function savePayEntry(){
   if(!Array.isArray(h.payrollEntries)) h.payrollEntries = [];
   if(editId){
     const rec = h.payrollEntries.find(e=>e.id===editId);
+    if(rec && rec.settled){ alert('البند ده اتصفّى في تصفية حساب — مينفعش يتعدّل إلا لو التصفية اتلغت الأول'); return; }
+    if(rec && date!==rec.date && isDateSettledFor(h, date)){ alert('التاريخ ده داخل فترة اتصفّت بالفعل — اختار تاريخ بعد آخر تصفية'); return; }
     if(rec){ rec.date=date; rec.type=type; rec.amount=amount; rec.note=note; }
   }else{
+    if(isDateSettledFor(h, date)){ alert('التاريخ '+date+' داخل فترة اتصفّت بالفعل في تصفية حساب — اختار تاريخ بعد آخر تصفية'); return; }
     const n = (h.payrollEntries.length ? Math.max(...h.payrollEntries.map(x=>x._n||0)) : 0)+1;
     h.payrollEntries.push({id:h._id+'-PAY'+n, _n:n, date, type, amount, note});
   }
@@ -7809,6 +7864,8 @@ function deletePayEntry(empId, entryId){
   if(!isAdmin()) return;
   const h = DATA.hr.find(r=>r._id===empId);
   if(!h) return;
+  const payRec = (h.payrollEntries||[]).find(e=>e.id===entryId);
+  if(payRec && payRec.settled){ alert('البند ده اتصفّى في تصفية حساب — مينفعش يتحذف إلا لو التصفية اتلغت الأول'); return; }
   openConfirmModal('هل أنت متأكد من حذف هذا البند؟', ()=>{
     h.payrollEntries = (h.payrollEntries||[]).filter(e=>e.id!==entryId);
     logAudit('حذف', 'سلفة/خصم موظف', h.name);
@@ -7822,7 +7879,7 @@ function paySalary(empId, month){
   if(!h) return;
   const {base, deductions, net} = computeMonthlyPayroll(h, month);
   if(!Array.isArray(h.payrollRuns)) h.payrollRuns = [];
-  let run = h.payrollRuns.find(r=>r.month===month);
+  let run = h.payrollRuns.find(r=>r.month===month && !isPartialRun(r));
   if(!run){
     const n = (h.payrollRuns.length ? Math.max(...h.payrollRuns.map(x=>x._n||0)) : 0)+1;
     run = {id:h._id+'-RUN'+n, _n:n, month};
@@ -7838,7 +7895,7 @@ function unpaySalary(empId, month){
   const h = DATA.hr.find(r=>r._id===empId);
   if(!h) return;
   openConfirmModal('هل أنت متأكد من إلغاء صرف راتب هذا الشهر؟ هيتشال من المصروفات المسجّلة.', ()=>{
-    h.payrollRuns = (h.payrollRuns||[]).filter(r=>r.month!==month);
+    h.payrollRuns = (h.payrollRuns||[]).filter(r=>!(r.month===month && !isPartialRun(r)));
     logAudit('إلغاء صرف راتب', 'راتب موظف', h.name, month);
     saveData();
     renderPage();
@@ -7961,13 +8018,14 @@ function printBalanceTabDoc(){
   const capital = Number(DATA.capital)||0;
   const collectedTax = computeCollectedTaxTotal();
   const totalAssets = cash + inventory + fixedAssets;
-  const totalLiabEquity = capital + net;
+  const payables = (typeof supplierPayablesTotal==='function' ? supplierPayablesTotal() : 0);
+  const totalLiabEquity = capital + net + payables;
   const assetsRows = `<tr><td>النقدية والبنوك</td><td>${fmtMoney(cash)}</td></tr>
     <tr><td>المخزون (المواد)</td><td>${fmtMoney(inventory)}</td></tr>
     <tr><td>الأصول الثابتة (المعدات)</td><td>${fmtMoney(fixedAssets)}</td></tr>
     <tr style="font-weight:900;"><td>إجمالي الأصول</td><td>${fmtMoney(totalAssets)}</td></tr>`;
   const liabRows = `<tr><td>ضرائب محصلة (ضريبة قيمة مضافة على مستخلصات صادرة — مستحقة لمصلحة الضرائب)</td><td>${fmtMoney(collectedTax)}</td></tr>
-    <tr><td>التزامات أخرى (مستحقات غير مسددة بعد)</td><td>${fmtMoney(0)}</td></tr>
+    <tr><td>مستحق للموردين (فواتير لم تُسدد بعد)</td><td>${fmtMoney(payables)}</td></tr>
     <tr><td>رأس المال</td><td>${fmtMoney(capital)}</td></tr>
     <tr><td>الأرباح المرحلة (صافي الربح الحالي)</td><td>${fmtMoney(net)}</td></tr>
     <tr style="font-weight:900;"><td>إجمالي الالتزامات وحقوق الملكية</td><td>${fmtMoney(totalLiabEquity)}</td></tr>`;
@@ -8128,7 +8186,8 @@ function renderBalanceTab(){
   const capital = Number(DATA.capital)||0;
   const collectedTax = computeCollectedTaxTotal();
   const totalAssets = cash + inventory + fixedAssets;
-  const totalLiabEquity = capital + net;
+  const payables = (typeof supplierPayablesTotal==='function' ? supplierPayablesTotal() : 0);
+  const totalLiabEquity = capital + net + payables;
   const balanced = Math.abs(totalAssets-totalLiabEquity)<1;
 
   return `
@@ -8149,7 +8208,7 @@ function renderBalanceTab(){
       <div class="table-wrap" style="padding:18px;">
         <div class="section-title" style="margin-top:0;">الالتزامات وحقوق الملكية</div>
         <div style="display:flex; justify-content:space-between; padding:7px 0; border-bottom:1px solid var(--border);"><span>ضرائب محصلة (ضريبة قيمة مضافة على مستخلصات صادرة — مستحقة لمصلحة الضرائب)</span><span>${fmtMoney(collectedTax)}</span></div>
-        <div style="display:flex; justify-content:space-between; padding:7px 0; border-bottom:1px solid var(--border);"><span>التزامات أخرى (مستحقات غير مسددة بعد)</span><span>${fmtMoney(0)}</span></div>
+        <div style="display:flex; justify-content:space-between; padding:7px 0; border-bottom:1px solid var(--border);"><span>مستحق للموردين (فواتير لم تُسدد بعد)</span><span>${fmtMoney(payables)}</span></div>
         <div style="display:flex; justify-content:space-between; padding:7px 0; border-bottom:1px solid var(--border);"><span>رأس المال</span><span>${fmtMoney(capital)}</span></div>
         <div style="display:flex; justify-content:space-between; padding:7px 0; border-bottom:1px solid var(--border);"><span>الأرباح المرحلة (صافي الربح الحالي)</span><span>${fmtMoney(net)}</span></div>
         <div style="display:flex; justify-content:space-between; padding:10px 0; font-weight:900;"><span>إجمالي الالتزامات وحقوق الملكية</span><span>${fmtMoney(totalLiabEquity)}</span></div>
@@ -8635,6 +8694,7 @@ function renderProjectDetail(id){
       <div style="display:flex; gap:8px; flex-wrap:wrap;">
         ${canModify ? `<button class="btn secondary" onclick="openForm('projects','${p._id}')">تعديل بيانات المشروع</button>` : ''}
         ${editable ? `<button class="btn secondary" onclick="openExpenseForm('${p.name}')">+ إضافة مصروف</button>
+        ${canEdit('suppliers') ? `<button class="btn secondary" onclick="openProjectPurchaseForm(${JSON.stringify(p.name).replace(/"/g,'&quot;')})">+ مشتريات من مورد</button>` : ''}
         <button class="btn" onclick="openCollectionForm('${p.name}')">+ تحصيل دفعة جديدة</button>
         <button class="btn secondary" onclick="openAdjustmentForm('${p._id}')">+ خصم / غرامة / تأمين</button>` : ''}
         <button class="btn secondary" onclick="printProjectStatement('${p._id}')">🖨 طباعة كشف حساب المشروع</button>
@@ -8798,6 +8858,7 @@ function renderProjectDetail(id){
     </table></div></div>
     ` : `<div class="table-wrap" style="margin-bottom:24px;"><div class="empty-state">لا توجد خصومات أو غرامات أو تأمين محجوز مسجلة على هذا المشروع</div></div>`}
 
+    ${renderProjectSupplierSection(p)}
     ${renderProjectEquipmentSection(p)}
     <div class="section-title">بنود الصرف على المشروع</div>
     <div style="display:flex; align-items:center; gap:10px; margin-bottom:12px; flex-wrap:wrap;">
@@ -9449,7 +9510,7 @@ async function sendTestWhatsapp(){
 const PERM_LABELS = {
   projects:'المشاريع', subs:'مقاولو الباطن', suppliers:'الموردون', materials:'المخزون والمشتريات',
   hr:'الموارد البشرية', finance:'الحسابات والفواتير', accounting:'المحاسبة والتقارير المالية',
-  contracts:'العقود', assets:'الأصول والمعدات', quotations:'عروض الأسعار',
+  contracts:'العقود', assets:'الأصول والمعدات', quotations:'عروض الأسعار', cashbox:'الخزينة والعهد',
 };
 const PERM_MODULE_KEYS = Object.keys(PERM_LABELS);
 
@@ -10172,6 +10233,846 @@ function onAssetExpenseDateChange(){
   const d = document.getElementById('assetexp-date').value;
   const sel = document.getElementById('assetexp-project');
   if(sel) sel.value = assetLocationAt(a, d);
+}
+</script>
+<script>
+ICONS.cashbox = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/><circle cx="16" cy="14.5" r="1.6"/><path d="M7 6V4.5A1.5 1.5 0 0 1 8.5 3h7A1.5 1.5 0 0 1 17 4.5V6"/></svg>';
+/* ================= الخزينة والعهد النقدية ================= */
+/* كل عهدة/خزينة: رصيد افتتاحي + حركات (تغذية / مصروف) + إقفال شهري
+   (ترحيل الرصيد للشهر التالي — أو توريد للبنك — أو تسوية لحد الصفر).
+   المصروفات بتنزل تلقائيًا قيود مصروف في المحاسبة وعلى المشروع لو محدد. */
+const CASH_ACTIONS = {
+  carry:  'ترحيل للشهر التالي',
+  bank:   'توريد للبنك',
+  settle: 'تسوية حتى الصفر',
+};
+let selectedCashboxId = null;
+let cashboxMonthView = null;
+
+function cbMonth(d){ return String(d||'').slice(0,7); }
+function cbMonthLabel(m){
+  if(!m) return '—';
+  const [y, mo] = m.split('-').map(Number);
+  const names = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+  return (names[(mo||1)-1]||m)+' '+y;
+}
+function cbNextMonth(m){
+  let [y, mo] = m.split('-').map(Number);
+  mo++; if(mo>12){ mo=1; y++; }
+  return y+'-'+String(mo).padStart(2,'0');
+}
+function ensureCashboxShape(b){
+  if(!Array.isArray(b.entries)) b.entries = [];
+  if(!Array.isArray(b.closings)) b.closings = [];
+  if(b.openingBalance===undefined) b.openingBalance = 0;
+  if(!b.openingDate) b.openingDate = todayStr();
+}
+function canEditCashbox(){ return canEdit('cashbox'); }
+
+/* حساب الشهور: رصيد أول المدة، التغذية، المصروفات، الرصيد، وحالة الإقفال */
+function computeCashboxMonths(b){
+  ensureCashboxShape(b);
+  const firstMonth = [cbMonth(b.openingDate)].concat(b.entries.map(e=>cbMonth(e.date)), b.closings.map(c=>c.month)).filter(Boolean).sort()[0] || cbMonth(todayStr());
+  const lastMonth = [cbMonth(todayStr())].concat(b.entries.map(e=>cbMonth(e.date)), b.closings.map(c=>c.month)).filter(Boolean).sort().slice(-1)[0];
+  const months = [];
+  let opening = Number(b.openingBalance)||0;
+  for(let m = firstMonth; m <= lastMonth; m = cbNextMonth(m)){
+    const inMonth = b.entries.filter(e=>cbMonth(e.date)===m);
+    const receipts = inMonth.filter(e=>e.type==='تغذية').reduce((s,e)=>s+(Number(e.amount)||0),0);
+    const spends = inMonth.filter(e=>e.type==='مصروف').reduce((s,e)=>s+(Number(e.amount)||0),0);
+    const balance = round2(opening + receipts - spends);
+    const closing = b.closings.find(c=>c.month===m) || null;
+    const final = closing ? (closing.action==='carry' ? balance : 0) : balance;
+    months.push({month:m, opening:round2(opening), receipts:round2(receipts), spends:round2(spends), balance, closing, final:round2(final), count:inMonth.length});
+    opening = final;
+    if(months.length>600) break;
+  }
+  return months;
+}
+function cashboxCurrentBalance(b){
+  const ms = computeCashboxMonths(b);
+  return ms.length ? ms[ms.length-1].final : (Number(b.openingBalance)||0);
+}
+function isCashboxMonthClosed(b, m){ return (b.closings||[]).some(c=>c.month===m); }
+function firstOpenCashboxMonth(b){
+  const open = computeCashboxMonths(b).find(x=>!x.closing);
+  return open ? open.month : null;
+}
+
+/* ---------- ربط المصروفات بالمحاسبة ---------- */
+function cashboxValidSources(set){
+  (DATA.cashboxes||[]).forEach(b=>(b.entries||[]).forEach(e=>{
+    // صرف مربوط بتصفية حساب: المصروف متسجل خلاص كـ"أجور ومرتبات" من التصفية نفسها، فهنا بيأثر على رصيد العهدة بس
+    if(e.type==='مصروف' && Number(e.amount)>0 && e.date && !e.linkedSettlement) set.add('cashbox:'+b._id+':'+e.id);
+  }));
+}
+function cashboxAutoEntries(upsert){
+  (DATA.cashboxes||[]).forEach(b=>(b.entries||[]).forEach(e=>{
+    if(e.type!=='مصروف' || !(Number(e.amount)>0) || !e.date || e.linkedSettlement) return;
+    upsert('cashbox:'+b._id+':'+e.id, {
+      date:e.date, type:'مصروف', account:e.account||'مصروفات أخرى', amount:Number(e.amount)||0, project:e.project||'',
+      description:'مصروف من عهدة '+b.name+(b.custodian?(' ('+b.custodian+')'):'')+(e.description?(' — '+e.description):'')+(e.ref?(' — إيصال '+e.ref):'')+(e.project?'':' (مصروف عام — بدون مشروع محدد)'),
+    });
+  }));
+}
+
+/* ---------- الصفحة الرئيسية ---------- */
+function renderCashboxPage(){
+  if(selectedCashboxId) return renderCashboxDetail(selectedCashboxId);
+  const boxes = DATA.cashboxes || [];
+  const editable = canEditCashbox();
+  const nowM = cbMonth(todayStr());
+  const total = boxes.reduce((s,b)=>s+cashboxCurrentBalance(b),0);
+  return `
+    <div class="page-head">
+      <div>
+        <div class="page-title">الخزينة والعهد النقدية</div>
+        <div class="page-desc">متابعة كل خزينة أو عهدة نقدية: التغذية، المصروفات، والإقفال الشهري (ترحيل الرصيد، أو توريد للبنك، أو تسوية لحد الصفر)</div>
+      </div>
+      ${editable ? `<button class="btn" onclick="openCashboxForm()">+ خزينة / عهدة جديدة</button>` : ''}
+    </div>
+    <div class="kpi-grid" style="margin-bottom:18px;">
+      <div class="kpi"><div class="kpi-label">إجمالي الأرصدة النقدية في كل العهد</div><div class="kpi-value">${fmtMoney(total)}</div></div>
+      <div class="kpi"><div class="kpi-label">عدد الخزائن والعهد</div><div class="kpi-value">${boxes.length}</div></div>
+    </div>
+    ${boxes.length ? `
+    <div class="table-wrap"><div class="table-scroll"><table>
+      <thead><tr><th>الخزينة / العهدة</th><th>المسؤول عنها</th><th>النوع</th><th>الرصيد الحالي</th><th>مصروفات ${cbMonthLabel(nowM)}</th><th>أقدم شهر مفتوح</th></tr></thead>
+      <tbody>
+        ${boxes.map(b=>{
+          const ms = computeCashboxMonths(b);
+          const cur = ms.find(x=>x.month===nowM);
+          const openM = firstOpenCashboxMonth(b);
+          const bal = cashboxCurrentBalance(b);
+          return `<tr style="cursor:pointer;" onclick="openCashboxDetail('${b._id}')">
+            <td style="font-weight:700;">${b.name}</td>
+            <td>${b.custodian||'—'}</td>
+            <td><span class="badge b-neutral">${b.kind||'عهدة'}</span></td>
+            <td style="font-weight:700; color:${bal<0?'var(--bad)':'inherit'};">${fmtMoney(bal)}</td>
+            <td>${fmtMoney(cur?cur.spends:0)}</td>
+            <td>${openM ? (openM<nowM ? `<span class="badge b-warn">${cbMonthLabel(openM)} — محتاج إقفال</span>` : cbMonthLabel(openM)) : '—'}</td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table></div></div>` : `<div class="table-wrap"><div class="empty-state">لا توجد خزائن أو عهد مسجلة بعد${editable?`<br><button class="btn small" style="margin-top:12px" onclick="openCashboxForm()">إضافة أول عهدة</button>`:''}</div></div>`}
+  `;
+}
+function openCashboxDetail(id){ selectedCashboxId = id; cashboxMonthView = null; renderPage(); }
+function backToCashboxList(){ selectedCashboxId = null; cashboxMonthView = null; renderPage(); }
+function setCashboxMonthView(m){ cashboxMonthView = m; renderPage(); }
+
+/* ---------- تفاصيل العهدة ---------- */
+function renderCashboxDetail(id){
+  const b = (DATA.cashboxes||[]).find(x=>x._id===id);
+  if(!b){ selectedCashboxId = null; return renderCashboxPage(); }
+  const editable = canEditCashbox();
+  const admin = isAdmin();
+  const months = computeCashboxMonths(b);
+  const nowM = cbMonth(todayStr());
+  const viewM = (cashboxMonthView && months.some(x=>x.month===cashboxMonthView)) ? cashboxMonthView : (months.find(x=>x.month===nowM) ? nowM : months[months.length-1].month);
+  const mv = months.find(x=>x.month===viewM);
+  const openM = firstOpenCashboxMonth(b);
+  const lastClosing = (b.closings||[]).slice().sort((x,y)=>x.month.localeCompare(y.month)).slice(-1)[0];
+  const entries = (b.entries||[]).filter(e=>cbMonth(e.date)===viewM).sort((x,y)=>((x.date||'').localeCompare(y.date||'')) || ((x._n||0)-(y._n||0)));
+  let running = mv.opening;
+  const bal = cashboxCurrentBalance(b);
+  return `
+    <button class="btn secondary small" onclick="backToCashboxList()" style="margin-bottom:16px;">→ رجوع لكل الخزائن والعهد</button>
+    <div class="page-head">
+      <div>
+        <div class="page-title">${b.name}</div>
+        <div class="page-desc">${b.kind||'عهدة'}${b.custodian?' — مسؤول: '+b.custodian:''}${b.project?' — مشروع: '+b.project:''}</div>
+      </div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        ${editable ? `<button class="btn secondary" onclick="openCashEntryForm('${b._id}','تغذية')">+ تغذية العهدة</button>
+        <button class="btn" onclick="openCashEntryForm('${b._id}','مصروف')">+ صرف من العهدة</button>` : ''}
+        ${editable && openM ? `<button class="btn secondary" onclick="openCashCloseForm('${b._id}')">🔒 إقفال ${cbMonthLabel(openM)}</button>` : ''}
+        <button class="btn secondary" onclick="printCashboxMonth('${b._id}','${viewM}')">🖨 كشف الشهر</button>
+        ${admin ? `<button class="btn secondary small" onclick="openCashboxForm('${b._id}')">تعديل</button>
+        <button class="btn danger small" onclick="deleteCashbox('${b._id}')">حذف</button>` : ''}
+      </div>
+    </div>
+    <div class="kpi-grid" style="margin-bottom:18px;">
+      <div class="kpi ${bal<0?'alert':'ok'}"><div class="kpi-label">الرصيد الحالي في العهدة</div><div class="kpi-value">${fmtMoney(bal)}</div></div>
+      <div class="kpi"><div class="kpi-label">تغذية ${cbMonthLabel(viewM)}</div><div class="kpi-value">${fmtMoney(mv.receipts)}</div></div>
+      <div class="kpi"><div class="kpi-label">مصروفات ${cbMonthLabel(viewM)}</div><div class="kpi-value">${fmtMoney(mv.spends)}</div></div>
+      <div class="kpi"><div class="kpi-label">حالة الشهر</div><div style="margin-top:6px; font-weight:700;">${mv.closing ? '🔒 مقفول — '+CASH_ACTIONS[mv.closing.action] : '🔓 مفتوح'}</div></div>
+    </div>
+    ${bal<0 ? `<div style="padding:10px 14px; border-radius:6px; margin-bottom:14px; font-size:13px; background:rgba(193,84,60,.12); color:var(--bad);">⚠ الرصيد بالسالب: المسؤول عن العهدة صرف من جيبه أكتر من اللي استلمه — محتاج تغذية أو تسوية.</div>` : ''}
+
+    <div class="toolbar" style="gap:8px; align-items:center;">
+      <label style="font-size:12.5px; color:var(--text-dim);">الشهر:</label>
+      <select onchange="setCashboxMonthView(this.value)" style="background:var(--surface); border:1px solid var(--border); color:var(--text); padding:8px 10px; border-radius:6px; font-family:inherit;">
+        ${months.slice().reverse().map(x=>`<option value="${x.month}" ${x.month===viewM?'selected':''}>${cbMonthLabel(x.month)}${x.closing?' 🔒':''}</option>`).join('')}
+      </select>
+    </div>
+
+    <div class="table-wrap" style="margin-bottom:24px;"><div class="table-scroll"><table>
+      <thead><tr><th>التاريخ</th><th>البيان</th><th>الحساب / المصدر</th><th>المشروع</th><th>وارد</th><th>منصرف</th><th>الرصيد</th><th></th></tr></thead>
+      <tbody>
+        <tr style="background:var(--surface-2);"><td>—</td><td colspan="5" style="font-weight:700;">رصيد أول الشهر (مرحّل)</td><td style="font-weight:700;">${fmtMoney(mv.opening)}</td><td></td></tr>
+        ${entries.map(e=>{
+          const isIn = e.type==='تغذية';
+          running = round2(running + (isIn?1:-1)*(Number(e.amount)||0));
+          return `<tr>
+            <td>${e.date||'—'}</td>
+            <td>${isIn?'<span class="badge b-good">تغذية</span> ':''}${e.description||'—'}${e.ref?` <span style="color:var(--text-dim); font-size:11.5px;">(إيصال ${e.ref})</span>`:''}${e.by?`<div style="color:var(--text-dim); font-size:11px;">بواسطة ${e.by}</div>`:''}</td>
+            <td>${isIn ? (e.source||'—') : (e.account||'—')}</td>
+            <td>${e.project||'<span style="color:var(--text-dim)">—</span>'}</td>
+            <td style="color:var(--good); font-weight:700;">${isIn?fmtMoney(e.amount):''}</td>
+            <td style="color:var(--bad); font-weight:700;">${!isIn?fmtMoney(e.amount):''}</td>
+            <td>${fmtMoney(running)}</td>
+            <td class="row-actions">${e.linkedSettlement ? '<span class="badge b-neutral" title="بيتلغي من صفحة العامل (إلغاء التصفية)">تصفية حساب</span>' : admin && !mv.closing ? `<button class="btn secondary small" onclick="openCashEntryForm('${b._id}','${e.type}','${e.id}')">تعديل</button><button class="btn danger small" onclick="deleteCashEntry('${b._id}','${e.id}')">حذف</button>` : ''}</td>
+          </tr>`;
+        }).join('') || `<tr><td colspan="8" style="text-align:center; color:var(--text-dim);">لا توجد حركات في الشهر ده</td></tr>`}
+        <tr style="background:var(--surface-2); font-weight:900;"><td></td><td colspan="3">الإجمالي والرصيد آخر الشهر</td><td>${fmtMoney(mv.receipts)}</td><td>${fmtMoney(mv.spends)}</td><td>${fmtMoney(mv.balance)}</td><td></td></tr>
+        ${mv.closing ? `<tr><td>${mv.closing.date||'—'}</td><td colspan="5">🔒 إقفال الشهر: <b>${CASH_ACTIONS[mv.closing.action]}</b>${mv.closing.action!=='carry'?` بمبلغ ${fmtMoney(Math.abs(mv.closing.amount||0))}${mv.closing.action==='settle'?((mv.closing.amount||0)>=0?' (رد نقدي من المسؤول)':' (تعويض للمسؤول عن العجز)'):''}`:''}${mv.closing.note?' — '+mv.closing.note:''}${mv.closing.by?` <span style="color:var(--text-dim); font-size:11.5px;">(بواسطة ${mv.closing.by})</span>`:''}</td><td style="font-weight:900;">${fmtMoney(mv.final)}</td><td class="row-actions">${admin && lastClosing && lastClosing.month===mv.month ? `<button class="btn danger small" onclick="reopenCashboxMonth('${b._id}','${mv.month}')">إلغاء الإقفال</button>` : ''}</td></tr>` : ''}
+      </tbody>
+    </table></div></div>
+
+    <div class="section-title">ملخص الشهور</div>
+    <div class="table-wrap"><div class="table-scroll"><table>
+      <thead><tr><th>الشهر</th><th>أول المدة</th><th>التغذية</th><th>المصروفات</th><th>الرصيد</th><th>الإقفال</th><th>المرحّل للشهر التالي</th></tr></thead>
+      <tbody>${months.slice().reverse().map(x=>`<tr style="cursor:pointer;" onclick="setCashboxMonthView('${x.month}')">
+        <td>${cbMonthLabel(x.month)}</td><td>${fmtMoney(x.opening)}</td><td>${fmtMoney(x.receipts)}</td><td>${fmtMoney(x.spends)}</td>
+        <td style="font-weight:700;">${fmtMoney(x.balance)}</td>
+        <td>${x.closing ? `<span class="badge ${x.closing.action==='carry'?'b-neutral':'b-good'}">${CASH_ACTIONS[x.closing.action]}</span>` : (x.month<nowM?'<span class="badge b-warn">محتاج إقفال</span>':'<span class="badge b-neutral">مفتوح</span>')}</td>
+        <td>${fmtMoney(x.final)}</td>
+      </tr>`).join('')}</tbody>
+    </table></div></div>
+  `;
+}
+
+/* ---------- نوافذ الإدخال ---------- */
+function cbOverlay(id, title, body){
+  let ov = document.getElementById(id);
+  if(!ov){ ov = document.createElement('div'); ov.id = id; ov.className = 'overlay'; document.body.appendChild(ov); }
+  ov.innerHTML = `<div class="modal"><div class="modal-head"><h3>${title}</h3><button class="modal-close" onclick="document.getElementById('${id}').classList.remove('open')">×</button></div><div class="modal-body">${body}</div></div>`;
+  ov.classList.add('open');
+  return ov;
+}
+function cbClose(id){ const ov = document.getElementById(id); if(ov) ov.classList.remove('open'); }
+function cbProjectOptions(selected){
+  return `<option value="">بدون مشروع (مصروف عام)</option>` + DATA.projects.map(p=>`<option value="${p.name}" ${p.name===selected?'selected':''}>${p.name}</option>`).join('');
+}
+
+let cashboxFormEditId = null;
+function openCashboxForm(editId){
+  if(!canEditCashbox()) return;
+  if(editId && !isAdmin()) return;
+  cashboxFormEditId = editId || null;
+  const b = editId ? DATA.cashboxes.find(x=>x._id===editId) : null;
+  const hasMoves = b && ((b.entries||[]).length || (b.closings||[]).length);
+  cbOverlay('cashboxOverlay', editId?'تعديل خزينة / عهدة':'خزينة / عهدة جديدة', `
+    <div class="field"><label>الاسم</label><input id="cb-name" type="text" value="${b?b.name:''}" placeholder="مثال: عهدة م. أحمد — موقع برج النيل"></div>
+    <div class="field"><label>النوع</label><select id="cb-kind">${['عهدة','خزينة رئيسية','خزينة موقع'].map(k=>`<option ${b&&b.kind===k?'selected':''}>${k}</option>`).join('')}</select></div>
+    <div class="field"><label>المسؤول عنها</label><input id="cb-custodian" type="text" list="cbPeopleList" value="${b?(b.custodian||''):''}">
+      <datalist id="cbPeopleList">${(DATA.hr||[]).map(h=>`<option value="${h.name}">`).join('')}</datalist></div>
+    <div class="field"><label>المشروع الافتراضي للمصروفات (اختياري)</label><select id="cb-project">${cbProjectOptions(b?(b.project||''):'')}</select></div>
+    <div class="field"><label>الرصيد الافتتاحي</label><input id="cb-opening" type="number" value="${b?(b.openingBalance||0):0}" ${hasMoves?'disabled':''}></div>
+    <div class="field"><label>تاريخ البداية</label><input id="cb-opening-date" type="date" value="${b?(b.openingDate||''):todayStr()}" ${hasMoves?'disabled':''}></div>
+    ${hasMoves?'<div style="font-size:11.5px; color:var(--text-dim);">الرصيد الافتتاحي وتاريخ البداية مقفولين لأن فيه حركات مسجلة بالفعل.</div>':''}
+    <div style="display:flex; gap:8px; justify-content:flex-end;"><button class="btn secondary" onclick="cbClose('cashboxOverlay')">إلغاء</button><button class="btn" onclick="saveCashbox()">حفظ</button></div>
+  `);
+}
+function saveCashbox(){
+  const name = document.getElementById('cb-name').value.trim();
+  if(!name){ alert('من فضلك اكتب اسم الخزينة أو العهدة'); return; }
+  const kind = document.getElementById('cb-kind').value;
+  const custodian = document.getElementById('cb-custodian').value.trim();
+  const project = document.getElementById('cb-project').value;
+  const openingBalance = Number(document.getElementById('cb-opening').value)||0;
+  const openingDate = document.getElementById('cb-opening-date').value || todayStr();
+  if(!Array.isArray(DATA.cashboxes)) DATA.cashboxes = [];
+  if(cashboxFormEditId){
+    const b = DATA.cashboxes.find(x=>x._id===cashboxFormEditId);
+    const hasMoves = (b.entries||[]).length || (b.closings||[]).length;
+    Object.assign(b, {name, kind, custodian, project});
+    if(!hasMoves) Object.assign(b, {openingBalance, openingDate});
+    logAudit('تعديل', 'خزينة/عهدة', name);
+  }else{
+    const n = (DATA.cashboxes.length ? Math.max(...DATA.cashboxes.map(r=>r._n||0)) : 0) + 1;
+    DATA.cashboxes.push({_id:'CSH-'+String(n).padStart(3,'0'), _n:n, name, kind, custodian, project, openingBalance, openingDate, entries:[], closings:[]});
+    logAudit('إضافة', 'خزينة/عهدة', name, 'رصيد افتتاحي '+fmtMoney(openingBalance));
+  }
+  saveData();
+  cbClose('cashboxOverlay');
+  renderPage();
+}
+function deleteCashbox(id){
+  if(!isAdmin()) return;
+  const b = DATA.cashboxes.find(x=>x._id===id);
+  if(!b) return;
+  if(!confirm('حذف "'+b.name+'" بكل حركاتها؟ المصروفات اللي اتسجلت منها هتتشال من الحسابات والمشاريع كمان.')) return;
+  DATA.cashboxes = DATA.cashboxes.filter(x=>x._id!==id);
+  logAudit('حذف', 'خزينة/عهدة', b.name);
+  selectedCashboxId = null;
+  saveData();
+  renderPage();
+}
+
+let cashEntryState = {boxId:null, type:null, editId:null};
+function openCashEntryForm(boxId, type, editId){
+  if(!canEditCashbox()) return;
+  if(editId && !isAdmin()) return;
+  const b = DATA.cashboxes.find(x=>x._id===boxId);
+  if(!b) return;
+  cashEntryState = {boxId, type, editId: editId||null};
+  const e = editId ? b.entries.find(x=>x.id===editId) : null;
+  const isIn = type==='تغذية';
+  const defDate = e ? e.date : todayStr();
+  cbOverlay('cashEntryOverlay', (editId?'تعديل ':'')+(isIn?'تغذية العهدة (استلام نقدية)':'صرف من العهدة'), `
+    <div class="field"><label>التاريخ</label><input id="ce-date" type="date" value="${defDate}"></div>
+    <div class="field"><label>المبلغ (جنيه)</label><input id="ce-amount" type="number" min="0" value="${e?e.amount:''}"></div>
+    ${isIn ? `
+      <div class="field"><label>المصدر</label><input id="ce-source" type="text" list="ceSources" value="${e?(e.source||''):'الخزينة الرئيسية'}">
+        <datalist id="ceSources"><option value="الخزينة الرئيسية"><option value="البنك"><option value="المدير"><option value="تحصيل من عميل"></datalist></div>
+    ` : `
+      <div class="field"><label>حساب المصروف</label><select id="ce-account">${(DATA.expenseAccounts||[]).map(a=>`<option ${e&&e.account===a?'selected':''}>${a}</option>`).join('')}</select></div>
+      <div class="field"><label>المشروع</label><select id="ce-project">${cbProjectOptions(e?(e.project||''):(b.project||''))}</select></div>
+      <div class="field"><label>رقم الإيصال / الفاتورة (اختياري)</label><input id="ce-ref" type="text" value="${e?(e.ref||''):''}"></div>
+    `}
+    <div class="field"><label>البيان</label><input id="ce-desc" type="text" value="${e?(e.description||''):''}" placeholder="${isIn?'مثال: تغذية أول الشهر':'مثال: نقل مواد / وجبات عمال / أدوات'}"></div>
+    <div style="display:flex; gap:8px; justify-content:flex-end;"><button class="btn secondary" onclick="cbClose('cashEntryOverlay')">إلغاء</button><button class="btn" onclick="saveCashEntry()">حفظ</button></div>
+  `);
+}
+function saveCashEntry(){
+  const b = DATA.cashboxes.find(x=>x._id===cashEntryState.boxId);
+  if(!b) return;
+  ensureCashboxShape(b);
+  const date = document.getElementById('ce-date').value;
+  const amount = Number(document.getElementById('ce-amount').value)||0;
+  const description = document.getElementById('ce-desc').value.trim();
+  if(!date){ alert('من فضلك اختار التاريخ'); return; }
+  if(amount<=0){ alert('من فضلك اكتب المبلغ'); return; }
+  if(date < b.openingDate){ alert('التاريخ قبل تاريخ بداية العهدة ('+b.openingDate+')'); return; }
+  if(isCashboxMonthClosed(b, cbMonth(date))){ alert('شهر '+cbMonthLabel(cbMonth(date))+' مقفول — مينفعش تسجل أو تعدّل حركات فيه. المدير يقدر يلغي الإقفال لو محتاج.'); return; }
+  const isIn = cashEntryState.type==='تغذية';
+  const data = {date, amount, description, type: cashEntryState.type, by: currentUser ? currentUser.name : ''};
+  if(isIn){ data.source = document.getElementById('ce-source').value.trim(); }
+  else{
+    data.account = document.getElementById('ce-account').value;
+    data.project = document.getElementById('ce-project').value;
+    data.ref = document.getElementById('ce-ref').value.trim();
+  }
+  if(cashEntryState.editId){
+    const e = b.entries.find(x=>x.id===cashEntryState.editId);
+    if(isCashboxMonthClosed(b, cbMonth(e.date))){ alert('الحركة دي في شهر مقفول'); return; }
+    Object.assign(e, data);
+  }else{
+    const n = (b.entries.length ? Math.max(...b.entries.map(x=>x._n||0)) : 0) + 1;
+    b.entries.push(Object.assign({id:'CE-'+b._id+'-'+n, _n:n}, data));
+  }
+  logAudit(cashEntryState.editId?'تعديل':'إضافة', isIn?'تغذية عهدة':'مصروف عهدة', b.name, fmtMoney(amount)+(description?' — '+description:''));
+  generateAutoEntries();
+  saveData();
+  cbClose('cashEntryOverlay');
+  cashboxMonthView = cbMonth(date);
+  renderPage();
+}
+function deleteCashEntry(boxId, entryId){
+  if(!isAdmin()) return;
+  const b = DATA.cashboxes.find(x=>x._id===boxId);
+  const e = b && b.entries.find(x=>x.id===entryId);
+  if(!e) return;
+  if(isCashboxMonthClosed(b, cbMonth(e.date))){ alert('الحركة دي في شهر مقفول'); return; }
+  if(!confirm('حذف الحركة دي؟')) return;
+  b.entries = b.entries.filter(x=>x.id!==entryId);
+  logAudit('حذف', 'حركة عهدة', b.name, fmtMoney(e.amount));
+  generateAutoEntries();
+  saveData();
+  renderPage();
+}
+
+/* ---------- الإقفال الشهري ---------- */
+let cashCloseState = {boxId:null, month:null, balance:0};
+function openCashCloseForm(boxId){
+  if(!canEditCashbox()) return;
+  const b = DATA.cashboxes.find(x=>x._id===boxId);
+  if(!b) return;
+  const months = computeCashboxMonths(b);
+  const mv = months.find(x=>!x.closing);
+  if(!mv){ alert('كل الشهور مقفولة'); return; }
+  const nowM = cbMonth(todayStr());
+  cashCloseState = {boxId, month:mv.month, balance:mv.balance};
+  const bal = mv.balance;
+  const defDate = mv.month < nowM ? (mv.month+'-'+String(new Date(Number(mv.month.slice(0,4)), Number(mv.month.slice(5,7)), 0).getDate()).padStart(2,'0')) : todayStr();
+  cbOverlay('cashCloseOverlay', '🔒 إقفال '+cbMonthLabel(mv.month)+' — '+b.name, `
+    <div class="table-wrap" style="padding:12px 14px; font-size:13.5px; line-height:1.9;">
+      رصيد أول الشهر: <b>${fmtMoney(mv.opening)}</b><br>
+      + التغذية: <b>${fmtMoney(mv.receipts)}</b><br>
+      − المصروفات: <b>${fmtMoney(mv.spends)}</b><br>
+      = الرصيد آخر الشهر: <b style="font-size:16px; color:${bal<0?'var(--bad)':'var(--good)'};">${fmtMoney(bal)}</b>
+      ${bal<0?'<div style="color:var(--bad); font-size:12px;">الرصيد بالسالب = المسؤول صرف من جيبه '+fmtMoney(-bal)+'</div>':''}
+    </div>
+    ${mv.month===nowM ? '<div style="font-size:12px; color:var(--warn);">⚠ ده الشهر الحالي — بعد الإقفال مش هتقدر تسجل حركات بتاريخ الشهر ده.</div>' : ''}
+    <div class="field"><label>طريقة الإقفال</label>
+      <select id="cc-action" onchange="updateCashCloseHint()">
+        <option value="carry">${CASH_ACTIONS.carry} — الرصيد يفضل مع المسؤول ويبدأ بيه الشهر الجاي</option>
+        ${bal>0 ? `<option value="bank">${CASH_ACTIONS.bank} — المسؤول يورّد الرصيد كله للبنك</option>` : ''}
+        ${bal!==0 ? `<option value="settle">${CASH_ACTIONS.settle} — ${bal>0?'المسؤول يرجّع الرصيد نقدي':'الشركة تعوّض المسؤول عن العجز'}</option>` : ''}
+      </select></div>
+    <div id="cc-hint" style="font-size:12.5px; color:var(--text-dim);"></div>
+    <div class="field"><label>تاريخ الإقفال</label><input id="cc-date" type="date" value="${defDate}"></div>
+    <div class="field"><label>ملاحظة (اختياري — رقم إيصال البنك، اسم المستلم...)</label><input id="cc-note" type="text"></div>
+    <div style="display:flex; gap:8px; justify-content:flex-end;"><button class="btn secondary" onclick="cbClose('cashCloseOverlay')">إلغاء</button><button class="btn" onclick="saveCashClose()">تأكيد الإقفال</button></div>
+  `);
+  updateCashCloseHint();
+}
+function updateCashCloseHint(){
+  const a = document.getElementById('cc-action').value;
+  const bal = cashCloseState.balance;
+  const hint = {
+    carry: 'هيتنقل رصيد '+fmtMoney(bal)+' كرصيد أول مدة للشهر التالي.',
+    bank: 'هيتسجل توريد '+fmtMoney(bal)+' للبنك، والعهدة تبدأ الشهر الجاي بصفر.',
+    settle: bal>0 ? ('المسؤول هيرجّع '+fmtMoney(bal)+' نقدي، والعهدة تبدأ الشهر الجاي بصفر.') : ('الشركة هتدفع للمسؤول '+fmtMoney(-bal)+' تعويض عن اللي صرفه من جيبه، والعهدة تبدأ الشهر الجاي بصفر.'),
+  }[a];
+  document.getElementById('cc-hint').textContent = hint || '';
+}
+function saveCashClose(){
+  const b = DATA.cashboxes.find(x=>x._id===cashCloseState.boxId);
+  if(!b) return;
+  const action = document.getElementById('cc-action').value;
+  const date = document.getElementById('cc-date').value || todayStr();
+  const note = document.getElementById('cc-note').value.trim();
+  const mv = computeCashboxMonths(b).find(x=>x.month===cashCloseState.month);
+  if(!mv || mv.closing){ alert('الشهر ده اتقفل بالفعل'); cbClose('cashCloseOverlay'); renderPage(); return; }
+  if(action==='bank' && !(mv.balance>0)){ alert('مفيش رصيد موجب يتورد للبنك'); return; }
+  b.closings.push({month:mv.month, action, amount:mv.balance, date, note, by: currentUser ? currentUser.name : '', closedAt:new Date().toISOString()});
+  logAudit('إقفال', 'عهدة', b.name, cbMonthLabel(mv.month)+' — '+CASH_ACTIONS[action]+' — '+fmtMoney(mv.balance));
+  saveData();
+  cbClose('cashCloseOverlay');
+  cashboxMonthView = mv.month;
+  renderPage();
+  showToast('تم إقفال '+cbMonthLabel(mv.month)+' ✓', 'good');
+}
+function reopenCashboxMonth(boxId, month){
+  if(!isAdmin()) return;
+  const b = DATA.cashboxes.find(x=>x._id===boxId);
+  if(!b) return;
+  if(!confirm('إلغاء إقفال '+cbMonthLabel(month)+'؟ هترجع تقدر تعدّل حركاته.')) return;
+  b.closings = b.closings.filter(c=>c.month!==month);
+  logAudit('إلغاء إقفال', 'عهدة', b.name, cbMonthLabel(month));
+  saveData();
+  renderPage();
+}
+
+/* ---------- طباعة كشف الشهر ---------- */
+function printCashboxMonth(boxId, month){
+  const b = DATA.cashboxes.find(x=>x._id===boxId);
+  if(!b) return;
+  const mv = computeCashboxMonths(b).find(x=>x.month===month);
+  if(!mv) return;
+  const entries = b.entries.filter(e=>cbMonth(e.date)===month).sort((x,y)=>(x.date||'').localeCompare(y.date||''));
+  let running = mv.opening;
+  const info = `<table><tbody>
+    <tr><td style="font-weight:700; width:180px;">المسؤول عن العهدة</td><td>${b.custodian||'—'}</td></tr>
+    <tr><td style="font-weight:700;">رصيد أول الشهر</td><td>${fmtMoney(mv.opening)}</td></tr>
+    <tr><td style="font-weight:700;">إجمالي التغذية</td><td>${fmtMoney(mv.receipts)}</td></tr>
+    <tr><td style="font-weight:700;">إجمالي المصروفات</td><td>${fmtMoney(mv.spends)}</td></tr>
+    <tr><td style="font-weight:700;">الرصيد آخر الشهر</td><td>${fmtMoney(mv.balance)}</td></tr>
+    <tr><td style="font-weight:700;">الإقفال</td><td>${mv.closing ? CASH_ACTIONS[mv.closing.action]+(mv.closing.note?' — '+mv.closing.note:'') : 'لم يتم الإقفال بعد'}</td></tr>
+  </tbody></table>`;
+  const rows = `<tr><td>—</td><td>رصيد أول الشهر</td><td>—</td><td>—</td><td></td><td></td><td>${fmtMoney(mv.opening)}</td></tr>` + entries.map(e=>{
+    const isIn = e.type==='تغذية';
+    running = round2(running + (isIn?1:-1)*(Number(e.amount)||0));
+    return `<tr><td>${e.date}</td><td>${(isIn?'تغذية — ':'')+(e.description||'—')}${e.ref?' (إيصال '+e.ref+')':''}</td><td>${isIn?(e.source||'—'):(e.account||'—')}</td><td>${e.project||'—'}</td><td>${isIn?fmtMoney(e.amount):''}</td><td>${!isIn?fmtMoney(e.amount):''}</td><td>${fmtMoney(running)}</td></tr>`;
+  }).join('');
+  openPrintDocument('كشف عهدة — '+b.name, cbMonthLabel(month), info + buildStatementTable(['التاريخ','البيان','الحساب / المصدر','المشروع','وارد','منصرف','الرصيد'], rows));
+}
+</script>
+<script>
+/* ================= مشتريات الموردين على المشاريع ================= */
+function supplierPayablesTotal(){
+  return (DATA.suppliers||[]).reduce((s,sup)=>s+(sup.invoices||[]).reduce((x,inv)=>x+supplierInvoiceRemaining(inv),0),0);
+}
+function projectSupplierInvoices(projectName){
+  const out = [];
+  (DATA.suppliers||[]).forEach(s=>(s.invoices||[]).forEach(inv=>{ if(inv.project===projectName) out.push({s, inv}); }));
+  return out.sort((a,b)=>(b.inv.date||'').localeCompare(a.inv.date||''));
+}
+
+/* قسم فواتير الموردين جوه صفحة المشروع */
+function renderProjectSupplierSection(p){
+  const list = projectSupplierInvoices(p.name);
+  const canAdd = canEdit('suppliers');
+  const total = list.reduce((s,x)=>s+(Number(x.inv.amount)||0),0);
+  const paid = list.reduce((s,x)=>s+supplierInvoicePaidTotal(x.inv),0);
+  const remaining = Math.max(0, total-paid);
+  return `
+    <div class="section-title" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+      <span>🧾 مشتريات الموردين على المشروع (${list.length})</span>
+      ${canAdd ? `<button class="btn secondary small" onclick="openProjectPurchaseForm(${JSON.stringify(p.name).replace(/"/g,'&quot;')})">+ مشتريات من مورد</button>` : ''}
+    </div>
+    ${list.length ? `
+    <div class="table-wrap" style="margin-bottom:10px;"><div class="table-scroll"><table>
+      <thead><tr><th>التاريخ</th><th>المورد</th><th>رقم الفاتورة</th><th>قيمة الفاتورة</th><th>المسدد</th><th>المستحق للمورد</th><th></th></tr></thead>
+      <tbody>${list.map(({s, inv})=>{ const pd = supplierInvoicePaidTotal(inv); const rem = supplierInvoiceRemaining(inv); return `<tr>
+        <td>${inv.date||'—'}</td>
+        <td style="font-weight:700; cursor:pointer;" onclick="goTo('suppliers'); openSupplierDetail('${s._id}')">${s.name}</td>
+        <td>${inv.number||'—'}${inv.note?`<div style="color:var(--text-dim); font-size:11.5px;">${inv.note}</div>`:''}</td>
+        <td style="font-weight:700;">${fmtMoney(inv.amount)}</td>
+        <td style="color:var(--good);">${fmtMoney(pd)}</td>
+        <td style="font-weight:700; color:${rem>0?'var(--bad)':'var(--good)'};">${fmtMoney(rem)}</td>
+        <td class="row-actions">${(canAdd && rem>0) ? `<button class="btn small" onclick="openSupplierPaymentForm('${s._id}','${inv.id}')">+ سداد</button>` : ''}</td>
+      </tr>`; }).join('')}
+        <tr style="background:var(--surface-2); font-weight:900;"><td colspan="3">الإجمالي</td><td>${fmtMoney(total)}</td><td>${fmtMoney(paid)}</td><td>${fmtMoney(remaining)}</td><td></td></tr>
+      </tbody>
+    </table></div></div>` : `<div class="table-wrap" style="margin-bottom:10px;"><div class="empty-state">لا توجد فواتير موردين مسجلة على المشروع ده</div></div>`}
+    <div style="font-size:12px; color:var(--text-dim); margin-bottom:24px;">قيمة كل فاتورة بتتحسب كاملة على المشروع بتاريخها (تحت بند "مشتريات من الموردين")، واللي لسه ما اتدفعش بيظهر "مستحق للمورد" في حسابه.</div>
+  `;
+}
+
+/* نافذة "مشتريات من مورد" من جوه المشروع — بتسجل فاتورة في حساب المورد تلقائيًا */
+let projectPurchaseState = {project:''};
+function openProjectPurchaseForm(projectName){
+  if(!canEdit('suppliers')){ alert('محتاج صلاحية على الموردين عشان تسجل فاتورة مشتريات'); return; }
+  projectPurchaseState = {project: projectName||''};
+  const sups = DATA.suppliers || [];
+  cbOverlay('projectPurchaseOverlay', '🧾 مشتريات من مورد' + (projectName ? ' — ' + projectName : ''), `
+    <div class="field"><label>المورد</label>
+      <select id="pp-supplier" onchange="document.getElementById('pp-new-wrap').style.display = this.value==='__new__' ? 'block' : 'none'">
+        ${sups.map(s=>`<option value="${s._id}">${s.name}${s.category?' — '+s.category:''}</option>`).join('')}
+        <option value="__new__">+ مورد جديد...</option>
+      </select></div>
+    <div id="pp-new-wrap" style="display:${sups.length?'none':'block'};">
+      <div class="field"><label>اسم المورد الجديد</label><input id="pp-new-name" type="text"></div>
+      <div class="field"><label>تليفون المورد (اختياري)</label><input id="pp-new-phone" type="text"></div>
+    </div>
+    <div class="field"><label>المشروع</label><select id="pp-project">${cbProjectOptions(projectName||'')}</select></div>
+    <div class="field"><label>رقم فاتورة المورد (اختياري)</label><input id="pp-number" type="text"></div>
+    <div class="field"><label>تاريخ الفاتورة</label><input id="pp-date" type="date" value="${todayStr()}"></div>
+    <div class="field"><label>قيمة الفاتورة (جنيه)</label><input id="pp-amount" type="number" min="0" oninput="document.getElementById('pp-paid').value = this.value"></div>
+    <div class="field"><label>المدفوع للمورد دلوقتي (اكتب 0 لو آجل)</label><input id="pp-paid" type="number" min="0"></div>
+    <div class="field"><label>تاريخ الاستحقاق للمتبقي (اختياري)</label><input id="pp-due" type="date"></div>
+    <div class="field"><label>ملاحظة (وصف الأصناف مثلاً)</label><input id="pp-note" type="text" placeholder="مثال: 20 طن أسمنت"></div>
+    <div style="display:flex; gap:8px; justify-content:flex-end;"><button class="btn secondary" onclick="cbClose('projectPurchaseOverlay')">إلغاء</button><button class="btn" onclick="saveProjectPurchase()">حفظ</button></div>
+  `);
+  if(!sups.length) document.getElementById('pp-supplier').value = '__new__';
+}
+function saveProjectPurchase(){
+  if(!canEdit('suppliers')) return;
+  let supId = document.getElementById('pp-supplier').value;
+  const project = document.getElementById('pp-project').value;
+  const number = document.getElementById('pp-number').value.trim();
+  const date = document.getElementById('pp-date').value;
+  const amount = Number(document.getElementById('pp-amount').value)||0;
+  let paidNow = Number(document.getElementById('pp-paid').value)||0;
+  const dueDate = document.getElementById('pp-due').value;
+  const note = document.getElementById('pp-note').value.trim();
+  if(!date){ alert('من فضلك اختار تاريخ الفاتورة'); return; }
+  if(amount<=0){ alert('من فضلك اكتب قيمة الفاتورة'); return; }
+  if(paidNow<0) paidNow = 0;
+  if(paidNow>amount){ alert('المدفوع أكبر من قيمة الفاتورة'); return; }
+  if(!Array.isArray(DATA.suppliers)) DATA.suppliers = [];
+  let s;
+  if(supId==='__new__'){
+    const name = document.getElementById('pp-new-name').value.trim();
+    if(!name){ alert('من فضلك اكتب اسم المورد الجديد'); return; }
+    s = DATA.suppliers.find(x=>x.name===name);
+    if(!s){
+      const n = (DATA.suppliers.length ? Math.max(...DATA.suppliers.map(r=>r._n||0)) : 0) + 1;
+      s = {_id:'SUP-'+String(n).padStart(3,'0'), _n:n, name, category:'', phone:document.getElementById('pp-new-phone').value.trim(), address:'', notes:'', invoices:[]};
+      DATA.suppliers.push(s);
+      logAudit('إضافة', 'مورد', name);
+    }
+  }else{
+    s = DATA.suppliers.find(x=>x._id===supId);
+  }
+  if(!s) return;
+  if(!Array.isArray(s.invoices)) s.invoices = [];
+  const n = (s.invoices.length ? Math.max(...s.invoices.map(i=>i._n||0)) : 0) + 1;
+  const inv = {id:s._id+'-INV'+n, _n:n, number, date, project, amount, dueDate, note, payments:[]};
+  if(paidNow>0) inv.payments.push({id:inv.id+'-PAY1', _n:1, date, amount:paidNow, note:'دفعة عند التسجيل'});
+  s.invoices.push(inv);
+  syncSupplierInvoiceStatus(inv);
+  logAudit('إضافة', 'فاتورة مورد', s.name, fmtMoney(amount)+(project?' — '+project:'')+(paidNow?' — مدفوع '+fmtMoney(paidNow):' — آجل'));
+  generateAutoEntries();
+  saveData();
+  cbClose('projectPurchaseOverlay');
+  renderPage();
+  showToast('اتسجلت الفاتورة في حساب '+s.name+(project?' وعلى مشروع '+project:'')+' ✓', 'good');
+}
+/* ================= تصفية حساب عامل/موظف ================= */
+// آخر تاريخ اتصفّى للموظف (أي تسجيل بتاريخ قبله أو يساويه بيتقفل)
+function lastSettlementDate(h){
+  return (h.settlements||[]).reduce((m,s)=>(s.date && s.date>m) ? s.date : m, '');
+}
+function isDateSettledFor(h, date){
+  const last = lastSettlementDate(h);
+  return !!(last && date && date<=last);
+}
+function lastDayOfMonth(month){ return month+'-'+String(daysInMonthOf(month+'-01')).padStart(2,'0'); }
+
+// بيحسب المستحق للعامل من آخر صرف لحد تاريخ معيّن — كل شهر لوحده
+function computeSettlementPreview(h, date){
+  const dateMonth = monthKey(date);
+  const months = getEmployeeMonths(h).filter(m=>m<=dateMonth).sort();
+  const items = [];
+  months.forEach(m=>{
+    const p = computeMonthlyPayroll(h, m);
+    if(p.paid) return; // الشهر اتصرف راتبه العادي خلاص
+    const upTo = m===dateMonth ? date : lastDayOfMonth(m);
+    let base = 0, days = [], units = 0, coveredDays = 0;
+    if(h.employeeType==='يومي'){
+      days = (h.attendance||[]).filter(a=>monthKey(a.date)===m && !a.settled && a.date<=upTo).sort((x,y)=>x.date.localeCompare(y.date));
+      days.forEach(a=>{ const u = attendanceUnits(a); units += u; base += u*attendanceRate(h,a); });
+    }else{
+      const cov = monthlyCoverageDays(h, m);
+      const upDay = Number(upTo.slice(8,10));
+      const endDay = Math.min(cov.endDay||0, upDay);
+      coveredDays = cov.days>0 ? Math.max(0, endDay-(cov.startDay||1)+1) : 0;
+      const salary = Number(h.monthlySalary)||0;
+      base = coveredDays>=cov.dim ? salary : salary*coveredDays/cov.dim;
+    }
+    base = round2(base);
+    const entries = (h.payrollEntries||[]).filter(e=>monthKey(e.date)===m && !e.settled && e.date<=upTo).sort((x,y)=>(x.date||'').localeCompare(y.date||''));
+    const additions = round2(entries.filter(e=>PAYROLL_ADDITION_TYPES.includes(e.type)).reduce((s,e)=>s+(Number(e.amount)||0),0));
+    const deductions = round2(entries.filter(e=>!PAYROLL_ADDITION_TYPES.includes(e.type)).reduce((s,e)=>s+(Number(e.amount)||0),0));
+    if(!base && !entries.length && !days.length) return;
+    items.push({month:m, upTo, base, additions, deductions, net:round2(base+additions-deductions), days, units, coveredDays, entries});
+  });
+  const sum = k => round2(items.reduce((s,i)=>s+i[k],0));
+  const lastPaid = (h.payrollRuns||[]).filter(r=>r.paid).reduce((mx,r)=>{ const d = r.upTo || lastDayOfMonth(r.month); return d>mx?d:mx; }, '');
+  return {items, base:sum('base'), additions:sum('additions'), deductions:sum('deductions'), total:sum('net'), units:round2(items.reduce((s,i)=>s+i.units,0)), lastPaid};
+}
+
+let settlementState = {empId:null};
+function openSettlementForm(empId){
+  if(!hrFullAccess() || !canEdit('hr')){ alert('تصفية الحساب محتاجة صلاحية كاملة على الموارد البشرية'); return; }
+  const h = DATA.hr.find(r=>r._id===empId);
+  if(!h) return;
+  settlementState = {empId};
+  const last = lastSettlementDate(h);
+  cbOverlay('settlementOverlay', '💵 تصفية حساب — '+h.name, `
+    <div class="field"><label>التصفية لحد تاريخ (آخر يوم محسوب)</label><input id="stl-date" type="date" value="${todayStr()}" ${last?`min="${addDaysStr(last,1)}"`:''} onchange="refreshSettlementPreview()"></div>
+    <div id="stl-preview"></div>
+    ${cashboxPayOptions()}
+    <div class="field"><label>بعد التصفية</label>
+      <select id="stl-after">
+        <option value="continue">العامل مستمر معانا (نبدأ حساب جديد من اليوم اللي بعده)</option>
+        <option value="end">إنهاء التعاقد (يتقفل ويختفي من صفحة حضور المشرفين)</option>
+      </select></div>
+    <div class="field"><label>ملاحظة (اختياري)</label><input id="stl-note" type="text" placeholder="مثال: استلم نقدًا في الموقع"></div>
+    <div style="display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap;">
+      <button class="btn secondary" onclick="cbClose('settlementOverlay')">إلغاء</button>
+      <button class="btn secondary" onclick="printSettlementPreview()">🖨 معاينة الكشف</button>
+      <button class="btn" id="stl-confirm" onclick="confirmSettlement()">✓ تأكيد التصفية والصرف</button>
+    </div>
+  `);
+  refreshSettlementPreview();
+}
+function refreshSettlementPreview(){
+  const h = DATA.hr.find(r=>r._id===settlementState.empId);
+  const box = document.getElementById('stl-preview');
+  if(!h || !box) return;
+  const date = document.getElementById('stl-date').value;
+  if(!date){ box.innerHTML = ''; return; }
+  const pv = computeSettlementPreview(h, date);
+  const daily = h.employeeType==='يومي';
+  if(!pv.items.length){
+    box.innerHTML = `<div class="empty-state" style="margin-bottom:12px;">مفيش أي مستحقات لسه متصرفتش لحد ${date}</div>`;
+    return;
+  }
+  box.innerHTML = `
+    <div style="font-size:12.5px; color:var(--text-dim); margin-bottom:8px;">${pv.lastPaid?'آخر صرف/تصفية كان لحد '+pv.lastPaid+' — ':''}الحساب لحد ${date}</div>
+    <div class="table-wrap" style="margin-bottom:10px;"><div class="table-scroll"><table>
+      <thead><tr><th>الشهر</th><th>${daily?'أيام':'أيام محسوبة'}</th><th>الأجر</th><th>إضافات</th><th>خصم وسلف</th><th>الصافي</th></tr></thead>
+      <tbody>${pv.items.map(i=>`<tr>
+        <td>${monthLabel(i.month)}${i.upTo!==lastDayOfMonth(i.month)?' (لحد '+i.upTo.slice(8)+')':''}</td>
+        <td>${daily?fmtUnits(i.units):i.coveredDays}</td>
+        <td>${fmtMoney(i.base)}</td>
+        <td style="color:var(--good);">${i.additions?'+ '+fmtMoney(i.additions):'—'}</td>
+        <td style="color:var(--bad);">${i.deductions?'- '+fmtMoney(i.deductions):'—'}</td>
+        <td style="font-weight:700;">${fmtMoney(i.net)}</td></tr>`).join('')}
+        <tr style="background:var(--surface-2); font-weight:900;"><td>الإجمالي</td><td>${daily?fmtUnits(pv.units):''}</td><td>${fmtMoney(pv.base)}</td><td>${pv.additions?'+ '+fmtMoney(pv.additions):'—'}</td><td>${pv.deductions?'- '+fmtMoney(pv.deductions):'—'}</td><td>${fmtMoney(pv.total)}</td></tr>
+      </tbody></table></div></div>
+    <div class="kpi ${pv.total>=0?'ok':'alert'}" style="margin-bottom:14px;"><div class="kpi-label">${pv.total>=0?'المستحق للعامل — يتصرف له':'العامل عليه للشركة (السلف أكبر من المستحق)'}</div><div class="kpi-value">${fmtMoney(Math.abs(pv.total))}</div></div>
+  `;
+}
+// اختيار العهدة/الخزينة اللي هيتصرف منها مبلغ التصفية (اختياري)
+function cashboxPayOptions(){
+  const boxes = (DATA.cashboxes||[]);
+  if(!boxes.length || !canEdit('cashbox')) return '';
+  return `<div class="field"><label>اتصرف منين؟</label>
+    <select id="stl-paybox">
+      <option value="">بدون ربط بعهدة (اتصرف من الخزينة العامة)</option>
+      ${boxes.map(b=>`<option value="${b._id}">من عهدة: ${b.name}${b.custodian?' ('+b.custodian+')':''} — الرصيد ${fmtMoney(cashboxCurrentBalance(b))}</option>`).join('')}
+    </select>
+    <div style="font-size:11.5px; color:var(--text-dim); margin-top:4px;">لو اخترت عهدة، المبلغ بيتخصم من رصيدها تلقائي (من غير ما يتحسب مصروف مرتين).</div></div>`;
+}
+function fmtUnits(u){ return Number.isInteger(u) ? String(u) : Number(u).toFixed(1); }
+
+function confirmSettlement(){
+  const h = DATA.hr.find(r=>r._id===settlementState.empId);
+  if(!h || !hrFullAccess() || !canEdit('hr')) return;
+  const date = document.getElementById('stl-date').value;
+  const after = document.getElementById('stl-after').value;
+  const note = document.getElementById('stl-note').value.trim();
+  if(!date){ alert('من فضلك اختار تاريخ التصفية'); return; }
+  if(isDateSettledFor(h, date)){ alert('التاريخ ده اتصفّى قبل كده — اختار تاريخ بعد '+lastSettlementDate(h)); return; }
+  const pv = computeSettlementPreview(h, date);
+  if(!pv.items.length && after!=='end'){ alert('مفيش مستحقات للتصفية لحد التاريخ ده'); return; }
+  const payEl = document.getElementById('stl-paybox');
+  const boxId = payEl ? payEl.value : '';
+  let box = null;
+  if(boxId && pv.total>0){
+    box = (DATA.cashboxes||[]).find(b=>b._id===boxId);
+    if(!box){ alert('العهدة مش موجودة'); return; }
+    ensureCashboxShape(box);
+    if(date < box.openingDate){ alert('تاريخ التصفية قبل بداية عهدة '+box.name+' ('+box.openingDate+')'); return; }
+    if(isCashboxMonthClosed(box, cbMonth(date))){ alert('شهر '+cbMonthLabel(cbMonth(date))+' مقفول في عهدة '+box.name+' — اختار عهدة تانية أو "بدون ربط"'); return; }
+  }
+  const msg = (pv.total>=0 ? 'هيتسجل صرف '+fmtMoney(pv.total)+' لـ'+h.name+(box?' من عهدة '+box.name:'') : 'العامل عليه '+fmtMoney(-pv.total)+' للشركة')
+    + ' — تصفية لحد '+date + (after==='end' ? '\nوهيتم إنهاء التعاقد.' : '\nوالعامل مستمر.') + '\n\nمتأكد؟';
+  openConfirmModal(msg, ()=>applySettlement(h, date, after==='end', note, pv, box));
+}
+function applySettlement(h, date, endContract, note, pv, box){
+  if(!Array.isArray(h.settlements)) h.settlements = [];
+  if(!Array.isArray(h.payrollRuns)) h.payrollRuns = [];
+  const sn = (h.settlements.length ? Math.max(...h.settlements.map(x=>x._n||0)) : 0)+1;
+  const stlId = h._id+'-STL'+sn;
+  const runIds = [];
+  pv.items.forEach(i=>{
+    const n = (h.payrollRuns.length ? Math.max(...h.payrollRuns.map(x=>x._n||0)) : 0)+1;
+    const run = {id:h._id+'-RUN'+n, _n:n, month:i.month, partial:true, kind:'تصفية', settlementId:stlId, upTo:i.upTo,
+      baseAmount:i.base, additionsTotal:i.additions, deductionsTotal:i.deductions, netAmount:i.net, paid:true, paidDate:date};
+    h.payrollRuns.push(run);
+    runIds.push(run.id);
+    i.days.forEach(a=>{ const rec = h.attendance.find(x=>x.id===a.id); if(rec) rec.settled = run.id; });
+    i.entries.forEach(e=>{ const rec = h.payrollEntries.find(x=>x.id===e.id); if(rec) rec.settled = run.id; });
+  });
+  const rec = {id:stlId, _n:sn, date, total:pv.total, base:pv.base, additions:pv.additions, deductions:pv.deductions, units:pv.units,
+    runIds, endContract:!!endContract, note, by: currentUser ? currentUser.name : ''};
+  if(endContract){
+    rec.prevStatus = h.status||'';
+    h.status = 'منتهي التعاقد';
+    h.contractEndDate = date;
+  }
+  if(box && pv.total>0){
+    const n = (box.entries.length ? Math.max(...box.entries.map(x=>x._n||0)) : 0) + 1;
+    const ce = {id:'CE-'+box._id+'-'+n, _n:n, date, amount:round2(pv.total), type:'مصروف', account:'أجور ومرتبات', project:'',
+      description:'تصفية حساب '+h.name+' لحد '+date, by: currentUser ? currentUser.name : '', linkedSettlement:{empId:h._id, stlId}};
+    box.entries.push(ce);
+    rec.cashbox = {boxId:box._id, entryId:ce.id, name:box.name};
+  }
+  h.settlements.push(rec);
+  logAudit('تصفية حساب', 'موظف', h.name, 'لحد '+date+' — '+fmtMoney(pv.total)+(endContract?' — إنهاء تعاقد':''));
+  generateAutoEntries();
+  saveData();
+  cbClose('settlementOverlay');
+  renderPage();
+  showToast('تمت تصفية حساب '+h.name+' ✓', 'good');
+  printSettlement(h._id, stlId);
+}
+// إلغاء آخر تصفية بس (للمدير) — بترجع الأيام والبنود لحالتها وبتشيل الصرف من الحسابات
+function cancelSettlement(empId, stlId){
+  if(!isAdmin()) return;
+  const h = DATA.hr.find(r=>r._id===empId);
+  if(!h) return;
+  const s = (h.settlements||[]).find(x=>x.id===stlId);
+  if(!s) return;
+  const latest = (h.settlements||[]).slice().sort((a,b)=>(b.date||'').localeCompare(a.date||'') || (b._n||0)-(a._n||0))[0];
+  if(latest && latest.id!==stlId){ alert('لازم تلغي آخر تصفية الأول (بتاريخ '+latest.date+')'); return; }
+  const linkedBox = s.cashbox ? (DATA.cashboxes||[]).find(b=>b._id===s.cashbox.boxId) : null;
+  if(linkedBox && isCashboxMonthClosed(linkedBox, cbMonth(s.date))){ alert('المبلغ اتصرف من عهدة '+linkedBox.name+' وشهر '+cbMonthLabel(cbMonth(s.date))+' مقفول فيها — لازم تلغي إقفال الشهر في العهدة الأول'); return; }
+  openConfirmModal('إلغاء التصفية بتاريخ '+s.date+' ('+fmtMoney(s.total)+')؟'+(linkedBox?'\nوالمبلغ هيرجع لرصيد عهدة '+linkedBox.name+'.':'')+'\nالأيام والبنود هترجع "لم تُصرف" والمبلغ هيتشال من المصروفات.', ()=>{
+    const ids = new Set(s.runIds||[]);
+    h.payrollRuns = (h.payrollRuns||[]).filter(r=>!ids.has(r.id) && r.settlementId!==s.id);
+    (h.attendance||[]).forEach(a=>{ if(ids.has(a.settled)) delete a.settled; });
+    (h.payrollEntries||[]).forEach(e=>{ if(ids.has(e.settled)) delete e.settled; });
+    if(s.endContract){
+      h.status = s.prevStatus && s.prevStatus!=='منتهي التعاقد' ? s.prevStatus : 'نشط';
+      delete h.contractEndDate;
+    }
+    h.settlements = h.settlements.filter(x=>x.id!==s.id);
+    if(linkedBox) linkedBox.entries = linkedBox.entries.filter(e=>!(e.linkedSettlement && e.linkedSettlement.stlId===s.id));
+    logAudit('إلغاء تصفية حساب', 'موظف', h.name, s.date+' — '+fmtMoney(s.total));
+    generateAutoEntries();
+    saveData();
+    renderPage();
+  });
+}
+
+function settlementHtml(h, date, pv, meta){
+  const daily = h.employeeType==='يومي';
+  const td = 'style="padding:7px; border:1px solid #ccc;"';
+  const allDays = [].concat(...pv.items.map(i=>i.days));
+  const allEntries = [].concat(...pv.items.map(i=>i.entries));
+  const dayRows = allDays.map(a=>{ const u = attendanceUnits(a); const r = attendanceRate(h,a); return `<tr><td ${td}>${a.date}</td><td ${td}>${a.status}</td><td ${td}>${fmtUnits(u)}</td><td ${td}>${fmtMoney(r)}</td><td ${td}>${fmtMoney(u*r)}</td><td ${td}>${a.project||h.project||'—'}</td></tr>`; }).join('');
+  const entryRows = allEntries.map(e=>{ const add = PAYROLL_ADDITION_TYPES.includes(e.type); return `<tr><td ${td}>${e.date}</td><td ${td}>${e.type}</td><td ${td}>${add?'+ ':'- '}${fmtMoney(e.amount)}</td><td ${td}>${e.note||'—'}</td></tr>`; }).join('');
+  const monthRows = pv.items.map(i=>`<tr><td ${td}>${monthLabel(i.month)}${i.upTo!==lastDayOfMonth(i.month)?' (لحد '+i.upTo+')':''}</td><td ${td}>${daily?fmtUnits(i.units):i.coveredDays}</td><td ${td}>${fmtMoney(i.base)}</td><td ${td}>${fmtMoney(i.additions)}</td><td ${td}>${fmtMoney(i.deductions)}</td><td ${td} style="font-weight:700;">${fmtMoney(i.net)}</td></tr>`).join('');
+  return `
+    <table style="width:100%; border-collapse:collapse; font-size:13px; margin-bottom:12px;">
+      <tr><td ${td}><b>الاسم</b></td><td ${td}>${h.name}</td><td ${td}><b>الوظيفة</b></td><td ${td}>${h.role||'—'}</td></tr>
+      <tr><td ${td}><b>نوع الأجر</b></td><td ${td}>${h.employeeType||'شهري'} — ${fmtMoney(daily?h.dailyWage:h.monthlySalary)}${daily?' (اليومية الحالية)':''}</td><td ${td}><b>التصفية لحد</b></td><td ${td}>${date}</td></tr>
+      <tr><td ${td}><b>آخر صرف قبلها</b></td><td ${td}>${pv.lastPaid||'—'}</td><td ${td}><b>بعد التصفية</b></td><td ${td}>${meta.endContract?'إنهاء التعاقد':'مستمر'}</td></tr>
+      ${meta.cashbox?`<tr><td ${td}><b>اتصرف من</b></td><td ${td} colspan="3">عهدة: ${meta.cashbox.name}</td></tr>`:''}
+      ${meta.note?`<tr><td ${td}><b>ملاحظة</b></td><td ${td} colspan="3">${meta.note}</td></tr>`:''}
+    </table>
+    <h3 style="margin:14px 0 4px; color:#111;">ملخص حسب الشهر</h3>
+    ${buildStatementTable(['الشهر', daily?'أيام':'أيام محسوبة', 'الأجر', 'إضافات', 'خصم وسلف', 'الصافي'], monthRows || `<tr><td ${td} colspan="6">لا يوجد</td></tr>`)}
+    ${daily ? `<h3 style="margin:14px 0 4px; color:#111;">تفاصيل الأيام</h3>${buildStatementTable(['التاريخ','الحالة','أيام','أجر اليوم','المبلغ','المشروع'], dayRows || `<tr><td ${td} colspan="6">لا يوجد</td></tr>`)}` : ''}
+    <h3 style="margin:14px 0 4px; color:#111;">السلف والخصومات والإضافات</h3>
+    ${buildStatementTable(['التاريخ','النوع','المبلغ','ملاحظة'], entryRows || `<tr><td ${td} colspan="4">لا يوجد</td></tr>`)}
+    <div style="margin-top:16px; padding:14px; border:2px solid #111; border-radius:8px; font-size:16px; font-weight:900; color:#111;">
+      ${pv.total>=0 ? 'صافي المستحق للعامل: ' : 'العامل عليه للشركة: '}${fmtMoney(Math.abs(pv.total))}
+    </div>
+    <div style="display:flex; justify-content:space-between; margin-top:40px; font-size:13px; color:#111;">
+      <div>توقيع المستلم: ....................</div><div>توقيع المحاسب: ....................</div><div>اعتماد الإدارة: ....................</div>
+    </div>
+    <div style="margin-top:14px; font-size:12px; color:#333;">أقر أنا الموقّع أعلاه باستلام المبلغ المذكور وأنه يمثل كامل مستحقاتي حتى تاريخ ${date}.</div>
+  `;
+}
+function printSettlementPreview(){
+  const h = DATA.hr.find(r=>r._id===settlementState.empId);
+  if(!h) return;
+  const date = document.getElementById('stl-date').value;
+  if(!date) return;
+  const pv = computeSettlementPreview(h, date);
+  cbClose('settlementOverlay');
+  openPrintDocument('كشف تصفية حساب (معاينة) — '+h.name, 'لحد '+date+' — لم يتم التأكيد بعد', settlementHtml(h, date, pv, {endContract: document.getElementById('stl-after').value==='end', note: document.getElementById('stl-note').value.trim()}));
+}
+// إعادة طباعة تصفية متسجلة — بنبني الكشف من الأيام والبنود المعلّمة بتشغيلات التصفية دي
+function printSettlement(empId, stlId){
+  const h = DATA.hr.find(r=>r._id===empId);
+  if(!h) return;
+  const s = (h.settlements||[]).find(x=>x.id===stlId);
+  if(!s) return;
+  const ids = new Set(s.runIds||[]);
+  const runs = (h.payrollRuns||[]).filter(r=>ids.has(r.id)).sort((a,b)=>a.month.localeCompare(b.month));
+  const items = runs.map(r=>{
+    const days = (h.attendance||[]).filter(a=>a.settled===r.id).sort((x,y)=>x.date.localeCompare(y.date));
+    const entries = (h.payrollEntries||[]).filter(e=>e.settled===r.id).sort((x,y)=>(x.date||'').localeCompare(y.date||''));
+    const units = days.reduce((t,a)=>t+attendanceUnits(a),0);
+    const startDay = (h.payrollRuns||[]).filter(x=>isPartialRun(x) && x.month===r.month && x.upTo && x.upTo<r.upTo).reduce((m,x)=>Math.max(m, Number(x.upTo.slice(8,10))+1), 1);
+    return {month:r.month, upTo:r.upTo, base:Number(r.baseAmount)||0, additions:Number(r.additionsTotal)||0, deductions:Number(r.deductionsTotal)||0, net:Number(r.netAmount)||0, days, entries, units, coveredDays: h.employeeType==='يومي' ? 0 : (Number(r.upTo.slice(8,10))-startDay+1)};
+  });
+  const prevRuns = (h.payrollRuns||[]).filter(r=>r.paid && !ids.has(r.id) && (r.paidDate||'')<=s.date);
+  const lastPaid = prevRuns.reduce((mx,r)=>{ const d = r.upTo || lastDayOfMonth(r.month); return d>mx && d<s.date ? d : mx; }, '');
+  const pv = {items, total:Number(s.total)||0, lastPaid};
+  openPrintDocument('كشف تصفية حساب — '+h.name, 'لحد '+s.date+(s.by?' — سجّلها: '+s.by:''), settlementHtml(h, s.date, pv, s));
+}
+
+function renderEmployeeSettlementsSection(h){
+  const list = (h.settlements||[]).slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  if(!list.length) return '';
+  const canModify = isAdmin();
+  return `
+    <div class="section-title">💵 تصفيات الحساب</div>
+    <div class="table-wrap" style="margin-bottom:28px;"><div class="table-scroll"><table>
+      <thead><tr><th>التاريخ</th><th>المبلغ المصروف</th><th>بعدها</th><th>ملاحظة</th><th></th></tr></thead>
+      <tbody>${list.map((s,i)=>`<tr>
+        <td>${s.date}</td>
+        <td style="font-weight:700; color:${s.total>=0?'var(--good)':'var(--bad)'};">${s.total<0?'عليه ':''}${fmtMoney(Math.abs(s.total))}</td>
+        <td>${s.endContract?'<span class="badge b-bad">إنهاء تعاقد</span>':'<span class="badge b-good">مستمر</span>'}</td>
+        <td>${s.note||'—'}${s.cashbox?`<div style="font-size:11.5px;">💼 من عهدة: ${s.cashbox.name}</div>`:''}${s.by?`<div style="font-size:11.5px; color:var(--text-dim);">${s.by}</div>`:''}</td>
+        <td class="row-actions">
+          <button class="btn secondary small" onclick="printSettlement('${h._id}','${s.id}')">🖨 الكشف</button>
+          ${(canModify && i===0) ? `<button class="btn danger small" onclick="cancelSettlement('${h._id}','${s.id}')">إلغاء التصفية</button>` : ''}
+        </td>
+      </tr>`).join('')}</tbody>
+    </table></div></div>`;
 }
 </script>
 </body>
