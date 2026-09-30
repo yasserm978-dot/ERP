@@ -2305,8 +2305,8 @@ function buildNav(){
     {key:'assets', label:MODULES.assets.label, icon:MODULES.assets.icon},
   ];
   const items = [{key:'dashboard', label:'لوحة التحكم', icon:ICONS.dashboard}]
-    .concat(allItems.filter(it=>canView(it.key) || (it.key==='cashbox' && typeof hasCashboxAccess==='function' && hasCashboxAccess())))
-    .map(it=>(it.key==='cashbox' && !canView('cashbox')) ? Object.assign({}, it, {label:'عهدتي'}) : it);
+    .concat(allItems.filter(it=>it.key==='cashbox' ? (typeof hasCashboxAccess==='function' && hasCashboxAccess()) : canView(it.key)))
+    .map(it=>(it.key==='cashbox' && !isAdmin()) ? Object.assign({}, it, {label:'عهدتي'}) : it);
   if(currentUser && currentUser.role==='مدير'){
     items.push({key:'users', label:'المستخدمون والصلاحيات', icon:ICONS.users});
     items.push({key:'alerts', label:'تنبيهات واتساب', icon:ICONS.alerts});
@@ -2323,7 +2323,9 @@ function buildNav(){
 function goTo(key){
   if(key==='users' || key==='alerts' || key==='auditlog'){
     if(!(currentUser && currentUser.role==='مدير')) return;
-  }else if(key!=='dashboard' && !canView(key) && !(key==='cashbox' && typeof hasCashboxAccess==='function' && hasCashboxAccess())){
+  }else if(key==='cashbox'){
+    if(!(typeof hasCashboxAccess==='function' && hasCashboxAccess())) return;
+  }else if(key!=='dashboard' && !canView(key)){
     return;
   }
   currentPage = key;
@@ -9583,7 +9585,7 @@ async function sendTestWhatsapp(){
 const PERM_LABELS = {
   projects:'المشاريع', subs:'مقاولو الباطن', suppliers:'الموردون', materials:'المخزون والمشتريات',
   hr:'الموارد البشرية', finance:'الحسابات والفواتير', accounting:'المحاسبة والتقارير المالية',
-  contracts:'العقود', assets:'الأصول والمعدات', quotations:'عروض الأسعار', cashbox:'الخزينة والعهد',
+  contracts:'العقود', assets:'الأصول والمعدات', quotations:'عروض الأسعار',
 };
 const PERM_MODULE_KEYS = Object.keys(PERM_LABELS);
 
@@ -9632,7 +9634,7 @@ function renderUsersPage(){
             <td>${u.name}</td>
             <td>${u.username}</td>
             <td>${u.role==='مدير' ? '<span class="badge b-good">مدير</span>' : '<span class="badge b-neutral">مستخدم</span>'}</td>
-            <td>${u.role==='مدير' ? 'كل الصلاحيات' : (Object.entries(u.permissions||{}).filter(([k,v])=>v && v!=='لا يوجد').map(([k,v])=>`${PERM_LABELS[k]||k} (${v})`).join('، ') || '<span style="color:var(--text-dim)">لا توجد صلاحيات بعد</span>')}</td>
+            <td>${u.role==='مدير' ? 'كل الصلاحيات' : (Object.entries(u.permissions||{}).filter(([k,v])=>v && v!=='لا يوجد' && PERM_LABELS[k]).map(([k,v])=>`${PERM_LABELS[k]||k} (${v})`).join('، ') || '<span style="color:var(--text-dim)">لا توجد صلاحيات بعد</span>')}</td>
             <td class="row-actions">
               <button class="btn secondary small" data-useredit="${u._id}">تعديل</button>
               ${(currentUser && u.username===currentUser.username) ? '' : `<button class="btn danger small" data-userdel="${u._id}">حذف</button>`}
@@ -10340,14 +10342,16 @@ function ensureCashboxShape(b){
   if(b.openingBalance===undefined) b.openingBalance = 0;
   if(!b.openingDate) b.openingDate = todayStr();
 }
-function canEditCashbox(){ return canEdit('cashbox'); }
+// الخزائن والعهد: المدير بس اللي بيشوف كل العهد ويديرها (إضافة/تغذية/إقفال).
+// أي مستخدم تاني بيشوف العهدة المربوطة بحسابه بس — حتى لو اتدّاله صلاحية قديمة على الموديول.
+function canEditCashbox(){ return isAdmin(); }
 /* ---------- صلاحيات المسؤول عن العهدة ----------
    أي مستخدم مربوط بعهدة (userId) بيشوف عهدته هو بس ويسجل مصروفاتها تلقائيًا، من غير ما يحتاج صلاحية "الخزينة والعهد".
    اللي معاه صلاحية الموديول (عرض/كامل) أو المدير بيشوف كل العهد. */
 function myUserId(){ return currentUser ? (currentUser._id || currentUser.id || '') : ''; }
 function isBoxCustodian(b){ return !!(b && b.userId && myUserId() && b.userId===myUserId()); }
 function myCashboxes(){ return (DATA.cashboxes||[]).filter(isBoxCustodian); }
-function cashboxFullView(){ return canView('cashbox'); }
+function cashboxFullView(){ return isAdmin(); }
 function visibleCashboxes(){ return cashboxFullView() ? (DATA.cashboxes||[]) : myCashboxes(); }
 function canSeeCashbox(b){ return cashboxFullView() || isBoxCustodian(b); }
 function canSpendFromBox(b){ return canEditCashbox() || isBoxCustodian(b); }
