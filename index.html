@@ -2115,7 +2115,7 @@ function normalizeData(){
   if(!Array.isArray(DATA.generalExpenses)) DATA.generalExpenses = [];
   if(!Array.isArray(DATA.revenueAccounts)) DATA.revenueAccounts = DEFAULT_REVENUE_ACCOUNTS.slice();
   if(!Array.isArray(DATA.expenseAccounts)) DATA.expenseAccounts = DEFAULT_EXPENSE_ACCOUNTS.slice();
-  ['أجور ومرتبات','سلف الموظفين','مشتريات من الموردين'].forEach(acc=>{ if(!DATA.expenseAccounts.includes(acc)) DATA.expenseAccounts.push(acc); });
+  ['أجور ومرتبات','سلف الموظفين','مشتريات من الموردين','مصروفات مقاولي الباطن'].forEach(acc=>{ if(!DATA.expenseAccounts.includes(acc)) DATA.expenseAccounts.push(acc); });
   if(!Array.isArray(DATA.collections)) DATA.collections = [];
   if(DATA.capital===undefined || DATA.capital===null) DATA.capital = '0';
   if(!DATA.overheadAllocationBasis) DATA.overheadAllocationBasis = 'equal';
@@ -2138,6 +2138,13 @@ function normalizeData(){
   if(!Array.isArray(DATA.suppliers)) DATA.suppliers = [];
   if(!Array.isArray(DATA.cashboxes)) DATA.cashboxes = [];
   if(typeof ensureCashboxShape==='function') DATA.cashboxes.forEach(ensureCashboxShape);
+  // تغذيات قديمة مكتوب مصدرها "الخزينة الرئيسية" — بنربطها بالخزينة الرئيسية لو فيه واحدة بس، عشان تتخصم منها
+  if(typeof isAdmin==='function' && isAdmin()){
+    const mains = DATA.cashboxes.filter(x=>x.kind==='خزينة رئيسية');
+    if(mains.length===1) DATA.cashboxes.forEach(x=>{ if(x._id===mains[0]._id) return; (x.entries||[]).forEach(e=>{
+      if(e.type==='تغذية' && !e.fromBox && e.fromBox!=='' && (e.source||'').trim()==='الخزينة الرئيسية'){ e.fromBox = mains[0]._id; e.source = mains[0].name; }
+    }); });
+  }
   DATA.suppliers.forEach(ensureSupplierShape);
   if(!Array.isArray(DATA.purchases)) DATA.purchases = [];
   if(!Array.isArray(DATA.materials)) DATA.materials = [];
@@ -7347,10 +7354,9 @@ function markInvoicePaidInFull(invId){
    الفاتورة كاملة، وده عشان المتبقي (اللي لسه علينا) يفضل واضح كـ"مستحق" في كشف حساب المورد نفسه. */
 function ensureSupplierShape(s){
   if(!Array.isArray(s.invoices)) s.invoices = [];
+  if(!Array.isArray(s.payments)) s.payments = [];
+  if(!Array.isArray(s.items)) s.items = [];
   s.invoices.forEach(inv=>{ if(!Array.isArray(inv.payments)) inv.payments = []; });
-}
-function supplierInvoicePaidTotal(inv){
-  return (inv.payments||[]).reduce((s,p)=>s+(Number(p.amount)||0),0);
 }
 function supplierInvoiceRemaining(inv){
   return Math.max(0, (Number(inv.amount)||0) - supplierInvoicePaidTotal(inv));
@@ -7364,11 +7370,6 @@ function computeSupplierInvoiceStatus(inv){
   return 'معلقة';
 }
 function syncSupplierInvoiceStatus(inv){ inv.status = computeSupplierInvoiceStatus(inv); }
-function supplierTotals(s){
-  let totalInvoiced=0, totalPaid=0;
-  (s.invoices||[]).forEach(inv=>{ totalInvoiced += Number(inv.amount)||0; totalPaid += supplierInvoicePaidTotal(inv); });
-  return {totalInvoiced, totalPaid, totalRemaining: Math.max(0, totalInvoiced-totalPaid)};
-}
 function openSupplierDetail(id){ selectedSupplierId = id; renderPage(); }
 function backToSuppliersList(){ selectedSupplierId = null; renderPage(); }
 function renderSuppliersPage(){
@@ -7377,7 +7378,7 @@ function renderSuppliersPage(){
   const totals = rows.map(s=>({s, t:supplierTotals(s)}));
   const grandInvoiced = totals.reduce((s,x)=>s+x.t.totalInvoiced,0);
   const grandPaid = totals.reduce((s,x)=>s+x.t.totalPaid,0);
-  const grandRemaining = totals.reduce((s,x)=>s+x.t.totalRemaining,0);
+  const grandRemaining = totals.reduce((s,x)=>s+x.t.balance,0);
   const cards = statCardsRow([
     statCard('عدد الموردين', rows.length, '#2c3e50'),
     statCard('إجمالي المشتريات', fmtMoney(grandInvoiced), '#2c3e50'),
@@ -7386,7 +7387,7 @@ function renderSuppliersPage(){
   ]);
   const body = rows.length ? `
     <div class="table-wrap"><div class="table-scroll"><table>
-      <thead><tr><th>اسم المورد</th><th>نوع المواد</th><th>الهاتف</th><th>إجمالي المشتريات</th><th>المسدد</th><th>المستحق عليك</th><th></th></tr></thead>
+      <thead><tr><th>اسم المورد</th><th>نوع المواد</th><th>الهاتف</th><th>إجمالي المشتريات</th><th>المسدد</th><th>الرصيد</th><th></th></tr></thead>
       <tbody>
         ${totals.map(({s,t})=>`<tr data-opensupplier="${s._id}" style="cursor:pointer;">
           <td style="font-weight:700;">${s.name}</td>
@@ -7394,7 +7395,7 @@ function renderSuppliersPage(){
           <td>${s.phone||'—'}</td>
           <td>${fmtMoney(t.totalInvoiced)}</td>
           <td>${fmtMoney(t.totalPaid)}</td>
-          <td style="font-weight:700; color:${t.totalRemaining>0?'var(--bad)':'var(--good)'};">${fmtMoney(t.totalRemaining)}</td>
+          <td>${fmtSupBalance(t.balance)}</td>
           <td class="row-actions" onclick="event.stopPropagation();">
             ${editable ? `<button class="btn secondary small" data-editsupplier="${s._id}">تعديل</button>
             <button class="btn danger small" data-delsupplier="${s._id}">حذف</button>` : ''}
@@ -7434,6 +7435,7 @@ function openSupplierForm(editId){
   document.getElementById('supplier-phone').value = rec ? (rec.phone||'') : '';
   document.getElementById('supplier-address').value = rec ? (rec.address||'') : '';
   document.getElementById('supplier-notes').value = rec ? (rec.notes||'') : '';
+  mountSupplierOpeningFields(rec);
   document.getElementById('supplierOverlay').classList.add('open');
 }
 function closeSupplierModal(){ document.getElementById('supplierOverlay').classList.remove('open'); }
@@ -7446,12 +7448,13 @@ function saveSupplier(){
   const notes = document.getElementById('supplier-notes').value.trim();
   if(!name){ alert('من فضلك أدخل اسم المورد'); return; }
   const {editId} = supplierFormState;
+  const opening = readSupplierOpening();
   if(editId){
     const rec = DATA.suppliers.find(s=>s._id===editId);
-    if(rec) Object.assign(rec, {name, category, phone, address, notes});
+    if(rec) Object.assign(rec, {name, category, phone, address, notes}, opening);
   }else{
     const n = (DATA.suppliers.length ? Math.max(...DATA.suppliers.map(r=>r._n||0)) : 0)+1;
-    DATA.suppliers.push({_id:'SUP-'+String(n).padStart(3,'0'), _n:n, name, category, phone, address, notes, invoices:[]});
+    DATA.suppliers.push(Object.assign({_id:'SUP-'+String(n).padStart(3,'0'), _n:n, name, category, phone, address, notes, invoices:[], payments:[], items:[]}, opening));
   }
   logAudit(editId?'تعديل':'إضافة', 'مورد', name);
   saveData();
@@ -7473,108 +7476,9 @@ function deleteSupplier(id){
     renderPage();
   });
 }
-function renderSupplierDetail(id){
-  const s = DATA.suppliers.find(r=>r._id===id);
-  if(!s){ selectedSupplierId = null; return renderSuppliersPage(); }
-  s.invoices.forEach(syncSupplierInvoiceStatus);
-  const editable = canEdit('suppliers');
-  const canModify = isAdmin();
-  const t = supplierTotals(s);
-  const invoices = (s.invoices||[]).slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
-  const rows = invoices.length ? invoices.map(inv=>{
-    const paid = supplierInvoicePaidTotal(inv);
-    const remaining = supplierInvoiceRemaining(inv);
-    return `<tr>
-      <td>${inv.date||'—'}</td>
-      <td>${inv.number||'—'}</td>
-      <td>${inv.project||'<span style="color:var(--text-dim)">مصروف عام (بدون مشروع)</span>'}</td>
-      <td>${fmtMoney(inv.amount)}</td>
-      <td style="color:var(--good);">${fmtMoney(paid)}</td>
-      <td style="font-weight:700; color:${remaining>0?'var(--bad)':'var(--good)'};">${fmtMoney(remaining)}</td>
-      <td>${badgeFor('suppliers', inv.status)}</td>
-      <td class="row-actions">
-        ${(editable && remaining>0) ? `<button class="btn small" onclick="openSupplierPaymentForm('${s._id}','${inv.id}')">+ سداد</button>` : ''}
-        ${canModify ? `<button class="btn secondary small" onclick="openSupplierInvoiceForm('${s._id}','${inv.id}')">تعديل</button>
-        <button class="btn danger small" onclick="deleteSupplierInvoice('${s._id}','${inv.id}')">حذف</button>` : ''}
-      </td>
-    </tr>`;
-  }).join('') : `<tr><td colspan="8" style="text-align:center;">لا توجد فواتير مسجلة بعد</td></tr>`;
-
-  return `
-    <button class="btn secondary small" onclick="backToSuppliersList()" style="margin-bottom:16px;">→ رجوع لكل الموردين</button>
-    <div class="page-head">
-      <div>
-        <div class="page-title">${s.name}</div>
-        <div class="page-desc">${s.category||'مورد'}${s.phone?' — '+s.phone:''}${s.address?' — '+s.address:''}</div>
-      </div>
-      <div style="display:flex; gap:8px; flex-wrap:wrap;">
-        <button class="btn secondary" onclick="printSupplierStatement('${s._id}')">🖨 طباعة كشف حساب</button>
-        ${editable ? `<button class="btn secondary" onclick="openSupplierForm('${s._id}')">تعديل بيانات المورد</button>` : ''}
-        ${editable ? `<button class="btn" onclick="openSupplierInvoiceForm('${s._id}')">+ فاتورة جديدة</button>` : ''}
-      </div>
-    </div>
-    <div class="kpi-grid" style="margin-bottom:24px;">
-      <div class="kpi"><div class="kpi-label">إجمالي المشتريات</div><div class="kpi-value">${fmtMoney(t.totalInvoiced)}</div></div>
-      <div class="kpi ok"><div class="kpi-label">إجمالي المسدد</div><div class="kpi-value">${fmtMoney(t.totalPaid)}</div></div>
-      <div class="kpi ${t.totalRemaining>0?'alert':'ok'}"><div class="kpi-label">المستحق عليك حاليًا</div><div class="kpi-value">${fmtMoney(t.totalRemaining)}</div></div>
-    </div>
-    ${s.notes ? `<div class="table-wrap" style="padding:12px 14px; margin-bottom:20px; font-size:13px;"><b>ملاحظات:</b> ${s.notes}</div>` : ''}
-    <div class="section-title" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
-      <span>🧾 فواتير المشتريات</span>
-      ${editable ? `<button class="btn secondary small" onclick="openSupplierInvoiceForm('${s._id}')">+ فاتورة جديدة</button>` : ''}
-    </div>
-    <div class="table-wrap"><div class="table-scroll"><table>
-      <thead><tr><th>التاريخ</th><th>رقم فاتورة المورد</th><th>المشروع</th><th>القيمة</th><th>المسدد</th><th>المستحق</th><th>الحالة</th><th></th></tr></thead>
-      <tbody>${rows}</tbody>
-    </table></div></div>
-  `;
-}
 function attachSupplierDetailEvents(){ /* الأزرار مربوطة عبر onclick مباشرة */ }
 let supplierInvoiceFormState = {supplierId:null, editId:null};
-function openSupplierInvoiceForm(supplierId, editId){
-  if(!canEdit('suppliers')) return;
-  const s = DATA.suppliers.find(r=>r._id===supplierId);
-  if(!s) return;
-  supplierInvoiceFormState = {supplierId, editId: editId||null};
-  const rec = editId ? s.invoices.find(i=>i.id===editId) : null;
-  document.getElementById('supplierInvoiceModalTitle').textContent = editId ? 'تعديل فاتورة' : 'فاتورة مشتريات جديدة — '+s.name;
-  document.getElementById('supinv-number').value = rec ? (rec.number||'') : '';
-  document.getElementById('supinv-date').value = rec ? rec.date : todayStr();
-  document.getElementById('supinv-project').value = rec ? (rec.project||'') : '';
-  document.getElementById('supinv-amount').value = rec ? rec.amount : '';
-  document.getElementById('supinv-duedate').value = rec ? (rec.dueDate||'') : '';
-  document.getElementById('supinv-note').value = rec ? (rec.note||'') : '';
-  const projSel = document.getElementById('supinv-project');
-  projSel.innerHTML = `<option value="">— بدون مشروع محدد (مصروف عام على الشركة) —</option>` +
-    DATA.projects.map(p=>`<option value="${p.name}" ${rec&&rec.project===p.name?'selected':''}>${p.name}</option>`).join('');
-  document.getElementById('supplierInvoiceOverlay').classList.add('open');
-}
 function closeSupplierInvoiceModal(){ document.getElementById('supplierInvoiceOverlay').classList.remove('open'); }
-function saveSupplierInvoice(){
-  const {supplierId, editId} = supplierInvoiceFormState;
-  if(!canEdit('suppliers')) return;
-  const s = DATA.suppliers.find(r=>r._id===supplierId);
-  if(!s) return;
-  const number = document.getElementById('supinv-number').value.trim();
-  const date = document.getElementById('supinv-date').value;
-  const project = document.getElementById('supinv-project').value;
-  const amount = Number(document.getElementById('supinv-amount').value)||0;
-  const dueDate = document.getElementById('supinv-duedate').value;
-  const note = document.getElementById('supinv-note').value.trim();
-  if(!date){ alert('من فضلك اختر تاريخ الفاتورة'); return; }
-  if(!amount || amount<=0){ alert('من فضلك أدخل قيمة الفاتورة'); return; }
-  if(editId){
-    const rec = s.invoices.find(i=>i.id===editId);
-    if(rec) Object.assign(rec, {number, date, project, amount, dueDate, note});
-  }else{
-    const n = (s.invoices.length ? Math.max(...s.invoices.map(i=>i._n||0)) : 0)+1;
-    s.invoices.push({id:s._id+'-INV'+n, _n:n, number, date, project, amount, dueDate, note, payments:[]});
-  }
-  logAudit(editId?'تعديل':'إضافة', 'فاتورة مورد', s.name, fmtMoney(amount));
-  saveData();
-  closeSupplierInvoiceModal();
-  renderPage();
-}
 function deleteSupplierInvoice(supplierId, invId){
   if(!isAdmin()) return;
   const s = DATA.suppliers.find(r=>r._id===supplierId);
@@ -7630,34 +7534,6 @@ function saveSupplierPayment(){
   saveData();
   closeSupplierPaymentModal();
   renderPage();
-}
-function printSupplierStatement(id){
-  const s = DATA.suppliers.find(r=>r._id===id);
-  if(!s) return;
-  s.invoices.forEach(syncSupplierInvoiceStatus);
-  const t = supplierTotals(s);
-  const info = `<table style="width:100%; border-collapse:collapse; font-size:13px;">
-    <tbody>
-      <tr><td style="padding:7px; border:1px solid #ccc; font-weight:700; width:160px;">المورد</td><td style="padding:7px; border:1px solid #ccc;">${s.name}</td></tr>
-      <tr><td style="padding:7px; border:1px solid #ccc; font-weight:700;">نوع المواد</td><td style="padding:7px; border:1px solid #ccc;">${s.category||'—'}</td></tr>
-      <tr><td style="padding:7px; border:1px solid #ccc; font-weight:700;">الهاتف</td><td style="padding:7px; border:1px solid #ccc;">${s.phone||'—'}</td></tr>
-    </tbody>
-  </table>`;
-  const cards = statCardsRow([
-    statCard('إجمالي المشتريات', fmtMoney(t.totalInvoiced), '#2c3e50'),
-    statCard('إجمالي المسدد', fmtMoney(t.totalPaid), '#27ae60'),
-    statCard('المستحق عليك', fmtMoney(t.totalRemaining), t.totalRemaining>0?'#c0392b':'#27ae60'),
-  ]);
-  const invoices = (s.invoices||[]).slice().sort((a,b)=>(a.date||'').localeCompare(b.date||''));
-  const rows = invoices.length ? invoices.map(inv=>`<tr>
-      <td>${inv.date||'—'}</td><td>${inv.number||'—'}</td><td>${inv.project||'عام'}</td>
-      <td>${fmtMoney(inv.amount)}</td><td>${fmtMoney(supplierInvoicePaidTotal(inv))}</td>
-      <td style="font-weight:700;">${fmtMoney(supplierInvoiceRemaining(inv))}</td><td>${inv.status}</td>
-    </tr>`).join('') : `<tr><td colspan="7" style="text-align:center;">لا توجد فواتير</td></tr>`;
-  const body = info + cards
-    + tafqeetLine(t.totalRemaining, 'المستحق عليك حاليًا فقط وقدره')
-    + buildStatementTable(['التاريخ','رقم الفاتورة','المشروع','القيمة','المسدد','المستحق','الحالة'], rows);
-  openPrintDocument('كشف حساب مورد — '+s.name, s.category||'', body);
 }
 function printInvoiceDetail(id){
   const inv = DATA.finance.find(r=>r._id===id);
@@ -10521,7 +10397,7 @@ function renderCashboxDetail(id){
             <td style="color:var(--good); font-weight:700;">${isIn?fmtMoney(e.amount):''}</td>
             <td style="color:var(--bad); font-weight:700;">${!isIn?fmtMoney(e.amount):''}</td>
             <td>${fmtMoney(running)}</td>
-            <td class="row-actions">${e.linked ? `<span class="badge b-neutral" title="اتسجلت من شاشة ${e.origin} — التعديل من هناك">من ${e.origin}</span>${(e.emp && !mv.closing && !e.srcRec.settled && (admin || (isBoxCustodian(b) && e.srcRec.byId===myUserId()))) ? ` <button class="btn danger small" onclick="deleteLinkedEmpPayment('${b._id}','${e.id}')">إلغاء</button>` : ''}` : e.linkedSettlement ? '<span class="badge b-neutral" title="بيتلغي من صفحة العامل (إلغاء التصفية)">تصفية حساب</span>' : canModifyCashEntry(b, e) && !mv.closing ? `<button class="btn secondary small" onclick="openCashEntryForm('${b._id}','${e.type}','${e.id}')">تعديل</button><button class="btn danger small" onclick="deleteCashEntry('${b._id}','${e.id}')">حذف</button>` : ''}</td>
+            <td class="row-actions">${e.linked ? `<span class="badge b-neutral" title="اتسجلت من شاشة ${e.origin} — التعديل من هناك">من ${e.origin}</span>${((e.emp || e.sub) && !mv.closing && !e.srcRec.settled && (admin || (isBoxCustodian(b) && e.srcRec.byId===myUserId()))) ? ` <button class="btn danger small" onclick="deleteLinkedEmpPayment('${b._id}','${e.id}')">إلغاء</button>` : ''}` : e.linkedSettlement ? '<span class="badge b-neutral" title="بيتلغي من صفحة العامل (إلغاء التصفية)">تصفية حساب</span>' : canModifyCashEntry(b, e) && !mv.closing ? `<button class="btn secondary small" onclick="openCashEntryForm('${b._id}','${e.type}','${e.id}')">تعديل</button><button class="btn danger small" onclick="deleteCashEntry('${b._id}','${e.id}')">حذف</button>` : ''}</td>
           </tr>`;
         }).join('') || `<tr><td colspan="8" style="text-align:center; color:var(--text-dim);">لا توجد حركات في الشهر ده</td></tr>`}
         <tr style="background:var(--surface-2); font-weight:900;"><td></td><td colspan="3">الإجمالي والرصيد آخر الشهر</td><td>${fmtMoney(mv.receipts)}</td><td>${fmtMoney(mv.spends)}</td><td>${fmtMoney(mv.balance)}</td><td></td></tr>
@@ -10640,10 +10516,9 @@ function openCashEntryForm(boxId, type, editId){
     <div class="field"><label>التاريخ</label><input id="ce-date" type="date" value="${defDate}"></div>
     <div class="field"><label>المبلغ (جنيه)</label><input id="ce-amount" type="number" min="0" value="${e?e.amount:''}"></div>
     ${isIn ? `
-      <div class="field"><label>المصدر</label><input id="ce-source" type="text" list="ceSources" value="${e?(e.source||''):'الخزينة الرئيسية'}">
-        <datalist id="ceSources"><option value="الخزينة الرئيسية"><option value="البنك"><option value="المدير"><option value="تحصيل من عميل"></datalist></div>
+      ${cashFromFieldHtml(b, e)}
     ` : `
-      <div class="field"><label>حساب المصروف</label><select id="ce-account" onchange="updateCashEmpFields()">${(DATA.expenseAccounts||[]).map(a=>`<option ${e&&e.account===a?'selected':''}>${a}</option>`).join('')}</select></div>
+      <div class="field"><label>حساب المصروف</label><select id="ce-account" onchange="updateCashEmpFields()">${(()=>{ const accs = DATA.expenseAccounts||[]; const def = e ? e.account : (accs.find(a=>!CASH_EMP_ACCOUNTS[a] && a!=='أجور العمالة')||accs[0]); return accs.map(a=>`<option ${a===def?'selected':''}>${a}</option>`).join(''); })()}</select></div>
       ${e ? '' : cashEmpFieldsHtml()}
       <div class="field" id="ce-project-wrap"><label>المشروع</label><select id="ce-project">${cbProjectOptions(e?(e.project||''):(b.project||''))}</select></div>
       <div class="field"><label>رقم الإيصال / الفاتورة (اختياري)</label><input id="ce-ref" type="text" value="${e?(e.ref||''):''}"></div>
@@ -10654,7 +10529,7 @@ function openCashEntryForm(boxId, type, editId){
   if(!isIn && !e) updateCashEmpFields();
 }
 /* ---------- صرف سلفة / مرتب لموظف من العهدة: بيتسجل في حساب الموظف نفسه تلقائي ---------- */
-const CASH_EMP_ACCOUNTS = {'سلف الموظفين':'advance', 'أجور ومرتبات':'salary'};
+const CASH_EMP_ACCOUNTS = {'سلف الموظفين':'advance', 'أجور ومرتبات':'salary', 'مصروفات مقاولي الباطن':'sub'};
 function cashEmpMode(){
   const acc = document.getElementById('ce-account');
   return acc && document.getElementById('ce-emp') ? (CASH_EMP_ACCOUNTS[acc.value]||'') : '';
@@ -10668,13 +10543,61 @@ function cashEmpFieldsHtml(){
     </select></div>
     <div class="field" id="ce-month-wrap" style="display:none;"><label>مرتب شهر</label><select id="ce-month" onchange="updateCashEmpAmount()"></select></div>
     <div id="ce-emp-info" style="font-size:12.5px; color:var(--text-dim); margin:-4px 0 10px;"></div>
+  </div>
+  <div id="ce-sub-wrap" style="display:none;">
+    <div class="field"><label>مقاول الباطن</label><select id="ce-sub" onchange="updateCashSubProjects()">
+      <option value="">— اختار المقاول —</option>
+      ${(DATA.subs||[]).slice().sort((a,b)=>a.name.localeCompare(b.name)).map(s=>`<option value="${s._id}">${s.name}${s.specialty?' — '+s.specialty:''}</option>`).join('')}
+    </select></div>
+    <div class="field"><label>المشروع</label><select id="ce-sub-project" onchange="updateCashSubInfo()"></select></div>
+    <div id="ce-sub-info" style="font-size:12.5px; color:var(--text-dim); margin:-4px 0 10px;"></div>
   </div>`;
+}
+// مشاريع المقاول (اللي عنده عليها بند شغل) الأول، وبعدها باقي المشاريع
+function updateCashSubProjects(){
+  const s = (DATA.subs||[]).find(x=>x._id===document.getElementById('ce-sub').value);
+  const sel = document.getElementById('ce-sub-project');
+  const mine = s ? Array.from(new Set((s.assignments||[]).map(a=>a.project).filter(Boolean))) : [];
+  const others = DATA.projects.map(p=>p.name).filter(n=>!mine.includes(n));
+  sel.innerHTML = '<option value="">— اختار المشروع —</option>'
+    + (mine.length ? `<optgroup label="مشاريع شغال فيها">${mine.map(n=>`<option value="${n}">${n}</option>`).join('')}</optgroup>` : '')
+    + `<optgroup label="${mine.length?'مشاريع تانية':'المشاريع'}">${others.map(n=>`<option value="${n}">${n}</option>`).join('')}</optgroup>`;
+  if(mine.length===1) sel.value = mine[0];
+  updateCashSubInfo();
+}
+function updateCashSubInfo(){
+  const s = (DATA.subs||[]).find(x=>x._id===document.getElementById('ce-sub').value);
+  const proj = document.getElementById('ce-sub-project').value;
+  const info = document.getElementById('ce-sub-info');
+  if(!s || !proj){ info.textContent = ''; return; }
+  const a = (s.assignments||[]).find(x=>x.project===proj);
+  if(a){ const t = computeEntryTotals(a); info.textContent = 'الدفعة هتتسجل في حساب '+s.name+' على '+proj+' — المتبقي له قبلها: '+fmtMoney(t.remaining); }
+  else info.textContent = s.name+' مالوش بند على '+proj+' — هيتفتح له بند جديد على المشروع وتتسجل فيه الدفعة.';
+}
+function saveCashSubPayment(b, date, amount, description){
+  const s = (DATA.subs||[]).find(x=>x._id===document.getElementById('ce-sub').value);
+  const proj = document.getElementById('ce-sub-project').value;
+  if(!s){ alert('من فضلك اختار مقاول الباطن'); return false; }
+  if(!proj){ alert('من فضلك اختار المشروع'); return false; }
+  if(!Array.isArray(s.assignments)) s.assignments = [];
+  let a = s.assignments.find(x=>x.project===proj);
+  if(!a){
+    a = {id:'ASG-'+Math.random().toString(36).slice(2,10), project:proj, contractType:(DATA.contractTypes&&DATA.contractTypes[0])||'مقطوعية', entries:[]};
+    s.assignments.push(a);
+  }
+  if(!Array.isArray(a.entries)) a.entries = [];
+  const n = (a.entries.length ? Math.max(...a.entries.map(e=>e._n||0)) : 0)+1;
+  a.entries.push({id:a.id+'-E'+n, _n:n, date, kind:'دفعة', description:description||('دفعة من '+b.name), quantity:'', unitPrice:'', amount, paidFrom:'box:'+b._id, by: currentUser ? currentUser.name : '', byId: myUserId()});
+  logAudit('إضافة', 'بند مقاول باطن', s.name, 'دفعة - '+proj+' - '+fmtMoney(amount)+' — من '+b.name);
+  return s;
 }
 function updateCashEmpFields(){
   const wrap = document.getElementById('ce-emp-wrap');
   if(!wrap) return;
   const mode = CASH_EMP_ACCOUNTS[document.getElementById('ce-account').value]||'';
-  wrap.style.display = mode ? '' : 'none';
+  wrap.style.display = (mode && mode!=='sub') ? '' : 'none';
+  const sw = document.getElementById('ce-sub-wrap'); if(sw) sw.style.display = mode==='sub' ? '' : 'none';
+  if(mode==='sub' && !document.getElementById('ce-sub-project').options.length) updateCashSubProjects();
   const pw = document.getElementById('ce-project-wrap'); if(pw) pw.style.display = mode ? 'none' : '';
   const amt = document.getElementById('ce-amount');
   amt.readOnly = false;
@@ -10735,9 +10658,20 @@ function saveCashEmpPayment(b, mode, date, amount, description){
 function deleteLinkedEmpPayment(boxId, linkId){
   const b = DATA.cashboxes.find(x=>x._id===boxId);
   const e = b && cashboxLinkedOutflows(b).find(x=>x.id===linkId);
-  if(!e || !e.srcRec || !e.emp) return;
+  if(!e || !e.srcRec || !(e.emp || e.sub)) return;
   if(!(isAdmin() || (isBoxCustodian(b) && e.srcRec.byId===myUserId()))) return;
   if(isCashboxMonthClosed(b, cbMonth(e.date))){ alert('الحركة دي في شهر مقفول'); return; }
+  if(e.sub){
+    const {s, a} = e.sub;
+    openConfirmModal('إلغاء الدفعة ('+fmtMoney(e.amount)+') لـ'+s.name+' على '+a.project+'؟ المبلغ هيرجع لرصيد العهدة.', ()=>{
+      a.entries = (a.entries||[]).filter(x=>x!==e.srcRec);
+      logAudit('حذف', 'بند مقاول باطن', s.name, 'دفعة - '+a.project+' - '+fmtMoney(e.amount)+' — من '+b.name);
+      generateAutoEntries();
+      saveData();
+      renderPage();
+    });
+    return;
+  }
   if(e.srcRec.settled){ alert('البند ده اتصفّى في تصفية حساب — مينفعش يتلغي'); return; }
   const h = e.emp;
   openConfirmModal('إلغاء '+(e.origin==='الرواتب'?'صرف المرتب':'السلفة')+' ('+fmtMoney(e.amount)+') لـ'+h.name+'؟ المبلغ هيرجع لرصيد العهدة.', ()=>{
@@ -10748,6 +10682,42 @@ function deleteLinkedEmpPayment(boxId, linkId){
     saveData();
     renderPage();
   });
+}
+/* ---------- مصدر التغذية: لو من خزينة/عهدة تانية، المبلغ بيتخصم منها تلقائي (تحويل بين الخزائن) ---------- */
+const CASH_FROM_OTHER = ['البنك','المدير','تحصيل من عميل'];
+function cashFromFieldHtml(b, e){
+  const boxes = (DATA.cashboxes||[]).filter(x=>x._id!==b._id);
+  const mainBox = boxes.find(x=>x.kind==='خزينة رئيسية');
+  let cur = e ? (e.fromBox ? 'box:'+e.fromBox : (CASH_FROM_OTHER.includes(e.source) ? e.source : (e.source ? 'other' : ''))) : (mainBox ? 'box:'+mainBox._id : 'البنك');
+  return `<div class="field"><label>المصدر (الفلوس جت منين؟)</label>
+    <select id="ce-from" onchange="document.getElementById('ce-source-wrap').style.display = this.value==='other' ? '' : 'none'">
+      ${boxes.map(x=>`<option value="box:${x._id}" ${cur==='box:'+x._id?'selected':''}>💼 ${x.name}${x.custodian?' ('+x.custodian+')':''} — الرصيد ${fmtMoney(cashboxCurrentBalance(x))}</option>`).join('')}
+      ${CASH_FROM_OTHER.map(o=>`<option value="${o}" ${cur===o?'selected':''}>${o}</option>`).join('')}
+      <option value="other" ${cur==='other'?'selected':''}>أخرى...</option>
+    </select>
+    <div style="font-size:11.5px; color:var(--text-dim); margin-top:4px;">لو اخترت خزينة أو عهدة، المبلغ بيتخصم من رصيدها تلقائي.</div></div>
+    <div class="field" id="ce-source-wrap" style="display:${cur==='other'?'':'none'};"><label>اكتب المصدر</label><input id="ce-source" type="text" value="${e && cur==='other' ? (e.source||'') : ''}"></div>`;
+}
+function readCashFrom(b, date, prev, amount){
+  const v = document.getElementById('ce-from').value;
+  if(prev && prev.fromBox){
+    const old = DATA.cashboxes.find(x=>x._id===prev.fromBox);
+    if(old && isCashboxMonthClosed(old, cbMonth(prev.date))){ alert('الحركة دي متسجلة على شهر مقفول في '+old.name); return null; }
+  }
+  if(v.indexOf('box:')===0){
+    const src = DATA.cashboxes.find(x=>x._id===v.slice(4));
+    if(!src){ alert('الخزينة مش موجودة'); return null; }
+    ensureCashboxShape(src);
+    if(date < src.openingDate){ alert('التاريخ قبل بداية '+src.name+' ('+src.openingDate+')'); return null; }
+    if(isCashboxMonthClosed(src, cbMonth(date))){ alert('شهر '+cbMonthLabel(cbMonth(date))+' مقفول في '+src.name+' — مينفعش تحوّل منها على الشهر ده'); return null; }
+    return {source: src.name, fromBox: src._id};
+  }
+  if(v==='other'){
+    const t = document.getElementById('ce-source').value.trim();
+    if(!t){ alert('اكتب مصدر الفلوس'); return null; }
+    return {source: t, fromBox: ''};
+  }
+  return {source: v, fromBox: ''};
 }
 function saveCashEntry(){
   const b = DATA.cashboxes.find(x=>x._id===cashEntryState.boxId);
@@ -10764,6 +10734,17 @@ function saveCashEntry(){
   if(isCashboxMonthClosed(b, cbMonth(date))){ alert('شهر '+cbMonthLabel(cbMonth(date))+' مقفول — مينفعش تسجل أو تعدّل حركات فيه. المدير يقدر يلغي الإقفال لو محتاج.'); return; }
   const isIn = cashEntryState.type==='تغذية';
   const empMode = (!isIn && !cashEntryState.editId) ? cashEmpMode() : '';
+  if(empMode==='sub'){
+    const s = saveCashSubPayment(b, date, amount, description);
+    if(!s) return;
+    generateAutoEntries();
+    saveData();
+    cbClose('cashEntryOverlay');
+    cashboxMonthView = cbMonth(date);
+    renderPage();
+    showToast('اتسجلت الدفعة في حساب '+s.name+' ✓', 'good');
+    return;
+  }
   if(empMode){
     const h = saveCashEmpPayment(b, empMode, date, amount, description);
     if(!h) return;
@@ -10776,7 +10757,11 @@ function saveCashEntry(){
     return;
   }
   const data = {date, amount, description, type: cashEntryState.type, by: currentUser ? currentUser.name : '', byId: myUserId()};
-  if(isIn){ data.source = document.getElementById('ce-source').value.trim(); }
+  if(isIn){
+    const from = readCashFrom(b, date, cashEntryState.editId ? b.entries.find(x=>x.id===cashEntryState.editId) : null, amount);
+    if(!from) return;
+    Object.assign(data, from);
+  }
   else{
     data.account = document.getElementById('ce-account').value;
     data.project = document.getElementById('ce-project').value;
@@ -10802,6 +10787,7 @@ function deleteCashEntry(boxId, entryId){
   const e = b && b.entries.find(x=>x.id===entryId);
   if(!e || !canModifyCashEntry(b, e)) return;
   if(isCashboxMonthClosed(b, cbMonth(e.date))){ alert('الحركة دي في شهر مقفول'); return; }
+  if(e.fromBox){ const src = DATA.cashboxes.find(x=>x._id===e.fromBox); if(src && isCashboxMonthClosed(src, cbMonth(e.date))){ alert('الشهر ده مقفول في '+src.name+' (اللي اتحولت منها الفلوس)'); return; } }
   if(!confirm('حذف الحركة دي؟')) return;
   b.entries = b.entries.filter(x=>x.id!==entryId);
   logAudit('حذف', 'حركة عهدة', b.name, fmtMoney(e.amount));
@@ -10909,9 +10895,6 @@ function printCashboxMonth(boxId, month){
 </script>
 <script>
 /* ================= مشتريات الموردين على المشاريع ================= */
-function supplierPayablesTotal(){
-  return (DATA.suppliers||[]).reduce((s,sup)=>s+(sup.invoices||[]).reduce((x,inv)=>x+supplierInvoiceRemaining(inv),0),0);
-}
 function projectSupplierInvoices(projectName){
   const out = [];
   (DATA.suppliers||[]).forEach(s=>(s.invoices||[]).forEach(inv=>{ if(inv.project===projectName) out.push({s, inv}); }));
@@ -10936,7 +10919,7 @@ function renderProjectSupplierSection(p){
       <tbody>${list.map(({s, inv})=>{ const pd = supplierInvoicePaidTotal(inv); const rem = supplierInvoiceRemaining(inv); return `<tr>
         <td>${inv.date||'—'}</td>
         <td style="font-weight:700; cursor:pointer;" onclick="goTo('suppliers'); openSupplierDetail('${s._id}')">${s.name}</td>
-        <td>${inv.number||'—'}${inv.note?`<div style="color:var(--text-dim); font-size:11.5px;">${inv.note}</div>`:''}</td>
+        <td style="cursor:pointer; color:var(--accent); text-decoration:underline;" onclick="openSupplierInvoiceView('${s._id}','${inv.id}')">${inv.number||'عرض'}${inv.note?`<div style="color:var(--text-dim); font-size:11.5px;">${inv.note}</div>`:''}</td>
         <td style="font-weight:700;">${fmtMoney(inv.amount)}</td>
         <td style="color:var(--good);">${fmtMoney(pd)}</td>
         <td style="font-weight:700; color:${rem>0?'var(--bad)':'var(--good)'};">${fmtMoney(rem)}</td>
@@ -11390,25 +11373,33 @@ function applyPaySource(rec, ps){
 function cashboxLinkedOutflows(b){
   const key = 'box:'+b._id;
   const out = [];
-  const add = (rec, date, amount, description, account, project, origin, emp)=>{
+  const add = (rec, date, amount, description, account, project, origin, emp, sub)=>{
     if(!rec || rec.paidFrom!==key) return;
     const amt = Number(amount)||0;
     if(!(amt>0) || !date) return;
-    out.push({id:'LNK:'+origin+':'+(rec.id||rec._id), linked:true, origin, type:'مصروف', date, amount:amt, description, account, project:project||'', chequeNo:rec.chequeNo, srcRec:rec, emp:emp||null});
+    out.push({id:'LNK:'+origin+':'+(rec.id||rec._id), linked:true, origin, type:'مصروف', date, amount:amt, description, account, project:project||'', chequeNo:rec.chequeNo, srcRec:rec, emp:emp||null, sub:sub||null});
   };
   (DATA.hr||[]).forEach(h=>{
     (h.payrollEntries||[]).forEach(e=>{ if(e.type==='سلفة') add(e, e.date, e.amount, 'سلفة لـ'+h.name+(e.note?' — '+e.note:''), 'سلف الموظفين', h.project, 'سلف الموظفين', h); });
     (h.payrollRuns||[]).forEach(r=>{ if(r.paid) add(r, r.paidDate, r.netAmount, 'راتب '+monthLabel(r.month)+' — '+h.name, 'أجور ومرتبات', h.project, 'الرواتب', h); });
   });
   (DATA.subs||[]).forEach(s=>(s.assignments||[]).forEach(a=>(a.entries||[]).forEach(e=>{
-    if(e.kind==='دفعة') add(e, e.date, e.amount, 'دفعة لمقاول الباطن '+s.name+(e.description?' — '+e.description:''), 'مقاولي الباطن', a.project, 'مقاولي الباطن');
+    if(e.kind==='دفعة') add(e, e.date, e.amount, 'دفعة لمقاول الباطن '+s.name+(e.description?' — '+e.description:''), 'مقاولي الباطن', a.project, 'مقاولي الباطن', null, {s, a});
   })));
-  (DATA.suppliers||[]).forEach(s=>(s.invoices||[]).forEach(inv=>(inv.payments||[]).forEach(p=>{
-    add(p, p.date, p.amount, 'سداد للمورد '+s.name+(inv.number?' — فاتورة '+inv.number:''), 'مشتريات من الموردين', inv.project, 'الموردين');
-  })));
+  (DATA.suppliers||[]).forEach(s=>{
+    (s.invoices||[]).forEach(inv=>(inv.payments||[]).forEach(p=>{
+      add(p, p.date, p.amount, 'سداد للمورد '+s.name+(inv.number?' — فاتورة '+inv.number:''), 'مشتريات من الموردين', inv.project, 'الموردين');
+    }));
+    (s.payments||[]).forEach(p=>add(p, p.date, p.amount, 'دفعة على حساب المورد '+s.name+(p.note?' — '+p.note:''), 'مشتريات من الموردين', '', 'الموردين'));
+  });
   (DATA.generalExpenses||[]).forEach(g=>add(g, g.date, g.amount, g.description||'مصروف ثابت/عام', g.account, '', 'المصاريف العامة'));
   (DATA.assets||[]).forEach(a=>(a.expenses||[]).forEach(e=>add(e, e.date, e.amount, (e.kind||'مصروف')+' — '+a.name+(e.note?' — '+e.note:''), 'صيانة ومعدات', e.project, 'الأصول والمعدات')));
   (DATA.ledger||[]).forEach(l=>{ if(!l.source && l.type==='مصروف') add(l, l.date, l.amount, l.description||l.account, l.account, l.project, 'القيود'); });
+  // تحويل لخزينة/عهدة تانية (تغذية عهدة من الخزينة دي) — مش مصروف، بس بيقلل الرصيد
+  (DATA.cashboxes||[]).forEach(o=>{ if(o._id===b._id) return; (o.entries||[]).forEach(e=>{
+    if(e.type==='تغذية' && e.fromBox===b._id && Number(e.amount)>0 && e.date)
+      out.push({id:'TRF:'+o._id+':'+e.id, linked:true, transfer:true, origin:'تحويل', type:'مصروف', date:e.date, amount:Number(e.amount), description:'تحويل لـ'+o.name+(e.description?' — '+e.description:''), account:'تحويل بين الخزائن', project:''});
+  }); });
   return out;
 }
 function cashboxAllEntries(b){ return (b.entries||[]).concat(cashboxLinkedOutflows(b)); }
@@ -11640,6 +11631,507 @@ function employeeProjectSummary(h, attendance){
     map[p].units += u; map[p].cost += attendanceCost(h, a);
   });
   return Object.keys(map).map(p=>({project:p, units:map[p].units, cost:round2(map[p].cost)}));
+}
+
+/* ================= الموردون: رصيد أول المدة + بنود الفاتورة + سداد بالدفعات (من الأقدم للأحدث) =================
+   - رصيد أول المدة: موجب = له عندنا (علينا للمورد)، سالب = عليه لينا (مدفوع له مقدم).
+   - الدفعة على حساب المورد (s.payments) مش مربوطة بفاتورة: بتغطي الأقدم أولًا (رصيد أول المدة ثم الفواتير بالتاريخ).
+   - الدفعات القديمة المسجلة على فاتورة بعينها (inv.payments) بتفضل على فاتورتها زي ما هي. */
+
+const _supAllocCache = new Map();
+function supplierAllocation(s){
+  const sig = JSON.stringify([s.openingBalance, s.openingDate, (s.invoices||[]).map(i=>[i.id,i.date,i._n,i.amount,(i.payments||[]).map(p=>[p.id,p.amount])]), (s.payments||[]).map(p=>[p.id,p.date,p._n,p.amount])]);
+  const hit = _supAllocCache.get(s._id);
+  if(hit && hit.sig===sig) return hit.res;
+  const ob = Number(s.openingBalance)||0;
+  const obs = [];
+  if(ob>0) obs.push({kind:'opening', id:'OPEN', date:s.openingDate||'', amount:ob, direct:0, allocs:[]});
+  (s.invoices||[]).slice().sort((a,b)=>(a.date||'').localeCompare(b.date||'') || (a._n||0)-(b._n||0)).forEach(inv=>{
+    const direct = (inv.payments||[]).reduce((t,p)=>t+(Number(p.amount)||0),0);
+    obs.push({kind:'inv', id:inv.id, inv, date:inv.date||'', amount:Number(inv.amount)||0, direct, allocs:[]});
+  });
+  const credits = [];
+  if(ob<0) credits.push({id:'OPEN', date:s.openingDate||'', amount:-ob, label:'رصيد أول المدة (مدفوع مقدم)'});
+  // دفعة زيادة على فاتورة بعينها (قديمة) بتتحول لرصيد دائن
+  obs.forEach(o=>{ if(o.direct>o.amount) credits.push({id:'OVER:'+o.id, date:o.date, amount:o.direct-o.amount, label:'زيادة سداد فاتورة'}); });
+  (s.payments||[]).slice().sort((a,b)=>(a.date||'').localeCompare(b.date||'') || (a._n||0)-(b._n||0)).forEach(p=>credits.push({id:p.id, date:p.date, amount:Number(p.amount)||0, pay:p, uses:[]}));
+  credits.forEach(c=>{
+    let left = c.amount;
+    for(const o of obs){
+      if(left<=0.004) break;
+      const due = o.amount - Math.min(o.amount, o.direct) - o.allocs.reduce((t,a)=>t+a.amount,0);
+      if(due<=0.004) continue;
+      const take = Math.min(due, left);
+      o.allocs.push({payId:c.id, date:c.date, amount:round2(take), pay:c.pay});
+      if(c.uses) c.uses.push({obId:o.id, label:o.kind==='opening'?'رصيد أول المدة':('فاتورة '+(o.inv.number||'بدون رقم')+' بتاريخ '+o.inv.date), amount:round2(take), full: due-take<=0.004});
+      left -= take;
+    }
+    c.left = round2(left);
+  });
+  const byInv = {};
+  obs.forEach(o=>{ if(o.kind==='inv') byInv[o.id] = o; });
+  const unapplied = round2(credits.reduce((t,c)=>t+(c.left||0),0));
+  const res = {obs, byInv, credits, unapplied, opening:ob};
+  _supAllocCache.set(s._id, {sig, res});
+  return res;
+}
+function findSupplierOfInvoice(inv){
+  return (DATA.suppliers||[]).find(s=>(s.invoices||[]).includes(inv)) || (DATA.suppliers||[]).find(s=>(s.invoices||[]).some(i=>i.id===inv.id));
+}
+// المسدد من الفاتورة = دفعاتها المباشرة + نصيبها من دفعات الحساب (الأقدم أولًا)
+function supplierInvoicePaidTotal(inv){
+  const direct = (inv.payments||[]).reduce((t,p)=>t+(Number(p.amount)||0),0);
+  const s = findSupplierOfInvoice(inv);
+  if(!s) return direct;
+  const o = supplierAllocation(s).byInv[inv.id];
+  return round2(Math.min(direct, Number(inv.amount)||0) + (o ? o.allocs.reduce((t,a)=>t+a.amount,0) : 0));
+}
+function supplierTotals(s){
+  const opening = Number(s.openingBalance)||0;
+  let totalInvoiced = 0, totalPaid = 0;
+  (s.invoices||[]).forEach(inv=>{ totalInvoiced += Number(inv.amount)||0; totalPaid += (inv.payments||[]).reduce((t,p)=>t+(Number(p.amount)||0),0); });
+  totalPaid += (s.payments||[]).reduce((t,p)=>t+(Number(p.amount)||0),0);
+  const balance = round2(opening + totalInvoiced - totalPaid);
+  return {opening, totalInvoiced, totalPaid, balance, totalRemaining: balance};
+}
+function supplierPayablesTotal(){
+  return round2((DATA.suppliers||[]).reduce((t,s)=>t+supplierTotals(s).balance,0));
+}
+function fmtSupBalance(v){
+  if(Math.abs(v)<0.005) return '<span style="color:var(--good); font-weight:700;">0 — خالص</span>';
+  return v>0 ? `<span style="color:var(--bad); font-weight:700;">${fmtMoney(v)} له</span>` : `<span style="color:var(--good); font-weight:700;">${fmtMoney(-v)} عليه</span>`;
+}
+
+/* ---------- رصيد أول المدة في نافذة المورد ---------- */
+function mountSupplierOpeningFields(rec){
+  let wrap = document.getElementById('supplier-opening-wrap');
+  if(!wrap){
+    const f = document.getElementById('supplier-notes').closest('.field');
+    wrap = document.createElement('div'); wrap.id = 'supplier-opening-wrap';
+    f.parentNode.insertBefore(wrap, f);
+  }
+  const ob = rec ? (Number(rec.openingBalance)||0) : 0;
+  wrap.innerHTML = `
+    <div class="field"><label>رصيد أول المدة (لو فيه حساب قديم مع المورد قبل السيستم)</label>
+      <div style="display:flex; gap:8px;">
+        <input id="supplier-opening" type="number" min="0" value="${ob?Math.abs(ob):''}" placeholder="0" style="flex:1;">
+        <select id="supplier-opening-dir" style="flex:1;">
+          <option value="له" ${ob>=0?'selected':''}>له عندنا (علينا فلوس للمورد)</option>
+          <option value="عليه" ${ob<0?'selected':''}>عليه لينا (دافعين له مقدم)</option>
+        </select>
+      </div></div>
+    <div class="field"><label>تاريخ رصيد أول المدة</label><input id="supplier-opening-date" type="date" value="${rec&&rec.openingDate?rec.openingDate:todayStr()}"></div>`;
+}
+function readSupplierOpening(){
+  const v = Math.abs(Number(document.getElementById('supplier-opening').value)||0);
+  const dir = document.getElementById('supplier-opening-dir').value;
+  return {openingBalance: dir==='عليه' ? -v : v, openingDate: document.getElementById('supplier-opening-date').value || todayStr()};
+}
+
+/* ---------- كتالوج الأصناف (أصناف المورد أولًا، وبعدها أي صنف اتسجل على السيستم) ---------- */
+function purchaseItemCatalog(s){
+  const map = new Map();
+  const put = (name, unit, price, mine)=>{
+    name = (name||'').trim(); if(!name) return;
+    const k = name.toLowerCase();
+    if(!map.has(k)) map.set(k, {name, unit:unit||'', price:Number(price)||0, mine:!!mine});
+    else { const x = map.get(k); if(mine) x.mine = true; if(!x.unit && unit) x.unit = unit; if(mine && price) x.price = Number(price); }
+  };
+  if(s){
+    (s.items||[]).forEach(it=>put(it.name, it.unit, it.price, true));
+    (s.invoices||[]).slice().sort((a,b)=>(a.date||'').localeCompare(b.date||'')).forEach(inv=>(inv.items||[]).forEach(it=>put(it.name, it.unit, it.price, true)));
+  }
+  (DATA.suppliers||[]).forEach(o=>{ if(o===s) return; (o.items||[]).forEach(it=>put(it.name, it.unit, it.price, false)); (o.invoices||[]).forEach(inv=>(inv.items||[]).forEach(it=>put(it.name, it.unit, it.price, false))); });
+  (DATA.materials||[]).forEach(m=>put(m.name, m.unit, m.unitPrice, false));
+  return Array.from(map.values()).sort((a,b)=>(b.mine-a.mine) || a.name.localeCompare(b.name));
+}
+
+/* ---------- فاتورة المورد بالبنود ---------- */
+let supInvState = {supplierId:null, editId:null};
+function openSupplierInvoiceForm(supplierId, editId){
+  if(!canEdit('suppliers')) return;
+  const s = DATA.suppliers.find(r=>r._id===supplierId);
+  if(!s) return;
+  if(editId && !isAdmin()) return;
+  supInvState = {supplierId, editId: editId||null};
+  const rec = editId ? s.invoices.find(i=>i.id===editId) : null;
+  const cat = purchaseItemCatalog(s);
+  cbOverlay('supInvOverlay', (editId?'تعديل فاتورة':'فاتورة مشتريات جديدة')+' — '+s.name, `
+    <datalist id="supItemsList">${cat.map(c=>`<option value="${c.name}">${c.mine?'⭐ ':''}${c.unit?c.unit+' — ':''}${c.price?fmtMoney(c.price):''}</option>`).join('')}</datalist>
+    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+      <div class="field" style="flex:1; min-width:140px;"><label>رقم فاتورة المورد</label><input id="si-number" type="text" value="${rec?(rec.number||''):''}"></div>
+      <div class="field" style="flex:1; min-width:140px;"><label>التاريخ</label><input id="si-date" type="date" value="${rec?rec.date:todayStr()}"></div>
+    </div>
+    <div class="field"><label>المشروع</label><select id="si-project">${cbProjectOptions(rec?(rec.project||''):'').replace('بدون مشروع (مصروف عام)','بدون مشروع محدد (مصروف عام على الشركة)')}</select></div>
+    <div class="section-title" style="margin:6px 0 8px; font-size:14px;">بنود الفاتورة</div>
+    <div style="font-size:12px; color:var(--text-dim); margin-bottom:6px;">اختار الصنف من القايمة (⭐ = أصناف المورد ده) أو اكتب صنف جديد — السعر والوحدة بيتملوا لوحدهم من آخر مرة.</div>
+    <div id="si-items"></div>
+    <button class="btn secondary small" onclick="addSupInvItemRow()" style="margin-bottom:12px;">+ بند</button>
+    <div class="field"><label>إجمالي الفاتورة</label><input id="si-amount" type="number" min="0" value="${rec?rec.amount:''}"><div id="si-amount-hint" style="font-size:11.5px; color:var(--text-dim); margin-top:3px;"></div></div>
+    <div class="field"><label>تاريخ الاستحقاق (اختياري)</label><input id="si-due" type="date" value="${rec?(rec.dueDate||''):''}"></div>
+    <div class="field"><label>ملاحظة</label><input id="si-note" type="text" value="${rec?(rec.note||''):''}"></div>
+    <div style="display:flex; gap:8px; justify-content:flex-end;"><button class="btn secondary" onclick="cbClose('supInvOverlay')">إلغاء</button><button class="btn" id="si-save" onclick="saveSupplierInvoice()">حفظ</button></div>
+  `);
+  const items = rec && Array.isArray(rec.items) && rec.items.length ? rec.items : (rec ? [] : [null]);
+  items.forEach(it=>addSupInvItemRow(it));
+  recalcSupInv();
+}
+function addSupInvItemRow(it){
+  const box = document.getElementById('si-items');
+  const row = document.createElement('div');
+  row.className = 'si-row';
+  row.style.cssText = 'display:flex; gap:6px; flex-wrap:wrap; align-items:flex-end; border:1px solid var(--border); border-radius:6px; padding:8px; margin-bottom:6px; background:var(--bg);';
+  row.innerHTML = `
+    <div style="flex:3; min-width:150px;"><label style="font-size:11.5px;">الصنف</label><input class="si-name" list="supItemsList" type="text" value="${it?it.name:''}" onchange="fillSupInvItem(this)"></div>
+    <div style="flex:1; min-width:70px;"><label style="font-size:11.5px;">الوحدة</label><input class="si-unit" type="text" value="${it?(it.unit||''):''}"></div>
+    <div style="flex:1; min-width:70px;"><label style="font-size:11.5px;">الكمية</label><input class="si-qty" type="number" step="any" min="0" value="${it?it.qty:''}" oninput="recalcSupInv()"></div>
+    <div style="flex:1; min-width:80px;"><label style="font-size:11.5px;">السعر</label><input class="si-price" type="number" step="any" min="0" value="${it?it.price:''}" oninput="recalcSupInv()"></div>
+    <div style="flex:1; min-width:90px;"><label style="font-size:11.5px;">الإجمالي</label><input class="si-total" type="text" readonly value=""></div>
+    <button class="btn danger small" onclick="this.closest('.si-row').remove(); recalcSupInv();">×</button>`;
+  box.appendChild(row);
+  recalcSupInv();
+}
+function fillSupInvItem(inp){
+  const s = DATA.suppliers.find(r=>r._id===supInvState.supplierId);
+  const c = purchaseItemCatalog(s).find(x=>x.name.toLowerCase()===inp.value.trim().toLowerCase());
+  const row = inp.closest('.si-row');
+  if(c){
+    if(!row.querySelector('.si-unit').value) row.querySelector('.si-unit').value = c.unit||'';
+    if(!row.querySelector('.si-price').value && c.price) row.querySelector('.si-price').value = c.price;
+  }
+  recalcSupInv();
+}
+function readSupInvItems(){
+  return Array.from(document.querySelectorAll('#si-items .si-row')).map(r=>({
+    name: r.querySelector('.si-name').value.trim(), unit: r.querySelector('.si-unit').value.trim(),
+    qty: Number(r.querySelector('.si-qty').value)||0, price: Number(r.querySelector('.si-price').value)||0,
+  })).filter(it=>it.name || it.qty || it.price).map(it=>Object.assign(it, {total: round2(it.qty*it.price)}));
+}
+function recalcSupInv(){
+  document.querySelectorAll('#si-items .si-row').forEach(r=>{
+    const t = (Number(r.querySelector('.si-qty').value)||0) * (Number(r.querySelector('.si-price').value)||0);
+    r.querySelector('.si-total').value = t ? fmtMoney(t) : '';
+  });
+  const items = readSupInvItems();
+  const amt = document.getElementById('si-amount');
+  const hint = document.getElementById('si-amount-hint');
+  if(!amt) return;
+  if(items.length){
+    amt.value = round2(items.reduce((t,it)=>t+it.total,0)); amt.readOnly = true;
+    hint.textContent = 'محسوب من البنود ('+items.length+' بند)';
+  }else{ amt.readOnly = false; hint.textContent = 'مفيش بنود — اكتب إجمالي الفاتورة بإيدك'; }
+}
+function saveSupplierInvoice(){
+  const {supplierId, editId} = supInvState;
+  if(!canEdit('suppliers')) return;
+  const s = DATA.suppliers.find(r=>r._id===supplierId);
+  if(!s) return;
+  const number = document.getElementById('si-number').value.trim();
+  const date = document.getElementById('si-date').value;
+  const project = document.getElementById('si-project').value;
+  const dueDate = document.getElementById('si-due').value;
+  const note = document.getElementById('si-note').value.trim();
+  const items = readSupInvItems();
+  if(items.some(it=>!it.name)){ alert('فيه بند من غير اسم صنف'); return; }
+  if(items.some(it=>!(it.qty>0) || !(it.price>0))){ alert('كل بند لازم يكون له كمية وسعر'); return; }
+  const amount = items.length ? round2(items.reduce((t,it)=>t+it.total,0)) : (Number(document.getElementById('si-amount').value)||0);
+  if(!date){ alert('من فضلك اختر تاريخ الفاتورة'); return; }
+  if(!(amount>0)){ alert('من فضلك أدخل بنود الفاتورة أو قيمتها'); return; }
+  if(editId){
+    const rec = s.invoices.find(i=>i.id===editId);
+    if(rec) Object.assign(rec, {number, date, project, amount, dueDate, note, items});
+  }else{
+    const n = (s.invoices.length ? Math.max(...s.invoices.map(i=>i._n||0)) : 0)+1;
+    s.invoices.push({id:s._id+'-INV'+n, _n:n, number, date, project, amount, dueDate, note, items, payments:[]});
+  }
+  // الأصناف الجديدة بتتضاف لأصناف المورد (بآخر سعر) عشان تظهر اختيارات المرة الجاية
+  if(!Array.isArray(s.items)) s.items = [];
+  items.forEach(it=>{
+    const ex = s.items.find(x=>x.name.toLowerCase()===it.name.toLowerCase());
+    if(ex){ ex.price = it.price; if(it.unit) ex.unit = it.unit; } else s.items.push({name:it.name, unit:it.unit, price:it.price});
+  });
+  s.invoices.forEach(syncSupplierInvoiceStatus);
+  logAudit(editId?'تعديل':'إضافة', 'فاتورة مورد', s.name, fmtMoney(amount)+(project?' — '+project:''));
+  generateAutoEntries();
+  saveData();
+  cbClose('supInvOverlay');
+  renderPage();
+}
+
+/* ---------- عرض الفاتورة كاملة ---------- */
+function openSupplierInvoiceView(supplierId, invId){
+  const s = DATA.suppliers.find(r=>r._id===supplierId);
+  const inv = s && s.invoices.find(i=>i.id===invId);
+  if(!inv) return;
+  cbOverlay('supInvViewOverlay', '🧾 فاتورة '+(inv.number||'')+' — '+s.name, supplierInvoiceHtml(s, inv, false) + `
+    <div style="display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap; margin-top:12px;">
+      ${isAdmin() ? `<button class="btn secondary" onclick="cbClose('supInvViewOverlay'); openSupplierInvoiceForm('${s._id}','${inv.id}')">تعديل</button>` : ''}
+      <button class="btn secondary" onclick="cbClose('supInvViewOverlay'); printSupplierInvoice('${s._id}','${inv.id}')">🖨 طباعة</button>
+      <button class="btn" onclick="cbClose('supInvViewOverlay')">إغلاق</button>
+    </div>`);
+}
+function supplierInvoiceHtml(s, inv, forPrint){
+  const td = forPrint ? 'style="padding:7px; border:1px solid #ccc;"' : '';
+  const paid = supplierInvoicePaidTotal(inv);
+  const rem = round2((Number(inv.amount)||0) - paid);
+  const items = inv.items||[];
+  const o = supplierAllocation(s).byInv[inv.id];
+  const pays = (inv.payments||[]).map(p=>({date:p.date, amount:Number(p.amount)||0, note:(p.note||'دفعة على الفاتورة')+(typeof paySourceLabel==='function' && paySourceLabel(p)?' — '+paySourceLabel(p):'')}))
+    .concat(o ? o.allocs.map(a=>({date:a.date, amount:a.amount, note: a.pay ? ('من دفعة '+fmtMoney(a.pay.amount)+' بتاريخ '+a.pay.date+(typeof paySourceLabel==='function' && paySourceLabel(a.pay)?' — '+paySourceLabel(a.pay):'')) : 'من رصيد دائن سابق'})) : [])
+    .sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+  const tbl = (heads, rows)=> forPrint ? buildStatementTable(heads, rows) : `<div class="table-wrap" style="margin-bottom:10px;"><div class="table-scroll"><table><thead><tr>${heads.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div></div>`;
+  return `
+    <table style="width:100%; border-collapse:collapse; font-size:13px; margin-bottom:12px;">
+      <tr><td ${td}><b>المورد</b></td><td ${td}>${s.name}</td><td ${td}><b>رقم الفاتورة</b></td><td ${td}>${inv.number||'—'}</td></tr>
+      <tr><td ${td}><b>التاريخ</b></td><td ${td}>${inv.date||'—'}</td><td ${td}><b>المشروع</b></td><td ${td}>${inv.project||'مصروف عام'}</td></tr>
+      ${inv.dueDate||inv.note ? `<tr><td ${td}><b>الاستحقاق</b></td><td ${td}>${inv.dueDate||'—'}</td><td ${td}><b>ملاحظة</b></td><td ${td}>${inv.note||'—'}</td></tr>` : ''}
+    </table>
+    ${tbl(['الصنف','الوحدة','الكمية','السعر','الإجمالي'], items.length ? items.map(it=>`<tr><td ${td}>${it.name}</td><td ${td}>${it.unit||'—'}</td><td ${td}>${it.qty}</td><td ${td}>${fmtMoney(it.price)}</td><td ${td}><b>${fmtMoney(it.total)}</b></td></tr>`).join('') + `<tr style="font-weight:900;"><td ${td} colspan="4">إجمالي الفاتورة</td><td ${td}>${fmtMoney(inv.amount)}</td></tr>` : `<tr><td ${td} colspan="4">فاتورة بدون بنود تفصيلية</td><td ${td}><b>${fmtMoney(inv.amount)}</b></td></tr>`)}
+    <div style="font-weight:700; margin:10px 0 4px;">السداد</div>
+    ${tbl(['التاريخ','المبلغ','البيان'], pays.length ? pays.map(p=>`<tr><td ${td}>${p.date||'—'}</td><td ${td}>${fmtMoney(p.amount)}</td><td ${td}>${p.note}</td></tr>`).join('') : `<tr><td ${td} colspan="3">لسه متسددش منها حاجة</td></tr>`)}
+    <div style="display:flex; gap:12px; flex-wrap:wrap; font-size:14px; margin-top:6px;">
+      <div>القيمة: <b>${fmtMoney(inv.amount)}</b></div><div>المسدد: <b style="color:#4F9C74;">${fmtMoney(paid)}</b></div><div>المتبقي: <b style="color:${rem>0?'#c0392b':'#4F9C74'};">${fmtMoney(Math.max(0,rem))}</b></div>
+    </div>`;
+}
+function printSupplierInvoice(supplierId, invId){
+  const s = DATA.suppliers.find(r=>r._id===supplierId);
+  const inv = s && s.invoices.find(i=>i.id===invId);
+  if(!inv) return;
+  openPrintDocument('فاتورة مورد — '+s.name, 'رقم '+(inv.number||'—')+' بتاريخ '+(inv.date||'—'), supplierInvoiceHtml(s, inv, true));
+}
+
+/* ---------- سداد دفعة على حساب المورد (بتغطي الأقدم أولًا) ---------- */
+let supPayState = {supplierId:null};
+function openSupplierAccountPaymentForm(supplierId){
+  if(!canEdit('suppliers')) return;
+  const s = DATA.suppliers.find(r=>r._id===supplierId);
+  if(!s) return;
+  supPayState = {supplierId};
+  const bal = supplierTotals(s).balance;
+  cbOverlay('supPayOverlay', '💵 سداد دفعة — '+s.name, `
+    <div class="kpi" style="margin-bottom:12px;"><div class="kpi-label">رصيد المورد الحالي</div><div class="kpi-value" style="font-size:18px;">${fmtSupBalance(bal)}</div></div>
+    <div class="field"><label>التاريخ</label><input id="sp-date" type="date" value="${todayStr()}"></div>
+    <div class="field"><label>المبلغ</label><input id="sp-amount" type="number" min="0" value="${bal>0?bal:''}" oninput="previewSupplierPayment()"></div>
+    ${typeof paySourceHtml==='function' ? paySourceHtml('sp', '', '') : ''}
+    <div class="field"><label>ملاحظة (اختياري)</label><input id="sp-note" type="text"></div>
+    <div id="sp-preview"></div>
+    <div style="display:flex; gap:8px; justify-content:flex-end;"><button class="btn secondary" onclick="cbClose('supPayOverlay')">إلغاء</button><button class="btn" id="sp-save" onclick="saveSupplierAccountPayment()">حفظ الدفعة</button></div>
+  `);
+  previewSupplierPayment();
+}
+// معاينة: الدفعة هتغطي أنهي فواتير (الأقدم أولًا)
+function previewSupplierPayment(){
+  const s = DATA.suppliers.find(r=>r._id===supPayState.supplierId);
+  const box = document.getElementById('sp-preview');
+  if(!s || !box) return;
+  let left = Number(document.getElementById('sp-amount').value)||0;
+  if(!(left>0)){ box.innerHTML = ''; return; }
+  const al = supplierAllocation(s);
+  const lines = [];
+  for(const o of al.obs){
+    if(left<=0.004) break;
+    const due = round2(o.amount - Math.min(o.amount, o.direct) - o.allocs.reduce((t,a)=>t+a.amount,0) - (al.unapplied>0 ? 0 : 0));
+    if(due<=0.004) continue;
+    const take = Math.min(due, left);
+    lines.push(`<tr><td>${o.kind==='opening'?'رصيد أول المدة':('فاتورة '+(o.inv.number||'—'))}</td><td>${o.date||'—'}</td><td>${fmtMoney(due)}</td><td><b>${fmtMoney(take)}</b></td><td>${take>=due-0.004?'<span class="badge b-good">تتقفل</span>':'<span class="badge b-warn">جزء</span>'}</td></tr>`);
+    left -= take;
+  }
+  // لو فيه رصيد دائن سابق مش مستخدم، بيتخصم الأول
+  const pre = al.unapplied>0 ? `<div style="font-size:12px; color:var(--warn); margin-bottom:4px;">ملحوظة: فيه رصيد دائن سابق ${fmtMoney(al.unapplied)} للمورد عليك — هيتحسب الأول.</div>` : '';
+  box.innerHTML = pre + `<div style="font-size:12.5px; color:var(--text-dim); margin-bottom:4px;">الدفعة هتتوزع كده (الأقدم أولًا):</div>
+    <div class="table-wrap" style="margin-bottom:10px;"><div class="table-scroll"><table><thead><tr><th>البيان</th><th>التاريخ</th><th>المتبقي</th><th>هيتسدد</th><th></th></tr></thead><tbody>${lines.join('') || '<tr><td colspan="5">مفيش فواتير مستحقة</td></tr>'}</tbody></table></div></div>
+    ${left>0.004 ? `<div style="font-size:12.5px; color:var(--warn); margin-bottom:10px;">الباقي ${fmtMoney(left)} هيفضل رصيد مقدم للمورد (عليه لينا) ويتخصم من أول فاتورة جاية.</div>` : ''}`;
+}
+function saveSupplierAccountPayment(){
+  if(!canEdit('suppliers')) return;
+  const s = DATA.suppliers.find(r=>r._id===supPayState.supplierId);
+  if(!s) return;
+  const date = document.getElementById('sp-date').value;
+  const amount = Number(document.getElementById('sp-amount').value)||0;
+  const note = document.getElementById('sp-note').value.trim();
+  if(!date){ alert('من فضلك اختار التاريخ'); return; }
+  if(!(amount>0)){ alert('من فضلك اكتب المبلغ'); return; }
+  const ps = typeof readPaySource==='function' ? readPaySource('sp', date, null) : {paidFrom:'', chequeNo:''};
+  if(!ps) return;
+  if(!Array.isArray(s.payments)) s.payments = [];
+  const n = (s.payments.length ? Math.max(...s.payments.map(p=>p._n||0)) : 0)+1;
+  const rec = {id:s._id+'-SPAY'+n, _n:n, date, amount, note, by: currentUser ? currentUser.name : '', byId: typeof myUserId==='function' ? myUserId() : ''};
+  if(typeof applyPaySource==='function') applyPaySource(rec, ps);
+  s.payments.push(rec);
+  s.invoices.forEach(syncSupplierInvoiceStatus);
+  logAudit('إضافة', 'سداد لمورد', s.name, fmtMoney(amount)+' (دفعة على الحساب)');
+  generateAutoEntries();
+  saveData();
+  cbClose('supPayOverlay');
+  renderPage();
+  showToast('اتسجلت الدفعة لـ'+s.name+' ✓', 'good');
+}
+function deleteSupplierAccountPayment(supplierId, payId){
+  if(!isAdmin()) return;
+  const s = DATA.suppliers.find(r=>r._id===supplierId);
+  const p = s && (s.payments||[]).find(x=>x.id===payId);
+  if(!p) return;
+  if(typeof cashboxAllowsMove==='function' && !cashboxAllowsMove(p.paidFrom, p.date, 'الحذف')) return;
+  openConfirmModal('حذف الدفعة ('+fmtMoney(p.amount)+' بتاريخ '+p.date+')؟ الفواتير اللي كانت غطتها هترجع مستحقة.', ()=>{
+    s.payments = s.payments.filter(x=>x.id!==payId);
+    s.invoices.forEach(syncSupplierInvoiceStatus);
+    logAudit('حذف', 'سداد لمورد', s.name, fmtMoney(p.amount));
+    generateAutoEntries();
+    saveData();
+    renderPage();
+  });
+}
+
+/* ---------- صفحة المورد ---------- */
+function renderSupplierDetail(id){
+  const s = DATA.suppliers.find(r=>r._id===id);
+  if(!s){ selectedSupplierId = null; return renderSuppliersPage(); }
+  ensureSupplierShape(s);
+  s.invoices.forEach(syncSupplierInvoiceStatus);
+  const editable = canEdit('suppliers');
+  const canModify = isAdmin();
+  const t = supplierTotals(s);
+  const al = supplierAllocation(s);
+  const invoices = (s.invoices||[]).slice().sort((a,b)=>(b.date||'').localeCompare(a.date||'') || (b._n||0)-(a._n||0));
+  const invRows = invoices.length ? invoices.map(inv=>{
+    const paid = supplierInvoicePaidTotal(inv);
+    const remaining = Math.max(0, round2((Number(inv.amount)||0) - paid));
+    return `<tr style="cursor:pointer;" onclick="openSupplierInvoiceView('${s._id}','${inv.id}')" title="اضغط لعرض الفاتورة كاملة">
+      <td>${inv.date||'—'}</td>
+      <td style="color:var(--accent); font-weight:700; text-decoration:underline;">${inv.number||'عرض'}</td>
+      <td>${(inv.items||[]).length ? (inv.items||[]).slice(0,2).map(it=>it.name).join('، ')+((inv.items||[]).length>2?' +'+((inv.items||[]).length-2):'') : '<span style="color:var(--text-dim)">—</span>'}</td>
+      <td>${inv.project||'<span style="color:var(--text-dim)">مصروف عام</span>'}</td>
+      <td>${fmtMoney(inv.amount)}</td>
+      <td style="color:var(--good);">${fmtMoney(paid)}</td>
+      <td style="font-weight:700; color:${remaining>0?'var(--bad)':'var(--good)'};">${fmtMoney(remaining)}</td>
+      <td>${badgeFor('suppliers', inv.status)}</td>
+      <td class="row-actions" onclick="event.stopPropagation();">
+        ${canModify ? `<button class="btn secondary small" onclick="openSupplierInvoiceForm('${s._id}','${inv.id}')">تعديل</button>
+        <button class="btn danger small" onclick="deleteSupplierInvoice('${s._id}','${inv.id}')">حذف</button>` : ''}
+      </td>
+    </tr>`;
+  }).join('') : `<tr><td colspan="9" style="text-align:center;">لا توجد فواتير مسجلة بعد</td></tr>`;
+  const credits = al.credits.filter(c=>c.pay).slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  const payRows = credits.map(c=>`<tr>
+      <td>${c.date}</td><td style="font-weight:700;">${fmtMoney(c.amount)}</td>
+      <td style="font-size:12.5px;">${(c.uses||[]).map(u=>u.label+': '+fmtMoney(u.amount)+(u.full?' ✓':' (جزء)')).join('<br>') || '—'}${c.left>0.004?`<div style="color:var(--warn);">رصيد مقدم متبقي: ${fmtMoney(c.left)}</div>`:''}</td>
+      <td>${c.pay.note||'—'}${typeof paySourceBadge==='function' ? paySourceBadge(c.pay) : ''}</td>
+      <td class="row-actions">${canModify ? `<button class="btn danger small" onclick="deleteSupplierAccountPayment('${s._id}','${c.pay.id}')">حذف</button>` : ''}</td>
+    </tr>`).join('');
+  return `
+    <button class="btn secondary small" onclick="backToSuppliersList()" style="margin-bottom:16px;">→ رجوع لكل الموردين</button>
+    <div class="page-head">
+      <div>
+        <div class="page-title">${s.name}</div>
+        <div class="page-desc">${s.category||'مورد'}${s.phone?' — '+s.phone:''}${s.address?' — '+s.address:''}</div>
+      </div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <button class="btn secondary" onclick="printSupplierStatement('${s._id}')">🖨 طباعة كشف حساب</button>
+        ${editable ? `<button class="btn secondary" onclick="openSupplierForm('${s._id}')">تعديل بيانات المورد</button>` : ''}
+        ${editable ? `<button class="btn secondary" onclick="openSupplierAccountPaymentForm('${s._id}')">💵 سداد دفعة</button>` : ''}
+        ${editable ? `<button class="btn" onclick="openSupplierInvoiceForm('${s._id}')">+ فاتورة جديدة</button>` : ''}
+      </div>
+    </div>
+    <div class="kpi-grid" style="margin-bottom:24px;">
+      <div class="kpi"><div class="kpi-label">رصيد أول المدة${s.openingDate&&t.opening?' ('+s.openingDate+')':''}</div><div class="kpi-value" style="font-size:17px;">${t.opening?fmtSupBalance(t.opening):'—'}</div></div>
+      <div class="kpi"><div class="kpi-label">إجمالي المشتريات</div><div class="kpi-value">${fmtMoney(t.totalInvoiced)}</div></div>
+      <div class="kpi ok"><div class="kpi-label">إجمالي المسدد</div><div class="kpi-value">${fmtMoney(t.totalPaid)}</div></div>
+      <div class="kpi ${t.balance>0?'alert':'ok'}"><div class="kpi-label">الرصيد الحالي</div><div class="kpi-value" style="font-size:17px;">${fmtSupBalance(t.balance)}</div></div>
+    </div>
+    ${s.notes ? `<div class="table-wrap" style="padding:12px 14px; margin-bottom:20px; font-size:13px;"><b>ملاحظات:</b> ${s.notes}</div>` : ''}
+    <div class="section-title" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+      <span>🧾 فواتير المشتريات <span style="font-size:12px; color:var(--text-dim); font-weight:400;">(اضغط على الفاتورة تتفتح كاملة)</span></span>
+      ${editable ? `<button class="btn secondary small" onclick="openSupplierInvoiceForm('${s._id}')">+ فاتورة جديدة</button>` : ''}
+    </div>
+    <div class="table-wrap" style="margin-bottom:24px;"><div class="table-scroll"><table>
+      <thead><tr><th>التاريخ</th><th>رقم الفاتورة</th><th>الأصناف</th><th>المشروع</th><th>القيمة</th><th>المسدد</th><th>المتبقي</th><th>الحالة</th><th></th></tr></thead>
+      <tbody>${invRows}</tbody>
+    </table></div></div>
+    <div class="section-title" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+      <span>💵 الدفعات على الحساب <span style="font-size:12px; color:var(--text-dim); font-weight:400;">(كل دفعة بتغطي الأقدم أولًا)</span></span>
+      ${editable ? `<button class="btn secondary small" onclick="openSupplierAccountPaymentForm('${s._id}')">💵 سداد دفعة</button>` : ''}
+    </div>
+    <div class="table-wrap" style="margin-bottom:24px;"><div class="table-scroll"><table>
+      <thead><tr><th>التاريخ</th><th>المبلغ</th><th>غطّت</th><th>ملاحظة</th><th></th></tr></thead>
+      <tbody>${payRows || '<tr><td colspan="5" style="text-align:center;">لا توجد دفعات على الحساب</td></tr>'}</tbody>
+    </table></div></div>
+    ${renderSupplierItemsSection(s)}
+  `;
+}
+function renderSupplierItemsSection(s){
+  const cat = purchaseItemCatalog(s).filter(c=>c.mine);
+  const editable = canEdit('suppliers');
+  return `
+    <div class="section-title" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+      <span>📦 أصناف المورد <span style="font-size:12px; color:var(--text-dim); font-weight:400;">(بتظهر اختيارات في الفاتورة)</span></span>
+      ${editable ? `<button class="btn secondary small" onclick="openSupplierItemForm('${s._id}')">+ صنف</button>` : ''}
+    </div>
+    <div class="table-wrap" style="margin-bottom:24px;"><div class="table-scroll"><table>
+      <thead><tr><th>الصنف</th><th>الوحدة</th><th>آخر سعر</th><th></th></tr></thead>
+      <tbody>${cat.length ? cat.map(c=>`<tr><td>${c.name}</td><td>${c.unit||'—'}</td><td>${c.price?fmtMoney(c.price):'—'}</td>
+        <td class="row-actions">${(editable && (s.items||[]).some(x=>x.name===c.name)) ? `<button class="btn danger small" onclick="deleteSupplierItem('${s._id}', ${JSON.stringify(c.name).replace(/"/g,'&quot;')})">حذف</button>` : ''}</td></tr>`).join('') : '<tr><td colspan="4" style="text-align:center;">لسه مفيش أصناف — ضيف أصناف المورد (مثلاً: خرسانة جاهزة C250، C300...) أو هتتضاف لوحدها من الفواتير</td></tr>'}</tbody>
+    </table></div></div>`;
+}
+function openSupplierItemForm(supplierId){
+  if(!canEdit('suppliers')) return;
+  cbOverlay('supItemOverlay', '📦 صنف جديد للمورد', `
+    <div class="field"><label>اسم الصنف</label><input id="sit-name" type="text" placeholder="مثال: خرسانة جاهزة C300"></div>
+    <div class="field"><label>الوحدة</label><input id="sit-unit" type="text" placeholder="م³ / طن / شيكارة..."></div>
+    <div class="field"><label>السعر</label><input id="sit-price" type="number" min="0"></div>
+    <div style="display:flex; gap:8px; justify-content:flex-end;"><button class="btn secondary" onclick="cbClose('supItemOverlay')">إلغاء</button><button class="btn" onclick="saveSupplierItem('${supplierId}')">حفظ</button></div>`);
+}
+function saveSupplierItem(supplierId){
+  const s = DATA.suppliers.find(r=>r._id===supplierId);
+  if(!s) return;
+  const name = document.getElementById('sit-name').value.trim();
+  if(!name){ alert('اكتب اسم الصنف'); return; }
+  if(!Array.isArray(s.items)) s.items = [];
+  const unit = document.getElementById('sit-unit').value.trim();
+  const price = Number(document.getElementById('sit-price').value)||0;
+  const ex = s.items.find(x=>x.name.toLowerCase()===name.toLowerCase());
+  if(ex) Object.assign(ex, {unit, price}); else s.items.push({name, unit, price});
+  saveData();
+  cbClose('supItemOverlay');
+  renderPage();
+}
+function deleteSupplierItem(supplierId, name){
+  const s = DATA.suppliers.find(r=>r._id===supplierId);
+  if(!s) return;
+  s.items = (s.items||[]).filter(x=>x.name!==name);
+  saveData();
+  renderPage();
+}
+
+/* ---------- كشف حساب المورد (حركة بالتاريخ ورصيد جاري) ---------- */
+function printSupplierStatement(id){
+  const s = DATA.suppliers.find(r=>r._id===id);
+  if(!s) return;
+  s.invoices.forEach(syncSupplierInvoiceStatus);
+  const t = supplierTotals(s);
+  const moves = [];
+  if(t.opening) moves.push({date:s.openingDate||'', desc:'رصيد أول المدة', debit: t.opening>0?t.opening:0, credit: t.opening<0?-t.opening:0, o:0});
+  (s.invoices||[]).forEach(inv=>{
+    moves.push({date:inv.date, desc:'فاتورة '+(inv.number||'')+(inv.project?' — '+inv.project:'')+((inv.items||[]).length?' ('+inv.items.map(it=>it.name+' '+it.qty+' '+(it.unit||'')).join('، ')+')':''), debit:Number(inv.amount)||0, credit:0, o:1});
+    (inv.payments||[]).forEach(p=>moves.push({date:p.date, desc:'سداد على فاتورة '+(inv.number||'')+(p.note?' — '+p.note:''), debit:0, credit:Number(p.amount)||0, o:2}));
+  });
+  (s.payments||[]).forEach(p=>moves.push({date:p.date, desc:'دفعة على الحساب'+(p.note?' — '+p.note:'')+(typeof paySourceLabel==='function' && paySourceLabel(p)?' — '+paySourceLabel(p):''), debit:0, credit:Number(p.amount)||0, o:2}));
+  moves.sort((a,b)=>(a.date||'').localeCompare(b.date||'') || a.o-b.o);
+  let run = 0;
+  const td = 'style="padding:6px; border:1px solid #ccc;"';
+  const rows = moves.map(m=>{ run = round2(run + m.debit - m.credit); return `<tr><td ${td}>${m.date||'—'}</td><td ${td}>${m.desc}</td><td ${td}>${m.debit?fmtMoney(m.debit):''}</td><td ${td}>${m.credit?fmtMoney(m.credit):''}</td><td ${td}><b>${fmtMoney(Math.abs(run))} ${run>0?'له':run<0?'عليه':''}</b></td></tr>`; }).join('');
+  const info = `<table style="width:100%; border-collapse:collapse; font-size:13px;"><tbody>
+      <tr><td ${td}><b>المورد</b></td><td ${td}>${s.name}</td><td ${td}><b>نوع المواد</b></td><td ${td}>${s.category||'—'}</td></tr>
+      <tr><td ${td}><b>الهاتف</b></td><td ${td}>${s.phone||'—'}</td><td ${td}><b>رصيد أول المدة</b></td><td ${td}>${t.opening?fmtMoney(Math.abs(t.opening))+(t.opening>0?' له':' عليه'):'—'}</td></tr>
+    </tbody></table>`;
+  const cards = statCardsRow([
+    statCard('إجمالي المشتريات', fmtMoney(t.totalInvoiced), '#2c3e50'),
+    statCard('إجمالي المسدد', fmtMoney(t.totalPaid), '#27ae60'),
+    statCard(t.balance>=0?'المستحق للمورد':'رصيد مقدم عند المورد', fmtMoney(Math.abs(t.balance)), t.balance>0?'#c0392b':'#27ae60'),
+  ]);
+  const body = info + cards
+    + tafqeetLine(Math.abs(t.balance), t.balance>=0?'المستحق للمورد فقط وقدره':'الرصيد المقدم عند المورد فقط وقدره')
+    + buildStatementTable(['التاريخ','البيان','له (مشتريات)','منه (سداد)','الرصيد'], rows || `<tr><td ${td} colspan="5">لا توجد حركات</td></tr>`);
+  openPrintDocument('كشف حساب مورد — '+s.name, s.category||'', body);
 }
 </script>
 </body>
