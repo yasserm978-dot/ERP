@@ -303,7 +303,7 @@ tbody tr:hover{background:var(--surface-2);}
     </div>
     <nav id="navList"></nav>
     <div class="sidebar-foot">
-      <span>☁ متصل بقاعدة البيانات السحابية</span>
+      <span id="storageLabel">☁ متصل بقاعدة البيانات السحابية</span>
       <button class="theme-btn" onclick="toggleTheme()">الوضع الداكن/الفاتح</button>
     </div>
   </aside>
@@ -2316,8 +2316,9 @@ function buildNav(){
     .map(it=>(it.key==='cashbox' && !isAdmin()) ? Object.assign({}, it, {label:'عهدتي'}) : it);
   if(currentUser && currentUser.role==='مدير'){
     items.push({key:'users', label:'المستخدمون والصلاحيات', icon:ICONS.users});
-    items.push({key:'alerts', label:'تنبيهات واتساب', icon:ICONS.alerts});
+    if(!window.DESKTOP_EDITION) items.push({key:'alerts', label:'تنبيهات واتساب', icon:ICONS.alerts});
     items.push({key:'auditlog', label:'سجل التدقيق', icon:ICONS.auditlog});
+    if(window.DESKTOP_EDITION) items.push({key:'desktop', label:'النسخ الاحتياطي والترخيص', icon:ICONS.settings||ICONS.auditlog});
   }
   navList.innerHTML = items.map(it=>`
     <div class="nav-item ${it.key===currentPage?'active':''}" data-nav="${it.key}">
@@ -2328,7 +2329,7 @@ function buildNav(){
   });
 }
 function goTo(key){
-  if(key==='users' || key==='alerts' || key==='auditlog'){
+  if(key==='users' || key==='alerts' || key==='auditlog' || key==='desktop'){
     if(!(currentUser && currentUser.role==='مدير')) return;
   }else if(key==='cashbox'){
     if(!(typeof hasCashboxAccess==='function' && hasCashboxAccess())) return;
@@ -2890,6 +2891,7 @@ function renderPage(){
   else if(currentPage==='users'){ currentPage = 'dashboard'; pagesEl.innerHTML = renderDashboard(); }
   else if(currentPage==='alerts' && isAdmin()){ pagesEl.innerHTML = renderAlertsPage(); attachAlertsEvents(); }
   else if(currentPage==='alerts'){ currentPage = 'dashboard'; pagesEl.innerHTML = renderDashboard(); }
+  else if(currentPage==='desktop' && isAdmin() && typeof renderDesktopPage==='function'){ pagesEl.innerHTML = renderDesktopPage(); }
   else if(currentPage==='auditlog' && isAdmin()){ pagesEl.innerHTML = renderAuditLogPage(); attachAuditLogEvents(); }
   else if(currentPage==='auditlog'){ currentPage = 'dashboard'; pagesEl.innerHTML = renderDashboard(); }
   else if(currentPage==='projects' && selectedProjectId){ pagesEl.innerHTML = renderProjectDetail(selectedProjectId); attachProjectDetailEvents(); }
@@ -3144,8 +3146,8 @@ function renderModulePage(moduleKey){
           <button class="btn secondary" onclick="openExpenseForm()">+ إضافة مصروف</button>
         ` : ''}
         ${isHr && canRecordAttendance() ? `<button class="btn secondary" onclick="openAttendanceEmployeePicker()">✓ إثبات حضور</button>` : ''}
-        ${isHr && canRecordAttendance() ? `<button class="btn secondary" id="syncAttendanceBtn" onclick="syncAttendance()">🔄 مزامنة الحضور (تسجيل الموبايل)</button>` : ''}
-        ${isHr && isAdmin() ? `<button class="btn secondary" onclick="openCheckinAppLink()">📱 صفحة تسجيل الحضور للمشرفين</button>` : ''}
+        ${isHr && canRecordAttendance() && !window.DESKTOP_EDITION ? `<button class="btn secondary" id="syncAttendanceBtn" onclick="syncAttendance()">🔄 مزامنة الحضور (تسجيل الموبايل)</button>` : ''}
+        ${isHr && isAdmin() && !window.DESKTOP_EDITION ? `<button class="btn secondary" onclick="openCheckinAppLink()">📱 صفحة تسجيل الحضور للمشرفين</button>` : ''}
         ${isFinance ? `<button class="btn secondary" onclick="printFinanceList()">🖨 طباعة قائمة الفواتير</button>` : ''}
         ${editable ? `<button class="btn" onclick="openForm('${moduleKey}')">+ إضافة</button>` : ''}
       </div>
@@ -7097,7 +7099,7 @@ function renderEmployeeDetail(id){
       </div>
       <div style="display:flex; gap:8px; flex-wrap:wrap;">
         ${canModify ? `<button class="btn secondary" onclick="openForm('hr','${h._id}')">تعديل بيانات الموظف</button>` : ''}
-        ${attEdit ? `<button class="btn secondary" id="syncAttendanceBtn" onclick="syncAttendance()">🔄 مزامنة الحضور</button>` : ''}
+        ${attEdit && !window.DESKTOP_EDITION ? `<button class="btn secondary" id="syncAttendanceBtn" onclick="syncAttendance()">🔄 مزامنة الحضور</button>` : ''}
         ${!attOnly ? `<button class="btn secondary" onclick="printEmployeeStatement('${h._id}')">🖨 طباعة كشف حساب</button>` : ''}
         ${(!attOnly && hrFullAccess() && editable) ? `<button class="btn" onclick="openSettlementForm('${h._id}')">💵 تصفية حساب</button>` : ''}
       </div>
@@ -11747,16 +11749,16 @@ function openSupplierInvoiceForm(supplierId, editId){
   if(editId && !isAdmin()) return;
   supInvState = {supplierId, editId: editId||null};
   const rec = editId ? s.invoices.find(i=>i.id===editId) : null;
-  const cat = purchaseItemCatalog(s);
+  const cat = supplierOwnItems(s);
   cbOverlay('supInvOverlay', (editId?'تعديل فاتورة':'فاتورة مشتريات جديدة')+' — '+s.name, `
-    <datalist id="supItemsList">${cat.map(c=>`<option value="${c.name}">${c.mine?'⭐ ':''}${c.unit?c.unit+' — ':''}${c.price?fmtMoney(c.price):''}</option>`).join('')}</datalist>
+    <datalist id="supItemsList">${cat.map(c=>`<option value="${c.name}">${c.unit?c.unit+' — ':''}${c.price?fmtMoney(c.price):''}</option>`).join('')}</datalist>
     <div style="display:flex; gap:8px; flex-wrap:wrap;">
       <div class="field" style="flex:1; min-width:140px;"><label>رقم فاتورة المورد</label><input id="si-number" type="text" value="${rec?(rec.number||''):''}"></div>
       <div class="field" style="flex:1; min-width:140px;"><label>التاريخ</label><input id="si-date" type="date" value="${rec?rec.date:todayStr()}"></div>
     </div>
     <div class="field"><label>المشروع</label><select id="si-project">${cbProjectOptions(rec?(rec.project||''):'').replace('بدون مشروع (مصروف عام)','بدون مشروع محدد (مصروف عام على الشركة)')}</select></div>
     <div class="section-title" style="margin:6px 0 8px; font-size:14px;">بنود الفاتورة</div>
-    <div style="font-size:12px; color:var(--text-dim); margin-bottom:6px;">اختار الصنف من القايمة (⭐ = أصناف المورد ده) أو اكتب صنف جديد — السعر والوحدة بيتملوا لوحدهم من آخر مرة.</div>
+    <div style="font-size:12px; color:var(--text-dim); margin-bottom:6px;">اختار من أصناف المورد ده أو اكتب صنف جديد (هيتضاف لأصنافه) — السعر والوحدة بيتملوا لوحدهم من آخر مرة.</div>
     <div id="si-items"></div>
     <button class="btn secondary small" onclick="addSupInvItemRow()" style="margin-bottom:12px;">+ بند</button>
     <div class="field"><label>إجمالي الفاتورة</label><input id="si-amount" type="number" min="0" value="${rec?rec.amount:''}"><div id="si-amount-hint" style="font-size:11.5px; color:var(--text-dim); margin-top:3px;"></div></div>
@@ -11785,7 +11787,7 @@ function addSupInvItemRow(it){
 }
 function fillSupInvItem(inp){
   const s = DATA.suppliers.find(r=>r._id===supInvState.supplierId);
-  const c = purchaseItemCatalog(s).find(x=>x.name.toLowerCase()===inp.value.trim().toLowerCase());
+  const c = supplierOwnItems(s).find(x=>x.name.toLowerCase()===inp.value.trim().toLowerCase());
   const row = inp.closest('.si-row');
   if(c){
     if(!row.querySelector('.si-unit').value) row.querySelector('.si-unit').value = c.unit||'';
@@ -11841,6 +11843,7 @@ function saveSupplierInvoice(){
   items.forEach(it=>{
     const ex = s.items.find(x=>x.name.toLowerCase()===it.name.toLowerCase());
     if(ex){ ex.price = it.price; if(it.unit) ex.unit = it.unit; } else s.items.push({name:it.name, unit:it.unit, price:it.price});
+    if(Array.isArray(s.hiddenItems)) s.hiddenItems = s.hiddenItems.filter(x=>x.toLowerCase()!==it.name.toLowerCase());
   });
   s.invoices.forEach(syncSupplierInvoiceStatus);
   logAudit(editId?'تعديل':'إضافة', 'فاتورة مورد', s.name, fmtMoney(amount)+(project?' — '+project:''));
@@ -12050,48 +12053,123 @@ function renderSupplierDetail(id){
     ${renderSupplierItemsSection(s)}
   `;
 }
+/* ---------- أصناف المورد: إضافة / تعديل / نسخ أو نقل لمورد تاني / حذف ---------- */
+// أصناف المورد بس (المسجلة عنده + اللي اتسجلت في فواتيره) — من غير الأصناف اللي اتحذفت
+function supplierOwnItems(s){
+  const map = new Map();
+  const hidden = new Set((s.hiddenItems||[]).map(x=>x.toLowerCase()));
+  (s.invoices||[]).slice().sort((a,b)=>(a.date||'').localeCompare(b.date||'')).forEach(inv=>(inv.items||[]).forEach(it=>{
+    const n = (it.name||'').trim(); if(!n || hidden.has(n.toLowerCase())) return;
+    map.set(n.toLowerCase(), {name:n, unit:it.unit||'', price:Number(it.price)||0, fromInvoice:true});
+  }));
+  // الأصناف المسجلة عند المورد هي الأساس (بآخر تعديل)
+  (s.items||[]).forEach(it=>{ const n = (it.name||'').trim(); if(n) map.set(n.toLowerCase(), {name:n, unit:it.unit||'', price:Number(it.price)||0, fromInvoice:false}); });
+  return Array.from(map.values()).sort((a,b)=>a.name.localeCompare(b.name));
+}
 function renderSupplierItemsSection(s){
-  const cat = purchaseItemCatalog(s).filter(c=>c.mine);
+  const cat = supplierOwnItems(s);
   const editable = canEdit('suppliers');
+  const q = n=>JSON.stringify(n).replace(/"/g,'&quot;');
   return `
     <div class="section-title" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
-      <span>📦 أصناف المورد <span style="font-size:12px; color:var(--text-dim); font-weight:400;">(بتظهر اختيارات في الفاتورة)</span></span>
+      <span>📦 أصناف المورد <span style="font-size:12px; color:var(--text-dim); font-weight:400;">(دي بس اللي بتظهر اختيارات في فواتيره)</span></span>
       ${editable ? `<button class="btn secondary small" onclick="openSupplierItemForm('${s._id}')">+ صنف</button>` : ''}
     </div>
     <div class="table-wrap" style="margin-bottom:24px;"><div class="table-scroll"><table>
-      <thead><tr><th>الصنف</th><th>الوحدة</th><th>آخر سعر</th><th></th></tr></thead>
+      <thead><tr><th>الصنف</th><th>الوحدة</th><th>السعر</th><th></th></tr></thead>
       <tbody>${cat.length ? cat.map(c=>`<tr><td>${c.name}</td><td>${c.unit||'—'}</td><td>${c.price?fmtMoney(c.price):'—'}</td>
-        <td class="row-actions">${(editable && (s.items||[]).some(x=>x.name===c.name)) ? `<button class="btn danger small" onclick="deleteSupplierItem('${s._id}', ${JSON.stringify(c.name).replace(/"/g,'&quot;')})">حذف</button>` : ''}</td></tr>`).join('') : '<tr><td colspan="4" style="text-align:center;">لسه مفيش أصناف — ضيف أصناف المورد (مثلاً: خرسانة جاهزة C250، C300...) أو هتتضاف لوحدها من الفواتير</td></tr>'}</tbody>
+        <td class="row-actions">${editable ? `<button class="btn secondary small" onclick="openSupplierItemForm('${s._id}', ${q(c.name)})">تعديل</button>
+          <button class="btn secondary small" onclick="openSupplierItemCopyForm('${s._id}', ${q(c.name)})">نسخ / نقل لمورد</button>
+          <button class="btn danger small" onclick="deleteSupplierItem('${s._id}', ${q(c.name)})">حذف</button>` : ''}</td></tr>`).join('') : '<tr><td colspan="4" style="text-align:center;">لسه مفيش أصناف — ضيف أصناف المورد (مثلاً: خرسانة جاهزة C250، C300...) أو هتتضاف لوحدها من الفواتير</td></tr>'}</tbody>
     </table></div></div>`;
 }
-function openSupplierItemForm(supplierId){
+let supItemState = {supplierId:null, oldName:null};
+function openSupplierItemForm(supplierId, name){
   if(!canEdit('suppliers')) return;
-  cbOverlay('supItemOverlay', '📦 صنف جديد للمورد', `
-    <div class="field"><label>اسم الصنف</label><input id="sit-name" type="text" placeholder="مثال: خرسانة جاهزة C300"></div>
-    <div class="field"><label>الوحدة</label><input id="sit-unit" type="text" placeholder="م³ / طن / شيكارة..."></div>
-    <div class="field"><label>السعر</label><input id="sit-price" type="number" min="0"></div>
-    <div style="display:flex; gap:8px; justify-content:flex-end;"><button class="btn secondary" onclick="cbClose('supItemOverlay')">إلغاء</button><button class="btn" onclick="saveSupplierItem('${supplierId}')">حفظ</button></div>`);
-}
-function saveSupplierItem(supplierId){
   const s = DATA.suppliers.find(r=>r._id===supplierId);
+  if(!s) return;
+  const it = name ? supplierOwnItems(s).find(x=>x.name===name) : null;
+  supItemState = {supplierId, oldName: it ? it.name : null};
+  cbOverlay('supItemOverlay', it ? '✏️ تعديل صنف — '+s.name : '📦 صنف جديد — '+s.name, `
+    <div class="field"><label>اسم الصنف</label><input id="sit-name" type="text" value="${it?it.name.replace(/"/g,'&quot;'):''}" placeholder="مثال: خرسانة جاهزة C300"></div>
+    <div class="field"><label>الوحدة</label><input id="sit-unit" type="text" value="${it?(it.unit||'').replace(/"/g,'&quot;'):''}" placeholder="م³ / طن / شيكارة..."></div>
+    <div class="field"><label>السعر</label><input id="sit-price" type="number" min="0" value="${it&&it.price?it.price:''}"></div>
+    ${it ? '<div style="font-size:12px; color:var(--text-dim); margin-bottom:10px;">التعديل بيأثر على الفواتير الجديدة بس — الفواتير القديمة بتفضل بأسعارها وأسمائها زي ما اتسجلت.</div>' : ''}
+    <div style="display:flex; gap:8px; justify-content:flex-end;"><button class="btn secondary" onclick="cbClose('supItemOverlay')">إلغاء</button><button class="btn" id="sit-save" onclick="saveSupplierItem()">حفظ</button></div>`);
+}
+function upsertSupplierItem(s, item, oldName){
+  if(!Array.isArray(s.items)) s.items = [];
+  if(!Array.isArray(s.hiddenItems)) s.hiddenItems = [];
+  const lc = item.name.toLowerCase();
+  if(oldName && oldName.toLowerCase()!==lc){
+    s.items = s.items.filter(x=>x.name.toLowerCase()!==oldName.toLowerCase());
+    // الاسم القديم ميرجعش يظهر من الفواتير القديمة
+    if(!s.hiddenItems.some(x=>x.toLowerCase()===oldName.toLowerCase())) s.hiddenItems.push(oldName);
+  }
+  s.hiddenItems = s.hiddenItems.filter(x=>x.toLowerCase()!==lc);
+  const ex = s.items.find(x=>x.name.toLowerCase()===lc);
+  if(ex) Object.assign(ex, item); else s.items.push(Object.assign({}, item));
+}
+function saveSupplierItem(){
+  const s = DATA.suppliers.find(r=>r._id===supItemState.supplierId);
   if(!s) return;
   const name = document.getElementById('sit-name').value.trim();
   if(!name){ alert('اكتب اسم الصنف'); return; }
-  if(!Array.isArray(s.items)) s.items = [];
-  const unit = document.getElementById('sit-unit').value.trim();
-  const price = Number(document.getElementById('sit-price').value)||0;
-  const ex = s.items.find(x=>x.name.toLowerCase()===name.toLowerCase());
-  if(ex) Object.assign(ex, {unit, price}); else s.items.push({name, unit, price});
+  const old = supItemState.oldName;
+  if((!old || old.toLowerCase()!==name.toLowerCase()) && supplierOwnItems(s).some(x=>x.name.toLowerCase()===name.toLowerCase())){ alert('فيه صنف بنفس الاسم عند المورد ده'); return; }
+  upsertSupplierItem(s, {name, unit: document.getElementById('sit-unit').value.trim(), price: Number(document.getElementById('sit-price').value)||0}, old);
+  logAudit(old?'تعديل':'إضافة', 'صنف مورد', s.name, name);
   saveData();
   cbClose('supItemOverlay');
   renderPage();
 }
+function openSupplierItemCopyForm(supplierId, name){
+  if(!canEdit('suppliers')) return;
+  const s = DATA.suppliers.find(r=>r._id===supplierId);
+  const it = s && supplierOwnItems(s).find(x=>x.name===name);
+  if(!it) return;
+  const others = DATA.suppliers.filter(x=>x._id!==supplierId);
+  if(!others.length){ alert('مفيش موردين تانيين'); return; }
+  supItemState = {supplierId, oldName: it.name};
+  cbOverlay('supItemCopyOverlay', '📦 نسخ / نقل صنف لمورد تاني', `
+    <div class="table-wrap" style="padding:10px 14px; margin-bottom:12px;"><b>${it.name}</b> — ${it.unit||'بدون وحدة'} — ${it.price?fmtMoney(it.price):'بدون سعر'}</div>
+    <div class="field"><label>للمورد</label><select id="sic-target">${others.map(o=>`<option value="${o._id}">${o.name}${o.category?' — '+o.category:''}</option>`).join('')}</select></div>
+    <div class="field"><label>العملية</label><select id="sic-mode">
+      <option value="copy">نسخ (يفضل عند ${s.name} كمان)</option>
+      <option value="move">نقل (يتشال من ${s.name})</option>
+    </select></div>
+    <div style="font-size:12px; color:var(--text-dim); margin-bottom:10px;">لو الصنف موجود عند المورد التاني، الوحدة والسعر بيتحدّثوا. الفواتير القديمة مش بتتنقل.</div>
+    <div style="display:flex; gap:8px; justify-content:flex-end;"><button class="btn secondary" onclick="cbClose('supItemCopyOverlay')">إلغاء</button><button class="btn" id="sic-save" onclick="saveSupplierItemCopy()">تنفيذ</button></div>`);
+}
+function saveSupplierItemCopy(){
+  const s = DATA.suppliers.find(r=>r._id===supItemState.supplierId);
+  const it = s && supplierOwnItems(s).find(x=>x.name===supItemState.oldName);
+  const t = DATA.suppliers.find(r=>r._id===document.getElementById('sic-target').value);
+  if(!it || !t) return;
+  const mode = document.getElementById('sic-mode').value;
+  upsertSupplierItem(t, {name:it.name, unit:it.unit, price:it.price});
+  if(mode==='move') removeSupplierItem(s, it.name);
+  logAudit(mode==='move'?'نقل':'نسخ', 'صنف مورد', it.name, s.name+' ← '+t.name);
+  saveData();
+  cbClose('supItemCopyOverlay');
+  renderPage();
+  showToast((mode==='move'?'اتنقل':'اتنسخ')+' "'+it.name+'" لـ'+t.name+' ✓', 'good');
+}
+function removeSupplierItem(s, name){
+  s.items = (s.items||[]).filter(x=>x.name.toLowerCase()!==name.toLowerCase());
+  if(!Array.isArray(s.hiddenItems)) s.hiddenItems = [];
+  if(!s.hiddenItems.some(x=>x.toLowerCase()===name.toLowerCase())) s.hiddenItems.push(name);
+}
 function deleteSupplierItem(supplierId, name){
+  if(!canEdit('suppliers')) return;
   const s = DATA.suppliers.find(r=>r._id===supplierId);
   if(!s) return;
-  s.items = (s.items||[]).filter(x=>x.name!==name);
-  saveData();
-  renderPage();
+  openConfirmModal('حذف الصنف "'+name+'" من أصناف '+s.name+'؟ (الفواتير القديمة مش هتتأثر)', ()=>{
+    removeSupplierItem(s, name);
+    logAudit('حذف', 'صنف مورد', s.name, name);
+    saveData();
+    renderPage();
+  });
 }
 
 /* ---------- كشف حساب المورد (حركة بالتاريخ ورصيد جاري) ---------- */
