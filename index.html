@@ -2115,7 +2115,7 @@ function normalizeData(){
   if(!Array.isArray(DATA.generalExpenses)) DATA.generalExpenses = [];
   if(!Array.isArray(DATA.revenueAccounts)) DATA.revenueAccounts = DEFAULT_REVENUE_ACCOUNTS.slice();
   if(!Array.isArray(DATA.expenseAccounts)) DATA.expenseAccounts = DEFAULT_EXPENSE_ACCOUNTS.slice();
-  ['أجور ومرتبات','سلف الموظفين','مشتريات من الموردين','مصروفات مقاولي الباطن'].forEach(acc=>{ if(!DATA.expenseAccounts.includes(acc)) DATA.expenseAccounts.push(acc); });
+  ['أجور ومرتبات','سلف الموظفين','مشتريات من الموردين','مصروفات مقاولي الباطن','أجور العمالة'].forEach(acc=>{ if(!DATA.expenseAccounts.includes(acc)) DATA.expenseAccounts.push(acc); });
   if(!Array.isArray(DATA.collections)) DATA.collections = [];
   if(DATA.capital===undefined || DATA.capital===null) DATA.capital = '0';
   if(!DATA.overheadAllocationBasis) DATA.overheadAllocationBasis = 'equal';
@@ -2152,6 +2152,7 @@ function normalizeData(){
   if(!Array.isArray(DATA.materialCategories)) DATA.materialCategories = ['خشب','حديد','سباكة','دهان','أسمنت ومباني','كهرباء','أدوات صحية','أخرى'];
   DATA.projects.forEach(p=>{
     if(!Array.isArray(p.adjustments)) p.adjustments = [];
+    if(!Array.isArray(p.casualLabor)) p.casualLabor = [];
     if(p.actualDeliveryDate===undefined) p.actualDeliveryDate = '';
     if(p.retentionCollectedDate===undefined) p.retentionCollectedDate = null;
     if(p.retentionCollectedAmount===undefined) p.retentionCollectedAmount = 0;
@@ -6532,6 +6533,7 @@ function generateAutoEntries(){
     if(e.type==='سلفة' && Number(e.amount)>0 && e.date) validSources.add('advance:'+h._id+':'+e.id);
   }));
   if(typeof laborValidSources==='function') laborValidSources(validSources);
+  if(typeof casualValidSources==='function') casualValidSources(validSources);
   // فواتير الموردين (مواد خام: أسمنت، حديد، رمل، طوب...): بنفس منطق فواتير العميل ومقاولي الباطن —
   // المصروف الفعلي في السجلات = المبلغ اللي اتسدد فعليًا للمورد بتاريخ كل دفعة، مش قيمة الفاتورة كاملة
   // فواتير الموردين: قيمة الفاتورة كاملة بتتحسب مصروف على المشروع بتاريخها، والمتبقي بيظهر "مستحق للموردين" في المركز المالي
@@ -6551,6 +6553,7 @@ function generateAutoEntries(){
   }
   if(typeof cashboxAutoEntries==='function') cashboxAutoEntries(upsert);
   if(typeof laborAutoEntries==='function') laborAutoEntries(upsert);
+  if(typeof casualAutoEntries==='function') casualAutoEntries(upsert);
   DATA.finance.filter(inv=>invoicePaidTotal(inv)>0).forEach(inv=>{
     const paidAmount = invoicePaidTotal(inv);
     const isPartial = paidAmount < (Number(inv.amount)||0);
@@ -8640,6 +8643,7 @@ function renderProjectDetail(id){
         ${canModify ? `<button class="btn secondary" onclick="openForm('projects','${p._id}')">تعديل بيانات المشروع</button>` : ''}
         ${editable ? `<button class="btn secondary" onclick="openExpenseForm('${p.name}')">+ إضافة مصروف</button>
         ${canEdit('suppliers') ? `<button class="btn secondary" onclick="openProjectPurchaseForm(${JSON.stringify(p.name).replace(/"/g,'&quot;')})">+ مشتريات من مورد</button>` : ''}
+        ${canEdit('subs') ? `<button class="btn secondary" onclick="openProjectSubPaymentForm(${JSON.stringify(p.name).replace(/"/g,'&quot;')})">+ دفعة لمقاول باطن</button>` : ''}
         <button class="btn" onclick="openCollectionForm('${p.name}')">+ تحصيل دفعة جديدة</button>
         <button class="btn secondary" onclick="openAdjustmentForm('${p._id}')">+ خصم / غرامة / تأمين</button>` : ''}
         <button class="btn secondary" onclick="printProjectStatement('${p._id}')">🖨 طباعة كشف حساب المشروع</button>
@@ -8803,7 +8807,9 @@ function renderProjectDetail(id){
     </table></div></div>
     ` : `<div class="table-wrap" style="margin-bottom:24px;"><div class="empty-state">لا توجد خصومات أو غرامات أو تأمين محجوز مسجلة على هذا المشروع</div></div>`}
 
+    ${renderProjectSubsSection(p)}
     ${renderProjectLaborSection(p)}
+    ${renderProjectCasualSection(p)}
     ${renderProjectSupplierSection(p)}
     ${renderProjectEquipmentSection(p)}
     <div class="section-title">بنود الصرف على المشروع</div>
@@ -10392,7 +10398,7 @@ function renderCashboxDetail(id){
             <td style="color:var(--good); font-weight:700;">${isIn?fmtMoney(e.amount):''}</td>
             <td style="color:var(--bad); font-weight:700;">${!isIn?fmtMoney(e.amount):''}</td>
             <td>${fmtMoney(running)}</td>
-            <td class="row-actions">${e.linked ? `<span class="badge b-neutral" title="اتسجلت من شاشة ${e.origin} — التعديل من هناك">من ${e.origin}</span>${((e.emp || e.sub) && !mv.closing && !e.srcRec.settled && (admin || (isBoxCustodian(b) && e.srcRec.byId===myUserId()))) ? ` <button class="btn danger small" onclick="deleteLinkedEmpPayment('${b._id}','${e.id}')">إلغاء</button>` : ''}` : e.linkedSettlement ? '<span class="badge b-neutral" title="بيتلغي من صفحة العامل (إلغاء التصفية)">تصفية حساب</span>' : canModifyCashEntry(b, e) && !mv.closing ? `<button class="btn secondary small" onclick="openCashEntryForm('${b._id}','${e.type}','${e.id}')">تعديل</button><button class="btn danger small" onclick="deleteCashEntry('${b._id}','${e.id}')">حذف</button>` : ''}</td>
+            <td class="row-actions">${e.linked ? `<span class="badge b-neutral" title="اتسجلت من شاشة ${e.origin} — التعديل من هناك">من ${e.origin}</span>${((e.emp || e.sub || e.casual) && !mv.closing && !e.srcRec.settled && (admin || (isBoxCustodian(b) && e.srcRec.byId===myUserId()))) ? ` <button class="btn danger small" onclick="deleteLinkedEmpPayment('${b._id}','${e.id}')">إلغاء</button>` : ''}` : e.linkedSettlement ? '<span class="badge b-neutral" title="بيتلغي من صفحة العامل (إلغاء التصفية)">تصفية حساب</span>' : canModifyCashEntry(b, e) && !mv.closing ? `<button class="btn secondary small" onclick="openCashEntryForm('${b._id}','${e.type}','${e.id}')">تعديل</button><button class="btn danger small" onclick="deleteCashEntry('${b._id}','${e.id}')">حذف</button>` : ''}</td>
           </tr>`;
         }).join('') || `<tr><td colspan="8" style="text-align:center; color:var(--text-dim);">لا توجد حركات في الشهر ده</td></tr>`}
         <tr style="background:var(--surface-2); font-weight:900;"><td></td><td colspan="3">الإجمالي والرصيد آخر الشهر</td><td>${fmtMoney(mv.receipts)}</td><td>${fmtMoney(mv.spends)}</td><td>${fmtMoney(mv.balance)}</td><td></td></tr>
@@ -10524,7 +10530,7 @@ function openCashEntryForm(boxId, type, editId){
   if(!isIn && !e) updateCashEmpFields();
 }
 /* ---------- صرف سلفة / مرتب لموظف من العهدة: بيتسجل في حساب الموظف نفسه تلقائي ---------- */
-const CASH_EMP_ACCOUNTS = {'سلف الموظفين':'advance', 'أجور ومرتبات':'salary', 'مصروفات مقاولي الباطن':'sub'};
+const CASH_EMP_ACCOUNTS = {'سلف الموظفين':'advance', 'أجور ومرتبات':'salary', 'مصروفات مقاولي الباطن':'sub', 'أجور العمالة':'casual'};
 function cashEmpMode(){
   const acc = document.getElementById('ce-account');
   return acc && document.getElementById('ce-emp') ? (CASH_EMP_ACCOUNTS[acc.value]||'') : '';
@@ -10546,7 +10552,76 @@ function cashEmpFieldsHtml(){
     </select></div>
     <div class="field"><label>المشروع</label><select id="ce-sub-project" onchange="updateCashSubInfo()"></select></div>
     <div id="ce-sub-info" style="font-size:12.5px; color:var(--text-dim); margin:-4px 0 10px;"></div>
+  </div>
+  <div id="ce-cas-wrap" style="display:none;">
+    <div class="field"><label>المشروع</label><select id="ce-cas-project" onchange="updateCashCasualWorkers()"><option value="">— اختار المشروع —</option>${DATA.projects.map(p=>`<option value="${p._id}">${p.name}</option>`).join('')}</select></div>
+    <div class="field"><label>اسم العامل</label><input id="ce-cas-name" type="text" list="ceCasNames" onchange="updateCashCasualInfo()"><datalist id="ceCasNames"></datalist></div>
+    <div class="field"><label>الصرف لـ</label><select id="ce-cas-mode" onchange="updateCashCasualInfo()">
+      <option value="new">يومية جديدة (اشتغل واتصرف له دلوقتي)</option>
+      <option value="due">مستحقات متسجلة عليه في المشروع</option>
+    </select></div>
+    <div id="ce-cas-new" style="display:flex; gap:6px; flex-wrap:wrap;">
+      <div class="field" style="flex:2; min-width:100px;"><label>الشغلانة</label><input id="ce-cas-trade" type="text"></div>
+      <div class="field" style="flex:1; min-width:60px;"><label>أيام</label><input id="ce-cas-units" type="number" step="0.25" min="0" value="1" oninput="updateCashCasualAmount()"></div>
+      <div class="field" style="flex:1; min-width:80px;"><label>اليومية</label><input id="ce-cas-rate" type="number" min="0" oninput="updateCashCasualAmount()"></div>
+    </div>
+    <div id="ce-cas-info" style="font-size:12.5px; color:var(--text-dim); margin:-4px 0 10px;"></div>
   </div>`;
+}
+/* ---------- صرف عمالة مؤقتة من العهدة (بتتسجل في المشروع نفسه) ---------- */
+function updateCashCasualWorkers(){
+  const p = DATA.projects.find(x=>x._id===document.getElementById('ce-cas-project').value);
+  document.getElementById('ceCasNames').innerHTML = p ? casualByWorker(p).map(w=>`<option value="${w.name}">${w.trade||''}${w.due>0?' — مستحق '+fmtMoney(w.due):''}</option>`).join('') : '';
+  updateCashCasualInfo();
+}
+function updateCashCasualInfo(){
+  const p = DATA.projects.find(x=>x._id===document.getElementById('ce-cas-project').value);
+  const name = document.getElementById('ce-cas-name').value.trim();
+  const mode = document.getElementById('ce-cas-mode').value;
+  const info = document.getElementById('ce-cas-info');
+  document.getElementById('ce-cas-new').style.display = mode==='new' ? 'flex' : 'none';
+  const amt = document.getElementById('ce-amount');
+  const rows = p ? casualList(p).filter(r=>r.name===name) : [];
+  if(mode==='new'){
+    const last = rows.slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''))[0];
+    if(last){ const t = document.getElementById('ce-cas-trade'), r = document.getElementById('ce-cas-rate'); if(!t.value) t.value = last.trade||''; if(!r.value) r.value = last.rate||''; }
+    updateCashCasualAmount();
+    info.textContent = p ? 'هتتسجل يومية على '+p.name+' ومتصرفة من العهدة.' : '';
+  }else{
+    const due = rows.filter(r=>!r.paid);
+    const tot = round2(due.reduce((t,r)=>t+(Number(r.amount)||0),0));
+    amt.value = tot || ''; amt.readOnly = true;
+    info.textContent = !p || !name ? 'اختار المشروع واسم العامل' : (due.length ? 'هيتصرف له '+due.length+' يومية متسجلة بإجمالي '+fmtMoney(tot) : 'مفيش مستحقات متسجلة للعامل ده على المشروع');
+  }
+}
+function updateCashCasualAmount(){
+  if(document.getElementById('ce-cas-mode').value!=='new') return;
+  const u = Number(document.getElementById('ce-cas-units').value)||0, r = Number(document.getElementById('ce-cas-rate').value)||0;
+  const amt = document.getElementById('ce-amount');
+  amt.value = (u && r) ? round2(u*r) : ''; amt.readOnly = true;
+}
+function saveCashCasualPayment(b, date, description){
+  const p = DATA.projects.find(x=>x._id===document.getElementById('ce-cas-project').value);
+  const name = document.getElementById('ce-cas-name').value.trim();
+  const mode = document.getElementById('ce-cas-mode').value;
+  if(!p){ alert('اختار المشروع'); return false; }
+  if(!name){ alert('اكتب اسم العامل'); return false; }
+  const by = currentUser ? currentUser.name : '', byId = myUserId();
+  const list = casualList(p);
+  if(mode==='new'){
+    const units = Number(document.getElementById('ce-cas-units').value)||0, rate = Number(document.getElementById('ce-cas-rate').value)||0;
+    if(!(units>0) || !(rate>0)){ alert('اكتب الأيام واليومية'); return false; }
+    const n = (list.length ? Math.max(...list.map(r=>r._n||0)) : 0)+1;
+    list.push({id:'CL-'+n+'-'+Math.random().toString(36).slice(2,6), _n:n, date, name, trade:document.getElementById('ce-cas-trade').value.trim(), units, rate, amount:round2(units*rate),
+      note:description, by, byId, paid:true, paidDate:date, paidFrom:'box:'+b._id, fromBox:true});
+    logAudit('إضافة', 'عمالة مؤقتة', p.name, name+' — '+fmtMoney(units*rate)+' — من '+b.name);
+  }else{
+    const due = list.filter(r=>r.name===name && !r.paid);
+    if(!due.length){ alert('مفيش مستحقات متسجلة للعامل ده'); return false; }
+    due.forEach(r=>Object.assign(r, {paid:true, paidDate:date, paidFrom:'box:'+b._id, paidBy:by, byId}));
+    logAudit('صرف', 'عمالة مؤقتة', p.name, name+' — '+fmtMoney(due.reduce((t,r)=>t+(Number(r.amount)||0),0))+' — من '+b.name);
+  }
+  return {name, project:p.name};
 }
 // مشاريع المقاول (اللي عنده عليها بند شغل) الأول، وبعدها باقي المشاريع
 function updateCashSubProjects(){
@@ -10590,8 +10665,10 @@ function updateCashEmpFields(){
   const wrap = document.getElementById('ce-emp-wrap');
   if(!wrap) return;
   const mode = CASH_EMP_ACCOUNTS[document.getElementById('ce-account').value]||'';
-  wrap.style.display = (mode && mode!=='sub') ? '' : 'none';
+  wrap.style.display = (mode && mode!=='sub' && mode!=='casual') ? '' : 'none';
   const sw = document.getElementById('ce-sub-wrap'); if(sw) sw.style.display = mode==='sub' ? '' : 'none';
+  const cw = document.getElementById('ce-cas-wrap'); if(cw) cw.style.display = mode==='casual' ? '' : 'none';
+  if(mode==='casual'){ wrap.style.display = 'none'; document.getElementById('ce-project-wrap').style.display = 'none'; updateCashCasualInfo(); return; }
   if(mode==='sub' && !document.getElementById('ce-sub-project').options.length) updateCashSubProjects();
   const pw = document.getElementById('ce-project-wrap'); if(pw) pw.style.display = mode ? 'none' : '';
   const amt = document.getElementById('ce-amount');
@@ -10646,9 +10723,21 @@ function saveCashEmpPayment(b, mode, date, amount, description){
 function deleteLinkedEmpPayment(boxId, linkId){
   const b = DATA.cashboxes.find(x=>x._id===boxId);
   const e = b && cashboxLinkedOutflows(b).find(x=>x.id===linkId);
-  if(!e || !e.srcRec || !(e.emp || e.sub)) return;
+  if(!e || !e.srcRec || !(e.emp || e.sub || e.casual)) return;
   if(!(isAdmin() || (isBoxCustodian(b) && e.srcRec.byId===myUserId()))) return;
   if(isCashboxMonthClosed(b, cbMonth(e.date))){ alert('الحركة دي في شهر مقفول'); return; }
+  if(e.casual){
+    const {p, r} = e.casual;
+    openConfirmModal((r.fromBox ? 'إلغاء يومية '+r.name+' ('+fmtMoney(r.amount)+') من المشروع؟' : 'إلغاء صرف يومية '+r.name+' ('+fmtMoney(r.amount)+')؟ هترجع "مستحق" في المشروع.')+' المبلغ هيرجع لرصيد العهدة.', ()=>{
+      if(r.fromBox) p.casualLabor = casualList(p).filter(x=>x!==r);
+      else { r.paid = false; delete r.paidDate; delete r.paidFrom; delete r.chequeNo; delete r.paidBy; }
+      logAudit('إلغاء', 'عمالة مؤقتة', p.name, r.name+' — '+fmtMoney(r.amount)+' — من '+b.name);
+      generateAutoEntries();
+      saveData();
+      renderPage();
+    });
+    return;
+  }
   if(e.sub){
     const {s, a} = e.sub;
     openConfirmModal('إلغاء الدفعة ('+fmtMoney(e.amount)+') لـ'+s.name+' على '+a.project+'؟ المبلغ هيرجع لرصيد العهدة.', ()=>{
@@ -10722,6 +10811,17 @@ function saveCashEntry(){
   if(isCashboxMonthClosed(b, cbMonth(date))){ alert('شهر '+cbMonthLabel(cbMonth(date))+' مقفول — مينفعش تسجل أو تعدّل حركات فيه. المدير يقدر يلغي الإقفال لو محتاج.'); return; }
   const isIn = cashEntryState.type==='تغذية';
   const empMode = (!isIn && !cashEntryState.editId) ? cashEmpMode() : '';
+  if(empMode==='casual'){
+    const c = saveCashCasualPayment(b, date, description);
+    if(!c) return;
+    generateAutoEntries();
+    saveData();
+    cbClose('cashEntryOverlay');
+    cashboxMonthView = cbMonth(date);
+    renderPage();
+    showToast('اتصرف لـ'+c.name+' واتسجل على '+c.project+' ✓', 'good');
+    return;
+  }
   if(empMode==='sub'){
     const s = saveCashSubPayment(b, date, amount, description);
     if(!s) return;
@@ -11361,11 +11461,11 @@ function applyPaySource(rec, ps){
 function cashboxLinkedOutflows(b){
   const key = 'box:'+b._id;
   const out = [];
-  const add = (rec, date, amount, description, account, project, origin, emp, sub)=>{
+  const add = (rec, date, amount, description, account, project, origin, emp, sub, casual)=>{
     if(!rec || rec.paidFrom!==key) return;
     const amt = Number(amount)||0;
     if(!(amt>0) || !date) return;
-    out.push({id:'LNK:'+origin+':'+(rec.id||rec._id), linked:true, origin, type:'مصروف', date, amount:amt, description, account, project:project||'', chequeNo:rec.chequeNo, srcRec:rec, emp:emp||null, sub:sub||null});
+    out.push({id:'LNK:'+origin+':'+(rec.id||rec._id), linked:true, origin, type:'مصروف', date, amount:amt, description, account, project:project||'', chequeNo:rec.chequeNo, srcRec:rec, emp:emp||null, sub:sub||null, casual:casual||null});
   };
   (DATA.hr||[]).forEach(h=>{
     (h.payrollEntries||[]).forEach(e=>{ if(e.type==='سلفة') add(e, e.date, e.amount, 'سلفة لـ'+h.name+(e.note?' — '+e.note:''), 'سلف الموظفين', h.project, 'سلف الموظفين', h); });
@@ -11380,6 +11480,7 @@ function cashboxLinkedOutflows(b){
     }));
     (s.payments||[]).forEach(p=>add(p, p.date, p.amount, 'دفعة على حساب المورد '+s.name+(p.note?' — '+p.note:''), 'مشتريات من الموردين', '', 'الموردين'));
   });
+  (DATA.projects||[]).forEach(p=>(p.casualLabor||[]).forEach(r=>{ if(r.paid) add(r, r.paidDate, r.amount, 'عمالة مؤقتة: '+r.name+' — '+p.name, 'أجور العمالة', p.name, 'العمالة المؤقتة', null, null, {p, r}); }));
   (DATA.generalExpenses||[]).forEach(g=>add(g, g.date, g.amount, g.description||'مصروف ثابت/عام', g.account, '', 'المصاريف العامة'));
   (DATA.assets||[]).forEach(a=>(a.expenses||[]).forEach(e=>add(e, e.date, e.amount, (e.kind||'مصروف')+' — '+a.name+(e.note?' — '+e.note:''), 'صيانة ومعدات', e.project, 'الأصول والمعدات')));
   (DATA.ledger||[]).forEach(l=>{ if(!l.source && l.type==='مصروف') add(l, l.date, l.amount, l.description||l.account, l.account, l.project, 'القيود'); });
@@ -11455,6 +11556,8 @@ function laborPayablesTotal(){
     (h.payrollRuns||[]).forEach(r=>{ if(r.paid) paid += Number(r.netAmount)||0; });
     t += accrued - paid;
   });
+  // العمالة المؤقتة على المشاريع (اللي لسه متصرفتش)
+  if(typeof casualPayablesTotal==='function') t += casualPayablesTotal();
   return round2(t);
 }
 
@@ -12259,6 +12362,339 @@ function salaryCarryHint(net, paid){
   if(Math.abs(diff)<0.01) return '';
   return diff>0 ? `<span style="color:var(--warn);">الباقي ${fmtMoney(diff)} هيترحل "مرحّل له" ويتضاف على مرتب الشهر الجاي.</span>`
                 : `<span style="color:var(--warn);">${fmtMoney(-diff)} ${net<0?'(السلف أكبر من المستحق)':'زيادة'} هتترحل "مرحّل عليه" وتتخصم من مرتب الشهر الجاي.</span>`;
+}
+
+/* ================= مقاولو الباطن من جوه المشروع: عرض حساباتهم + دفعة لمقاول باسمه ================= */
+function projectSubAssignments(projectName){
+  const out = [];
+  (DATA.subs||[]).forEach(s=>(s.assignments||[]).forEach(a=>{ if(a.project===projectName) out.push({s, a, t:computeEntryTotals(a)}); }));
+  return out.sort((x,y)=>x.s.name.localeCompare(y.s.name));
+}
+function renderProjectSubsSection(p){
+  const list = projectSubAssignments(p.name);
+  const canPay = canEdit('subs');
+  const pn = JSON.stringify(p.name).replace(/"/g,'&quot;');
+  const tot = k => list.reduce((x,r)=>x+(r.t[k]||0),0);
+  return `
+    <div class="section-title" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+      <span>👷‍♂️ مقاولو الباطن على المشروع (${list.length})</span>
+      ${canPay ? `<button class="btn secondary small" onclick="openProjectSubPaymentForm(${pn})">+ دفعة لمقاول باطن</button>` : ''}
+    </div>
+    ${list.length ? `
+    <div class="table-wrap" style="margin-bottom:10px;"><div class="table-scroll"><table>
+      <thead><tr><th>المقاول</th><th>طريقة التعاقد</th><th>قيمة الشغل</th><th>المدفوع</th><th>المتبقي له</th><th></th></tr></thead>
+      <tbody>${list.map(({s, a, t})=>`<tr>
+        <td style="font-weight:700; cursor:pointer;" onclick="goTo('subs'); openSubDetail('${s._id}')">${s.name}${s.specialty?`<div style="font-size:11.5px; color:var(--text-dim); font-weight:400;">${s.specialty}</div>`:''}</td>
+        <td>${a.contractType||'—'}</td>
+        <td>${fmtMoney(t.netValue)}</td>
+        <td style="color:var(--good);">${fmtMoney(t.paid)}</td>
+        <td style="font-weight:700; color:${t.remaining>0?'var(--bad)':'var(--good)'};">${fmtMoney(t.remaining)}</td>
+        <td class="row-actions">${canPay ? `<button class="btn small" onclick="openProjectSubPaymentForm(${pn}, '${s._id}')">+ دفعة</button>` : ''}</td>
+      </tr>`).join('')}
+        <tr style="background:var(--surface-2); font-weight:900;"><td colspan="2">الإجمالي</td><td>${fmtMoney(tot('netValue'))}</td><td>${fmtMoney(tot('paid'))}</td><td>${fmtMoney(tot('remaining'))}</td><td></td></tr>
+      </tbody>
+    </table></div></div>` : `<div class="table-wrap" style="margin-bottom:10px;"><div class="empty-state">مفيش مقاولين باطن مسجلين على المشروع ده</div></div>`}
+    <div style="font-size:12px; color:var(--text-dim); margin-bottom:24px;">الدفعات اللي بتتسجل هنا بتنزل في حساب المقاول على المشروع ده تلقائي، وبتتحسب مصروف على المشروع.</div>
+  `;
+}
+let projectSubPayState = {project:''};
+function openProjectSubPaymentForm(projectName, subId){
+  if(!canEdit('subs')) return;
+  if(!(DATA.subs||[]).length){ alert('مفيش مقاولين باطن مسجلين — ضيفهم الأول من شاشة مقاولو الباطن'); return; }
+  projectSubPayState = {project: projectName};
+  const mine = projectSubAssignments(projectName).map(x=>x.s);
+  const mineIds = new Set(mine.map(s=>s._id));
+  const others = (DATA.subs||[]).filter(s=>!mineIds.has(s._id)).sort((a,b)=>a.name.localeCompare(b.name));
+  const opt = s=>`<option value="${s._id}" ${s._id===subId?'selected':''}>${s.name}${s.specialty?' — '+s.specialty:''}</option>`;
+  cbOverlay('projectSubPayOverlay', '💵 دفعة لمقاول باطن — '+projectName, `
+    <div class="field"><label>مقاول الباطن</label><select id="psp-sub" onchange="updateProjectSubPayInfo()">
+      ${mine.length ? `<optgroup label="شغالين في المشروع">${mine.map(opt).join('')}</optgroup>` : ''}
+      ${others.length ? `<optgroup label="${mine.length?'مقاولين تانيين':'المقاولين'}">${others.map(opt).join('')}</optgroup>` : ''}
+    </select></div>
+    <div id="psp-info" style="font-size:12.5px; color:var(--text-dim); margin:-4px 0 10px;"></div>
+    <div class="field"><label>التاريخ</label><input id="psp-date" type="date" value="${todayStr()}"></div>
+    <div class="field"><label>المبلغ</label><input id="psp-amount" type="number" min="0"></div>
+    <div class="field"><label>البيان (اختياري)</label><input id="psp-desc" type="text" placeholder="مثال: دفعة تحت الحساب"></div>
+    ${typeof paySourceHtml==='function' ? paySourceHtml('psp', '', '') : ''}
+    <div style="display:flex; gap:8px; justify-content:flex-end;"><button class="btn secondary" onclick="cbClose('projectSubPayOverlay')">إلغاء</button><button class="btn" id="psp-save" onclick="saveProjectSubPayment()">حفظ الدفعة</button></div>
+  `);
+  updateProjectSubPayInfo();
+}
+function updateProjectSubPayInfo(){
+  const s = (DATA.subs||[]).find(x=>x._id===document.getElementById('psp-sub').value);
+  const info = document.getElementById('psp-info');
+  if(!s){ info.textContent = ''; return; }
+  const a = (s.assignments||[]).find(x=>x.project===projectSubPayState.project);
+  if(a){ const t = computeEntryTotals(a); info.textContent = 'قيمة شغله على المشروع '+fmtMoney(t.netValue)+' — اتدفع له '+fmtMoney(t.paid)+' — المتبقي له '+fmtMoney(t.remaining); }
+  else info.textContent = s.name+' مالوش بند على المشروع ده — هيتفتح له بند جديد على المشروع وتتسجل فيه الدفعة.';
+}
+function saveProjectSubPayment(){
+  if(!canEdit('subs')) return;
+  const project = projectSubPayState.project;
+  const s = (DATA.subs||[]).find(x=>x._id===document.getElementById('psp-sub').value);
+  const date = document.getElementById('psp-date').value;
+  const amount = Number(document.getElementById('psp-amount').value)||0;
+  const description = document.getElementById('psp-desc').value.trim();
+  if(!s){ alert('اختار مقاول الباطن'); return; }
+  if(!date){ alert('اختار التاريخ'); return; }
+  if(!(amount>0)){ alert('اكتب المبلغ'); return; }
+  const ps = typeof readPaySource==='function' ? readPaySource('psp', date, null) : {paidFrom:'', chequeNo:''};
+  if(!ps) return;
+  if(!Array.isArray(s.assignments)) s.assignments = [];
+  let a = s.assignments.find(x=>x.project===project);
+  if(!a){
+    a = {id:'ASG-'+Math.random().toString(36).slice(2,10), project, contractType:(DATA.contractTypes&&DATA.contractTypes[0])||'مقطوعية', entries:[]};
+    s.assignments.push(a);
+  }
+  if(!Array.isArray(a.entries)) a.entries = [];
+  const n = (a.entries.length ? Math.max(...a.entries.map(e=>e._n||0)) : 0)+1;
+  const rec = {id:a.id+'-E'+n, _n:n, date, kind:'دفعة', description, quantity:'', unitPrice:'', amount};
+  if(typeof applyPaySource==='function') applyPaySource(rec, ps);
+  a.entries.push(rec);
+  logAudit('إضافة', 'بند مقاول باطن', s.name, 'دفعة - '+project+' - '+fmtMoney(amount));
+  generateAutoEntries();
+  saveData();
+  cbClose('projectSubPayOverlay');
+  renderPage();
+  showToast('اتسجلت الدفعة في حساب '+s.name+' ✓', 'good');
+}
+
+/* ================= العمالة المؤقتة على المشروع =================
+   عمال بييجوا يشتغلوا كام يوم في مشروع معيّن ومش موظفين في الشركة — مش بيدخلوا الموارد البشرية خالص.
+   كل يومية بتتسجل جوه المشروع نفسه (p.casualLabor) وبتتحسب تكلفة على المشروع بتاريخها فورًا،
+   واللي لسه متصرفش بيظهر "مستحق" (جوه المشروع وفي المركز المالي). */
+function casualList(p){ if(!Array.isArray(p.casualLabor)) p.casualLabor = []; return p.casualLabor; }
+function casualTotals(rows){
+  const amount = rows.reduce((t,r)=>t+(Number(r.amount)||0),0);
+  const paid = rows.filter(r=>r.paid).reduce((t,r)=>t+(Number(r.amount)||0),0);
+  return {amount:round2(amount), paid:round2(paid), due:round2(amount-paid), units:rows.reduce((t,r)=>t+(Number(r.units)||0),0)};
+}
+function casualPayablesTotal(){
+  return round2((DATA.projects||[]).reduce((t,p)=>t+casualTotals(p.casualLabor||[]).due,0));
+}
+function casualByWorker(p){
+  const m = new Map();
+  casualList(p).forEach(r=>{
+    const k = (r.name||'').trim();
+    if(!m.has(k)) m.set(k, {name:k, trade:r.trade||'', rows:[]});
+    const w = m.get(k); w.rows.push(r); if(r.trade) w.trade = r.trade;
+  });
+  return Array.from(m.values()).map(w=>Object.assign(w, casualTotals(w.rows))).sort((a,b)=>(b.due-a.due) || a.name.localeCompare(b.name));
+}
+
+/* ---------- القيود التلقائية ---------- */
+function casualValidSources(set){
+  (DATA.projects||[]).forEach(p=>(p.casualLabor||[]).forEach(r=>{ if(r.date && Number(r.amount)) set.add('casual:'+p._id+':'+r.id); }));
+}
+function casualAutoEntries(upsert){
+  (DATA.projects||[]).forEach(p=>(p.casualLabor||[]).forEach(r=>{
+    const amount = Number(r.amount)||0;
+    if(!r.date || !amount) return;
+    upsert('casual:'+p._id+':'+r.id, {date:r.date, type:'مصروف', account:'أجور العمالة', amount, project:p.name,
+      description:'عمالة مؤقتة: '+r.name+(r.trade?' ('+r.trade+')':'')+' — '+fmtUnits(Number(r.units)||0)+' يوم × '+fmtMoney(r.rate)+(r.paid?'':' (لسه متصرفتش)')});
+  }));
+}
+
+/* ---------- قسم العمالة المؤقتة جوه المشروع ---------- */
+let casualShowAll = false;
+function renderProjectCasualSection(p){
+  const rows = casualList(p).slice().sort((a,b)=>(b.date||'').localeCompare(a.date||'') || (b._n||0)-(a._n||0));
+  const t = casualTotals(rows);
+  const workers = casualByWorker(p);
+  const canAdd = canEdit('projects');
+  const shown = casualShowAll ? rows : rows.slice(0, 15);
+  return `
+    <div class="section-title" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+      <span>🧑‍🔧 عمالة مؤقتة على المشروع <span style="font-size:12px; color:var(--text-dim); font-weight:400;">(مش موظفين — مش بتظهر في الموارد البشرية)</span></span>
+      ${canAdd ? `<button class="btn secondary small" onclick="openCasualForm('${p._id}')">+ تسجيل عمالة مؤقتة</button>` : ''}
+    </div>
+    ${rows.length ? `
+    <div class="kpi-grid" style="margin-bottom:10px;">
+      <div class="kpi"><div class="kpi-label">عدد العمال</div><div class="kpi-value">${workers.length}</div></div>
+      <div class="kpi"><div class="kpi-label">إجمالي الأيام</div><div class="kpi-value">${fmtUnits(t.units)}</div></div>
+      <div class="kpi"><div class="kpi-label">إجمالي التكلفة</div><div class="kpi-value">${fmtMoney(t.amount)}</div></div>
+      <div class="kpi ${t.due>0?'alert':'ok'}"><div class="kpi-label">لسه متصرفش</div><div class="kpi-value">${fmtMoney(t.due)}</div></div>
+    </div>
+    <div class="table-wrap" style="margin-bottom:10px;"><div class="table-scroll"><table>
+      <thead><tr><th>العامل</th><th>الشغلانة</th><th>أيام</th><th>المستحق</th><th>اتصرف</th><th>الباقي له</th><th></th></tr></thead>
+      <tbody>${workers.map(w=>{ const nm = JSON.stringify(w.name).replace(/"/g,'&quot;'); return `<tr>
+        <td style="font-weight:700;">${w.name}</td><td>${w.trade||'—'}</td><td>${fmtUnits(w.units)}</td>
+        <td>${fmtMoney(w.amount)}</td><td style="color:var(--good);">${fmtMoney(w.paid)}</td>
+        <td style="font-weight:700; color:${w.due>0?'var(--bad)':'var(--good)'};">${fmtMoney(w.due)}</td>
+        <td class="row-actions">
+          ${(canAdd && w.due>0) ? `<button class="btn small" onclick="openCasualPayForm('${p._id}', ${nm})">💵 صرف</button>` : ''}
+          <button class="btn secondary small" onclick="printCasualWorker('${p._id}', ${nm})">🖨 كشف</button>
+        </td></tr>`; }).join('')}
+      </tbody>
+    </table></div></div>
+    <div style="font-weight:700; margin:12px 0 6px; font-size:13.5px;">سجل اليوميات</div>
+    <div class="table-wrap" style="margin-bottom:6px;"><div class="table-scroll"><table>
+      <thead><tr><th>التاريخ</th><th>العامل</th><th>أيام</th><th>اليومية</th><th>المبلغ</th><th>الصرف</th><th>ملاحظة</th><th></th></tr></thead>
+      <tbody>${shown.map(r=>`<tr>
+        <td>${r.date}</td><td>${r.name}${r.trade?`<div style="font-size:11.5px; color:var(--text-dim);">${r.trade}</div>`:''}</td>
+        <td>${fmtUnits(Number(r.units)||0)}</td><td>${fmtMoney(r.rate)}</td><td style="font-weight:700;">${fmtMoney(r.amount)}</td>
+        <td>${r.paid ? `<span class="badge b-good">اتصرف ${r.paidDate||''}</span>${typeof paySourceBadge==='function'?paySourceBadge(r):''}` : '<span class="badge b-warn">مستحق</span>'}</td>
+        <td>${r.note||'—'}</td>
+        <td class="row-actions">${isAdmin() ? `<button class="btn danger small" onclick="deleteCasualRow('${p._id}','${r.id}')">حذف</button>` : ''}</td>
+      </tr>`).join('')}</tbody>
+    </table></div></div>
+    ${rows.length>15 ? `<button class="btn secondary small" onclick="casualShowAll=!casualShowAll; renderPage();" style="margin-bottom:10px;">${casualShowAll?'عرض آخر 15 بس':'عرض الكل ('+rows.length+')'}</button>` : ''}
+    ` : `<div class="table-wrap" style="margin-bottom:10px;"><div class="empty-state">مفيش عمالة مؤقتة مسجلة على المشروع ده</div></div>`}
+    <div style="font-size:12px; color:var(--text-dim); margin-bottom:24px;">تكلفة العمالة المؤقتة بتتحسب على المشروع بتاريخها (تحت "أجور العمالة") حتى لو لسه متصرفتش، واللي متصرفش بيظهر في المركز المالي ضمن "مستحق للعمالة".</div>
+  `;
+}
+
+/* ---------- تسجيل يوميات (كذا عامل مرة واحدة) ---------- */
+let casualFormState = {projectId:null};
+function openCasualForm(projectId){
+  if(!canEdit('projects')) return;
+  const p = DATA.projects.find(x=>x._id===projectId);
+  if(!p) return;
+  casualFormState = {projectId};
+  const known = casualByWorker(p);
+  cbOverlay('casualOverlay', '🧑‍🔧 تسجيل عمالة مؤقتة — '+p.name, `
+    <datalist id="casualNames">${known.map(w=>`<option value="${w.name}">${w.trade||''}</option>`).join('')}</datalist>
+    <div class="field"><label>التاريخ</label><input id="cl-date" type="date" value="${todayStr()}"></div>
+    <div style="font-size:12.5px; color:var(--text-dim); margin-bottom:8px;">اكتب كل عامل في سطر — الاسم بيتملى من العمال اللي اشتغلوا قبل كده في المشروع، واليومية والشغلانة بيتملوا لوحدهم.</div>
+    <div id="cl-rows"></div>
+    <button class="btn secondary small" onclick="addCasualRow()" style="margin-bottom:12px;">+ عامل</button>
+    <div id="cl-total" style="font-weight:700; margin-bottom:10px;"></div>
+    <div class="field"><label>ملاحظة (اختياري)</label><input id="cl-note" type="text" placeholder="مثال: تكسير وتنظيف الدور الأرضي"></div>
+    <div class="field"><label><input type="checkbox" id="cl-paidnow" onchange="document.getElementById('cl-paywrap').style.display=this.checked?'':'none'"> اتصرفت لهم دلوقتي</label></div>
+    <div id="cl-paywrap" style="display:none;">${typeof paySourceHtml==='function' ? paySourceHtml('cl', '', '') : ''}</div>
+    <div style="display:flex; gap:8px; justify-content:flex-end;"><button class="btn secondary" onclick="cbClose('casualOverlay')">إلغاء</button><button class="btn" id="cl-save" onclick="saveCasualForm()">حفظ</button></div>
+  `);
+  addCasualRow();
+}
+function addCasualRow(){
+  const box = document.getElementById('cl-rows');
+  const row = document.createElement('div');
+  row.className = 'cl-row';
+  row.style.cssText = 'display:flex; gap:6px; flex-wrap:wrap; align-items:flex-end; border:1px solid var(--border); border-radius:6px; padding:8px; margin-bottom:6px; background:var(--bg);';
+  row.innerHTML = `
+    <div style="flex:3; min-width:130px;"><label style="font-size:11.5px;">اسم العامل</label><input class="cl-name" list="casualNames" type="text" onchange="fillCasualRow(this)"></div>
+    <div style="flex:2; min-width:90px;"><label style="font-size:11.5px;">الشغلانة</label><input class="cl-trade" type="text" placeholder="نجار / مساعد..."></div>
+    <div style="flex:1; min-width:60px;"><label style="font-size:11.5px;">أيام</label><input class="cl-units" type="number" step="0.25" min="0" value="1" oninput="recalcCasual()"></div>
+    <div style="flex:1; min-width:80px;"><label style="font-size:11.5px;">اليومية</label><input class="cl-rate" type="number" min="0" oninput="recalcCasual()"></div>
+    <button class="btn danger small" onclick="this.closest('.cl-row').remove(); recalcCasual();">×</button>`;
+  box.appendChild(row);
+  recalcCasual();
+}
+function fillCasualRow(inp){
+  const p = DATA.projects.find(x=>x._id===casualFormState.projectId);
+  const name = inp.value.trim();
+  const last = casualList(p).filter(r=>r.name===name).sort((a,b)=>(b.date||'').localeCompare(a.date||''))[0];
+  const row = inp.closest('.cl-row');
+  if(last){
+    if(!row.querySelector('.cl-trade').value) row.querySelector('.cl-trade').value = last.trade||'';
+    if(!row.querySelector('.cl-rate').value) row.querySelector('.cl-rate').value = last.rate||'';
+  }
+  recalcCasual();
+}
+function readCasualRows(){
+  return Array.from(document.querySelectorAll('#cl-rows .cl-row')).map(r=>({
+    name: r.querySelector('.cl-name').value.trim(), trade: r.querySelector('.cl-trade').value.trim(),
+    units: Number(r.querySelector('.cl-units').value)||0, rate: Number(r.querySelector('.cl-rate').value)||0,
+  })).filter(x=>x.name || x.rate);
+}
+function recalcCasual(){
+  const rows = readCasualRows();
+  const el = document.getElementById('cl-total');
+  if(el) el.textContent = rows.length ? 'الإجمالي: '+fmtMoney(rows.reduce((t,x)=>t+x.units*x.rate,0))+' — '+rows.length+' عامل' : '';
+}
+function saveCasualForm(){
+  if(!canEdit('projects')) return;
+  const p = DATA.projects.find(x=>x._id===casualFormState.projectId);
+  if(!p) return;
+  const date = document.getElementById('cl-date').value;
+  const note = document.getElementById('cl-note').value.trim();
+  const rows = readCasualRows();
+  if(!date){ alert('اختار التاريخ'); return; }
+  if(!rows.length){ alert('اكتب عامل واحد على الأقل'); return; }
+  if(rows.some(x=>!x.name)){ alert('فيه سطر من غير اسم العامل'); return; }
+  if(rows.some(x=>!(x.units>0) || !(x.rate>0))){ alert('كل عامل لازم يكون له أيام ويومية'); return; }
+  const paidNow = document.getElementById('cl-paidnow').checked;
+  let ps = {paidFrom:'', chequeNo:''};
+  if(paidNow){ ps = typeof readPaySource==='function' ? readPaySource('cl', date, null) : ps; if(!ps) return; }
+  const list = casualList(p);
+  rows.forEach(x=>{
+    const n = (list.length ? Math.max(...list.map(r=>r._n||0)) : 0)+1;
+    const rec = {id:'CL-'+n+'-'+Math.random().toString(36).slice(2,6), _n:n, date, name:x.name, trade:x.trade, units:x.units, rate:x.rate, amount:round2(x.units*x.rate), note, by: currentUser ? currentUser.name : ''};
+    if(paidNow){ rec.paid = true; rec.paidDate = date; if(typeof applyPaySource==='function') applyPaySource(rec, ps); }
+    list.push(rec);
+  });
+  logAudit('إضافة', 'عمالة مؤقتة', p.name, date+' — '+rows.length+' عامل — '+fmtMoney(rows.reduce((t,x)=>t+x.units*x.rate,0)));
+  generateAutoEntries();
+  saveData();
+  cbClose('casualOverlay');
+  renderPage();
+  showToast('اتسجلت يوميات '+rows.length+' عامل ✓', 'good');
+}
+
+/* ---------- صرف مستحقات عامل ---------- */
+let casualPayState = {projectId:null, name:''};
+function openCasualPayForm(projectId, name){
+  if(!canEdit('projects')) return;
+  const p = DATA.projects.find(x=>x._id===projectId);
+  if(!p) return;
+  const due = casualList(p).filter(r=>r.name===name && !r.paid);
+  if(!due.length) return;
+  casualPayState = {projectId, name};
+  cbOverlay('casualPayOverlay', '💵 صرف مستحقات — '+name, `
+    <div class="table-wrap" style="margin-bottom:10px;"><div class="table-scroll"><table>
+      <thead><tr><th>التاريخ</th><th>أيام</th><th>المبلغ</th></tr></thead>
+      <tbody>${due.map(r=>`<tr><td>${r.date}</td><td>${fmtUnits(Number(r.units)||0)}</td><td>${fmtMoney(r.amount)}</td></tr>`).join('')}
+      <tr style="font-weight:900;"><td>الإجمالي</td><td>${fmtUnits(due.reduce((t,r)=>t+(Number(r.units)||0),0))}</td><td>${fmtMoney(due.reduce((t,r)=>t+(Number(r.amount)||0),0))}</td></tr></tbody>
+    </table></div></div>
+    <div class="field"><label>تاريخ الصرف</label><input id="cp-date" type="date" value="${todayStr()}"></div>
+    ${typeof paySourceHtml==='function' ? paySourceHtml('cp', '', '') : ''}
+    <div style="display:flex; gap:8px; justify-content:flex-end;"><button class="btn secondary" onclick="cbClose('casualPayOverlay')">إلغاء</button><button class="btn" id="cp-save" onclick="saveCasualPay()">✓ صرف الكل</button></div>
+  `);
+}
+function saveCasualPay(){
+  const p = DATA.projects.find(x=>x._id===casualPayState.projectId);
+  if(!p) return;
+  const date = document.getElementById('cp-date').value || todayStr();
+  const ps = typeof readPaySource==='function' ? readPaySource('cp', date, null) : {paidFrom:'', chequeNo:''};
+  if(!ps) return;
+  const due = casualList(p).filter(r=>r.name===casualPayState.name && !r.paid);
+  due.forEach(r=>{ r.paid = true; r.paidDate = date; if(typeof applyPaySource==='function') applyPaySource(r, ps); });
+  logAudit('صرف', 'عمالة مؤقتة', p.name, casualPayState.name+' — '+fmtMoney(due.reduce((t,r)=>t+(Number(r.amount)||0),0)));
+  generateAutoEntries();
+  saveData();
+  cbClose('casualPayOverlay');
+  renderPage();
+  showToast('اتصرفت مستحقات '+casualPayState.name+' ✓', 'good');
+}
+function deleteCasualRow(projectId, id){
+  if(!isAdmin()) return;
+  const p = DATA.projects.find(x=>x._id===projectId);
+  const r = p && casualList(p).find(x=>x.id===id);
+  if(!r) return;
+  if(r.paid && typeof cashboxAllowsMove==='function' && !cashboxAllowsMove(r.paidFrom, r.paidDate, 'الحذف')) return;
+  openConfirmModal('حذف يومية '+r.name+' بتاريخ '+r.date+' ('+fmtMoney(r.amount)+')؟', ()=>{
+    p.casualLabor = casualList(p).filter(x=>x.id!==id);
+    logAudit('حذف', 'عمالة مؤقتة', p.name, r.name+' '+r.date);
+    generateAutoEntries();
+    saveData();
+    renderPage();
+  });
+}
+function printCasualWorker(projectId, name){
+  const p = DATA.projects.find(x=>x._id===projectId);
+  if(!p) return;
+  const rows = casualList(p).filter(r=>r.name===name).sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+  const t = casualTotals(rows);
+  const td = 'style="padding:6px; border:1px solid #ccc;"';
+  const body = `
+    <table style="width:100%; border-collapse:collapse; font-size:13px; margin-bottom:10px;"><tbody>
+      <tr><td ${td}><b>العامل</b></td><td ${td}>${name}</td><td ${td}><b>المشروع</b></td><td ${td}>${p.name}</td></tr>
+      <tr><td ${td}><b>الشغلانة</b></td><td ${td}>${(rows.find(r=>r.trade)||{}).trade||'—'}</td><td ${td}><b>إجمالي الأيام</b></td><td ${td}>${fmtUnits(t.units)}</td></tr>
+    </tbody></table>
+    ${buildStatementTable(['التاريخ','أيام','اليومية','المبلغ','الصرف'], rows.map(r=>`<tr><td ${td}>${r.date}</td><td ${td}>${fmtUnits(Number(r.units)||0)}</td><td ${td}>${fmtMoney(r.rate)}</td><td ${td}>${fmtMoney(r.amount)}</td><td ${td}>${r.paid?'اتصرف '+(r.paidDate||''):'مستحق'}</td></tr>`).join(''))}
+    <div style="display:flex; gap:20px; margin-top:12px; font-size:14px; color:#111;"><div>الإجمالي: <b>${fmtMoney(t.amount)}</b></div><div>اتصرف: <b>${fmtMoney(t.paid)}</b></div><div>الباقي له: <b>${fmtMoney(t.due)}</b></div></div>
+    <div style="display:flex; justify-content:space-between; margin-top:36px; font-size:13px; color:#111;"><div>توقيع المستلم: ....................</div><div>مهندس الموقع: ....................</div></div>`;
+  openPrintDocument('كشف يوميات عامل — '+name, 'عمالة مؤقتة — '+p.name, body);
 }
 </script>
 </body>
