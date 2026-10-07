@@ -3583,6 +3583,8 @@ function openMovementForm(materialId, editId){
   document.getElementById('movement-note').value = rec?(rec.note||''):'';
   document.getElementById('projectsList').innerHTML = DATA.projects.map(p=>`<option value="${p.name}"></option>`).join('');
   updateMovementProjectVisibility();
+  mountPhaseField('movement-project', 'movement', rec?(rec.project||''):'', rec?(rec.phase||''):'');
+  document.getElementById('movement-project').oninput = function(){ refreshPhaseField('movement', this.value); };
   document.getElementById('movementOverlay').classList.add('open');
 }
 function closeMovementModal(){ document.getElementById('movementOverlay').classList.remove('open'); }
@@ -3594,15 +3596,16 @@ function saveMovement(){
   const date = document.getElementById('movement-date').value;
   const quantity = document.getElementById('movement-qty').value;
   const project = type==='خروج' ? document.getElementById('movement-project').value : '';
+  const phase = type==='خروج' ? readPhase('movement') : '';
   const personName = document.getElementById('movement-person').value;
   const note = document.getElementById('movement-note').value;
   if(!quantity){ alert('من فضلك أدخل الكمية'); return; }
   if(movementFormState.editId){
     const rec = m.movements.find(mv=>mv.id===movementFormState.editId);
-    Object.assign(rec, {type, date, quantity, project, personName, note});
+    Object.assign(rec, {type, date, quantity, project, personName, note, phase});
   }else{
     const n = (m.movements.length?Math.max(...m.movements.map(r=>r._n||0)):0)+1;
-    m.movements.push({id:'MV-'+m._id+'-'+n, _n:n, type, date, quantity, project, personName, note});
+    m.movements.push({id:'MV-'+m._id+'-'+n, _n:n, type, date, quantity, project, personName, note, phase});
   }
   logAudit(movementFormState.editId?'تعديل':'إضافة', 'حركة مخزون', m.name, `${type} - كمية ${quantity}`);
   saveData();
@@ -4086,6 +4089,7 @@ function openEntryForm(subId, assignmentId, editId){
   document.getElementById('entry-price').value = rec ? (rec.unitPrice||'') : '';
   document.getElementById('entry-amount').value = rec ? rec.amount : '';
   mountPaySource('entry-amount', 'entry', rec);
+  mountPhaseField('entry-desc', 'entry', a ? a.project : '', rec ? (rec.phase||'') : '');
   updateEntryFieldsContext();
   document.getElementById('entryOverlay').classList.add('open');
 }
@@ -4126,7 +4130,7 @@ function saveEntry(){
     description = 'يومية '+workerRole+' - '+workerName;
   }
   if(!amount){ alert('من فضلك أدخل المبلغ'); return; }
-  const data = {date, kind, description, quantity, unitPrice, amount, workerName, workerRole};
+  const data = {date, kind, description, quantity, unitPrice, amount, workerName, workerRole, phase: readPhase('entry')};
   const ps = readPaySource('entry', date, editId ? a.entries.find(e=>e.id===editId) : null);
   if(!ps) return;
   if(editId){
@@ -6356,6 +6360,8 @@ function openAssetExpenseForm(assetId, editId){
   document.getElementById('assetexp-date').value = rec?(rec.date||''):todayStr();
   document.getElementById('assetexp-amount').value = rec?(rec.amount||''):'';
   populateAssetProjectSelect('assetexp-project', rec?(rec.project||''):(a?assetLocationAt(a, todayStr()):''));
+  mountPhaseField('assetexp-project', 'assetexp', document.getElementById('assetexp-project').value, rec?(rec.phase||''):'');
+  document.getElementById('assetexp-project').onchange = function(){ refreshPhaseField('assetexp', this.value); };
   document.getElementById('assetexp-note').value = rec?(rec.note||''):'';
   mountPaySource('assetexp-note', 'assetexp', rec);
   document.getElementById('assetExpenseOverlay').classList.add('open');
@@ -6369,17 +6375,18 @@ function saveAssetExpense(){
   const date = document.getElementById('assetexp-date').value;
   const amount = document.getElementById('assetexp-amount').value;
   const project = document.getElementById('assetexp-project').value;
+  const phase = readPhase('assetexp');
   const note = document.getElementById('assetexp-note').value;
   if(!amount || Number(amount)<=0){ alert('من فضلك أدخل مبلغ المصروف'); return; }
   const ps = readPaySource('assetexp', date, assetExpenseFormState.editId ? a.expenses.find(e=>e.id===assetExpenseFormState.editId) : null);
   if(!ps) return;
   if(assetExpenseFormState.editId){
     const rec = a.expenses.find(e=>e.id===assetExpenseFormState.editId);
-    Object.assign(rec, {kind, date, amount, project, note});
+    Object.assign(rec, {kind, date, amount, project, note, phase});
     applyPaySource(rec, ps);
   }else{
     const n = (a.expenses.length ? Math.max(...a.expenses.map(r=>r._n||0)) : 0)+1;
-    const rec = {id:'AEX-'+a._id+'-'+n, _n:n, kind, date, amount, project, note};
+    const rec = {id:'AEX-'+a._id+'-'+n, _n:n, kind, date, amount, project, note, phase};
     applyPaySource(rec, ps);
     a.expenses.push(rec);
   }
@@ -6564,7 +6571,7 @@ function generateAutoEntries(){
     const account = 'مقاولي الباطن - ' + (s.specialty && s.specialty.trim() ? s.specialty.trim() : 'عام');
     const amount = Number(e.amount)||0;
     if(!amount) return;
-    upsert('subwork:'+s._id+':'+a.id+':'+e.id, {date:e.date, type:'مصروف', account, amount, project:a.project, description:'دفعة لمقاول الباطن: '+s.name+(e.description?(' - '+e.description):'')+paySourceSuffix(e)});
+    upsert('subwork:'+s._id+':'+a.id+':'+e.id, {phase: e.phase||'', date:e.date, type:'مصروف', account, amount, project:a.project, description:'دفعة لمقاول الباطن: '+s.name+(e.description?(' - '+e.description):'')+paySourceSuffix(e)});
   })));
   DATA.hr.forEach(h=>(h.payrollRuns||[]).forEach(pr=>{
     if(!pr.paid || h.employeeType==='يومي') return;
@@ -6588,14 +6595,14 @@ function generateAutoEntries(){
     if(!m.isRawMaterial || mv.type!=='خروج' || !mv.project) return;
     const amount = (Number(mv.quantity)||0) * (Number(m.unitPrice)||0);
     if(!amount) return;
-    upsert('matout:'+m._id+':'+mv.id, {date:mv.date, type:'مصروف', account:'تكلفة مواد خام - '+m.name, amount, project:mv.project, description:'صرف '+mv.quantity+' '+(m.unit||'')+' من '+m.name+' لمشروع '+mv.project});
+    upsert('matout:'+m._id+':'+mv.id, {phase: mv.phase||'', date:mv.date, type:'مصروف', account:'تكلفة مواد خام - '+m.name, amount, project:mv.project, description:'صرف '+mv.quantity+' '+(m.unit||'')+' من '+m.name+' لمشروع '+mv.project});
   }));
   DATA.assets.forEach(a=>(a.expenses||[]).forEach(e=>{
     const amount = Number(e.amount)||0;
     if(!amount) return;
     // مصروف أصل/معدة بدون مشروع محدد (زي صيانة معدة عامة مش مخصصة لمشروع بعينه) لازم برضو يظهر كمصروف عام
     // على الشركة، مش يتجاهل خالص — بنفس منطق المصاريف الثابتة والعامة ومرتبات الموظفين بدون مشروع
-    upsert('assetexp:'+a._id+':'+e.id, {date:e.date, type:'مصروف', account:'صيانة ومعدات', amount, project:e.project||'', description:(e.kind||'مصروف معدات')+' — '+a.name+(e.note?(' - '+e.note):'')+(e.project?'':' (مصروف عام — بدون مشروع محدد)')+paySourceSuffix(e)});
+    upsert('assetexp:'+a._id+':'+e.id, {phase: e.phase||'', date:e.date, type:'مصروف', account:'صيانة ومعدات', amount, project:e.project||'', description:(e.kind||'مصروف معدات')+' — '+a.name+(e.note?(' - '+e.note):'')+(e.project?'':' (مصروف عام — بدون مشروع محدد)')+paySourceSuffix(e)});
   }));
   DATA.hr.forEach(h=>(h.payrollEntries||[]).forEach(e=>{
     if(e.type!=='سلفة' || h.employeeType==='يومي') return;
@@ -6607,7 +6614,7 @@ function generateAutoEntries(){
     const amount = Number(inv.amount)||0;
     if(!amount || !inv.date) return;
     const rem = supplierInvoiceRemaining(inv);
-    upsert('supinv:'+s._id+':'+inv.id, {date:inv.date, type:'مصروف', account:'مشتريات من الموردين', amount, project:inv.project||'', description:'فاتورة مورد: '+s.name+(inv.number?(' — رقم '+inv.number):'')+(inv.note?(' — '+inv.note):'')+(rem>0?(' (مستحق للمورد '+fmtMoney(rem)+')'):' (مسددة)')+(inv.project?'':' (مصروف عام — بدون مشروع محدد)')});
+    upsert('supinv:'+s._id+':'+inv.id, {phase: inv.phase||'', date:inv.date, type:'مصروف', account:'مشتريات من الموردين', amount, project:inv.project||'', description:'فاتورة مورد: '+s.name+(inv.number?(' — رقم '+inv.number):'')+(inv.note?(' — '+inv.note):'')+(rem>0?(' (مستحق للمورد '+fmtMoney(rem)+')'):' (مسددة)')+(inv.project?'':' (مصروف عام — بدون مشروع محدد)')});
   }));
 }
 function ensureAssetShape(a){
@@ -7630,6 +7637,12 @@ function openAttendanceForm(empId, editId){
   document.getElementById('att-status').value = rec ? rec.status : 'حاضر';
   document.getElementById('att-note').value = rec ? (rec.note||'') : '';
   document.getElementById('att-units').value = (rec && Number(rec.units)>0) ? rec.units : 1;
+  setTimeout(()=>{
+    const ps = document.getElementById('att-project');
+    const projOf = ()=> (ps && ps.value) || h.project || '';
+    mountPhaseField('att-project', 'att', h.employeeType==='يومي' ? projOf() : '', rec ? (rec.phase||'') : '');
+    if(ps) ps.onchange = ()=>refreshPhaseField('att', projOf());
+  }, 0);
   const projectWrap = document.getElementById('att-project-wrap');
   const projectSelect = document.getElementById('att-project');
   if(h.employeeType==='يومي'){
@@ -7677,7 +7690,7 @@ function saveAttendance(){
     rec = h.attendance.find(a=>a.id===editId);
     if(rec && rec.settled){ alert('اليوم ده اتصفّى في تصفية حساب — مينفعش يتعدّل إلا لو التصفية اتلغت الأول'); return; }
     if(rec && date!==rec.date && isDateSettledFor(h, date)){ alert('التاريخ ده داخل فترة اتصفّت بالفعل ('+date+') — مينفعش تنقل اليوم ليها'); return; }
-    if(rec){ rec.date=date; rec.status=status; rec.note=note; rec.project=project; rec.units=units; }
+    if(rec){ rec.date=date; rec.status=status; rec.note=note; rec.project=project; rec.units=units; rec.phase=readPhase('att'); }
   }else{
     if(isDateSettledFor(h, date)){ alert('التاريخ '+date+' داخل فترة اتصفّت بالفعل في تصفية حساب — مينفعش تسجل عليه'); return; }
     // اليوم اللي تم إثبات حضوره/تسجيله قبل كده متسجّلش تاني إلا لو المدير حذفه الأول
@@ -7688,7 +7701,7 @@ function saveAttendance(){
       return;
     }
     const n = (h.attendance.length ? Math.max(...h.attendance.map(x=>x._n||0)) : 0)+1;
-    rec = {id:h._id+'-ATT'+n, _n:n, date, status, note, project, units, rate:Number(h.dailyWage)||0};
+    rec = {id:h._id+'-ATT'+n, _n:n, date, status, note, project, units, rate:Number(h.dailyWage)||0, phase: readPhase('att')};
     h.attendance.push(rec);
   }
   if(rec) syncAbsenceDeduction(h, rec);
@@ -8276,7 +8289,20 @@ function openLedgerForm(editId, presetProject, presetType){
   const lt = document.getElementById('ledger-type');
   if(!lt._psBound){ lt.addEventListener('change', ()=>showPaySource('ledger', lt.value==='مصروف')); lt._psBound = true; }
   showPaySource('ledger', lt.value==='مصروف');
+  const la = document.getElementById('ledger-account');
+  if(!la._redirBound){ la.addEventListener('change', ledgerAccountRedirect); la._redirBound = true; }
   document.getElementById('ledgerOverlay').classList.add('open');
+}
+// اختيار "مشتريات من الموردين" أو "مصروفات مقاولي الباطن" من نافذة المصروف بيفتح النافذة المخصصة اللي فيها أسماء الموردين/المقاولين
+// عشان المبلغ يتسجل في حساب المورد/المقاول نفسه مش مصروف سايب
+function ledgerAccountRedirect(){
+  if(ledgerFormState.editId) return;
+  if(document.getElementById('ledger-type').value!=='مصروف') return;
+  const acc = document.getElementById('ledger-account').value;
+  const project = document.getElementById('ledger-project').value;
+  const pre = {date: document.getElementById('ledger-date').value, amount: document.getElementById('ledger-amount').value, note: document.getElementById('ledger-desc').value, phase: (document.getElementById('ledger-phase-wrap').style.display!=='none' ? document.getElementById('ledger-phase').value : '')};
+  if(acc==='مشتريات من الموردين' && canEdit('suppliers')){ closeLedgerModal(); openProjectPurchaseForm(project, pre); }
+  else if(acc==='مصروفات مقاولي الباطن' && canEdit('subs') && typeof openProjectSubPaymentForm==='function'){ closeLedgerModal(); openProjectSubPaymentForm(project); }
 }
 function openExpenseForm(presetProject){
   openLedgerForm(null, presetProject, 'مصروف');
@@ -10185,6 +10211,7 @@ function onAssetExpenseDateChange(){
   const d = document.getElementById('assetexp-date').value;
   const sel = document.getElementById('assetexp-project');
   if(sel) sel.value = assetLocationAt(a, d);
+  if(sel && typeof refreshPhaseField==='function') refreshPhaseField('assetexp', sel.value);
 }
 </script>
 <script>
@@ -10281,7 +10308,7 @@ function cashboxValidSources(set){
 function cashboxAutoEntries(upsert){
   (DATA.cashboxes||[]).forEach(b=>(b.entries||[]).forEach(e=>{
     if(e.type!=='مصروف' || !(Number(e.amount)>0) || !e.date || e.linkedSettlement) return;
-    upsert('cashbox:'+b._id+':'+e.id, {
+    upsert('cashbox:'+b._id+':'+e.id, { phase: e.phase||'',
       date:e.date, type:'مصروف', account:e.account||'مصروفات أخرى', amount:Number(e.amount)||0, project:e.project||'',
       description:'مصروف من عهدة '+b.name+(b.custodian?(' ('+b.custodian+')'):'')+(e.description?(' — '+e.description):'')+(e.ref?(' — إيصال '+e.ref):'')+(e.project?'':' (مصروف عام — بدون مشروع محدد)'),
     });
@@ -10521,7 +10548,8 @@ function openCashEntryForm(boxId, type, editId){
     ` : `
       <div class="field"><label>حساب المصروف</label><select id="ce-account" onchange="updateCashEmpFields()">${(()=>{ const accs = DATA.expenseAccounts||[]; const def = e ? e.account : (accs.find(a=>!CASH_EMP_ACCOUNTS[a] && a!=='أجور العمالة')||accs[0]); return accs.map(a=>`<option ${a===def?'selected':''}>${a}</option>`).join(''); })()}</select></div>
       ${e ? '' : cashEmpFieldsHtml()}
-      <div class="field" id="ce-project-wrap"><label>المشروع</label><select id="ce-project">${cbProjectOptions(e?(e.project||''):(b.project||''))}</select></div>
+      <div class="field" id="ce-project-wrap"><label>المشروع</label><select id="ce-project" onchange="refreshPhaseField('ce', this.value)">${cbProjectOptions(e?(e.project||''):(b.project||''))}</select></div>
+      ${phaseFieldHtml('ce', e?(e.project||''):(b.project||''), e?(e.phase||''):'')}
       <div class="field"><label>رقم الإيصال / الفاتورة (اختياري)</label><input id="ce-ref" type="text" value="${e?(e.ref||''):''}"></div>
     `}
     <div class="field"><label>البيان</label><input id="ce-desc" type="text" value="${e?(e.description||''):''}" placeholder="${isIn?'مثال: تغذية أول الشهر':'مثال: نقل مواد / وجبات عمال / أدوات'}"></div>
@@ -10550,11 +10578,13 @@ function cashEmpFieldsHtml(){
       <option value="">— اختار المقاول —</option>
       ${(DATA.subs||[]).slice().sort((a,b)=>a.name.localeCompare(b.name)).map(s=>`<option value="${s._id}">${s.name}${s.specialty?' — '+s.specialty:''}</option>`).join('')}
     </select></div>
-    <div class="field"><label>المشروع</label><select id="ce-sub-project" onchange="updateCashSubInfo()"></select></div>
+    <div class="field"><label>المشروع</label><select id="ce-sub-project" onchange="updateCashSubInfo(); refreshPhaseField('ces', this.value)"></select></div>
+    ${phaseFieldHtml('ces', '', '')}
     <div id="ce-sub-info" style="font-size:12.5px; color:var(--text-dim); margin:-4px 0 10px;"></div>
   </div>
   <div id="ce-cas-wrap" style="display:none;">
-    <div class="field"><label>المشروع</label><select id="ce-cas-project" onchange="updateCashCasualWorkers()"><option value="">— اختار المشروع —</option>${DATA.projects.map(p=>`<option value="${p._id}">${p.name}</option>`).join('')}</select></div>
+    <div class="field"><label>المشروع</label><select id="ce-cas-project" onchange="updateCashCasualWorkers(); const pp = DATA.projects.find(x=>x._id===this.value); refreshPhaseField('cec', pp?pp.name:'')"><option value="">— اختار المشروع —</option>${DATA.projects.map(p=>`<option value="${p._id}">${p.name}</option>`).join('')}</select></div>
+    ${phaseFieldHtml('cec', '', '')}
     <div class="field"><label>اسم العامل</label><input id="ce-cas-name" type="text" list="ceCasNames" onchange="updateCashCasualInfo()"><datalist id="ceCasNames"></datalist></div>
     <div class="field"><label>الصرف لـ</label><select id="ce-cas-mode" onchange="updateCashCasualInfo()">
       <option value="new">يومية جديدة (اشتغل واتصرف له دلوقتي)</option>
@@ -10612,7 +10642,7 @@ function saveCashCasualPayment(b, date, description){
     const units = Number(document.getElementById('ce-cas-units').value)||0, rate = Number(document.getElementById('ce-cas-rate').value)||0;
     if(!(units>0) || !(rate>0)){ alert('اكتب الأيام واليومية'); return false; }
     const n = (list.length ? Math.max(...list.map(r=>r._n||0)) : 0)+1;
-    list.push({id:'CL-'+n+'-'+Math.random().toString(36).slice(2,6), _n:n, date, name, trade:document.getElementById('ce-cas-trade').value.trim(), units, rate, amount:round2(units*rate),
+    list.push({id:'CL-'+n+'-'+Math.random().toString(36).slice(2,6), _n:n, date, name, trade:document.getElementById('ce-cas-trade').value.trim(), units, rate, amount:round2(units*rate), phase: readPhase('cec'),
       note:description, by, byId, paid:true, paidDate:date, paidFrom:'box:'+b._id, fromBox:true});
     logAudit('إضافة', 'عمالة مؤقتة', p.name, name+' — '+fmtMoney(units*rate)+' — من '+b.name);
   }else{
@@ -10634,6 +10664,7 @@ function updateCashSubProjects(){
     + `<optgroup label="${mine.length?'مشاريع تانية':'المشاريع'}">${others.map(n=>`<option value="${n}">${n}</option>`).join('')}</optgroup>`;
   if(mine.length===1) sel.value = mine[0];
   updateCashSubInfo();
+  refreshPhaseField('ces', sel.value);
 }
 function updateCashSubInfo(){
   const s = (DATA.subs||[]).find(x=>x._id===document.getElementById('ce-sub').value);
@@ -10657,7 +10688,7 @@ function saveCashSubPayment(b, date, amount, description){
   }
   if(!Array.isArray(a.entries)) a.entries = [];
   const n = (a.entries.length ? Math.max(...a.entries.map(e=>e._n||0)) : 0)+1;
-  a.entries.push({id:a.id+'-E'+n, _n:n, date, kind:'دفعة', description:description||('دفعة من '+b.name), quantity:'', unitPrice:'', amount, paidFrom:'box:'+b._id, by: currentUser ? currentUser.name : '', byId: myUserId()});
+  a.entries.push({id:a.id+'-E'+n, _n:n, date, kind:'دفعة', description:description||('دفعة من '+b.name), quantity:'', unitPrice:'', amount, phase: readPhase('ces'), paidFrom:'box:'+b._id, by: currentUser ? currentUser.name : '', byId: myUserId()});
   logAudit('إضافة', 'بند مقاول باطن', s.name, 'دفعة - '+proj+' - '+fmtMoney(amount)+' — من '+b.name);
   return s;
 }
@@ -10668,6 +10699,9 @@ function updateCashEmpFields(){
   wrap.style.display = (mode && mode!=='sub' && mode!=='casual') ? '' : 'none';
   const sw = document.getElementById('ce-sub-wrap'); if(sw) sw.style.display = mode==='sub' ? '' : 'none';
   const cw = document.getElementById('ce-cas-wrap'); if(cw) cw.style.display = mode==='casual' ? '' : 'none';
+  const phw = document.getElementById('ce-phase-wrap');
+  if(mode && phw) phw.style.display = 'none';
+  else if(!mode && document.getElementById('ce-project')) refreshPhaseField('ce', document.getElementById('ce-project').value);
   if(mode==='casual'){ wrap.style.display = 'none'; document.getElementById('ce-project-wrap').style.display = 'none'; updateCashCasualInfo(); return; }
   if(mode==='sub' && !document.getElementById('ce-sub-project').options.length) updateCashSubProjects();
   const pw = document.getElementById('ce-project-wrap'); if(pw) pw.style.display = mode ? 'none' : '';
@@ -10853,6 +10887,7 @@ function saveCashEntry(){
   else{
     data.account = document.getElementById('ce-account').value;
     data.project = document.getElementById('ce-project').value;
+    data.phase = readPhase('ce');
     data.ref = document.getElementById('ce-ref').value.trim();
   }
   if(cashEntryState.editId){
@@ -10982,6 +11017,56 @@ function printCashboxMonth(boxId, month){
 }
 </script>
 <script>
+/* ================= البند (مرحلة المشروع) اللي المصروف هيتحمل عليه =================
+   أي مكان بيتسجل منه مصروف على مشروع، بعد اختيار المشروع بيظهر "البند" من مراحل/بنود أعمال المشروع،
+   والمصروف بيدخل في "الفعلي" بتاع البند ده. */
+function projectPhasesByName(name){ const p = (DATA.projects||[]).find(x=>x.name===name); return p ? (p.phases||[]) : []; }
+function phaseName(projectName, phaseId){ const ph = projectPhasesByName(projectName).find(x=>x.id===phaseId); return ph ? ph.name : ''; }
+function phaseFieldHtml(prefix, projectName, cur){
+  const phases = projectPhasesByName(projectName);
+  return `<div class="field" id="${prefix}-phase-wrap" style="display:${phases.length?'':'none'};"><label>البند اللي هيتحمل عليه (من بنود المشروع)</label>
+    <select id="${prefix}-phase">${phaseOptions(phases, cur)}</select></div>`;
+}
+function phaseOptions(phases, cur){
+  return '<option value="">— بدون تحديد بند —</option>' + phases.map(ph=>`<option value="${ph.id}" ${ph.id===cur?'selected':''}>${ph.name}</option>`).join('');
+}
+// تحديث قايمة البنود لما المشروع يتغير
+function refreshPhaseField(prefix, projectName){
+  const wrap = document.getElementById(prefix+'-phase-wrap'), sel = document.getElementById(prefix+'-phase');
+  if(!wrap || !sel) return;
+  const cur = sel.value;
+  const phases = projectPhasesByName(projectName);
+  sel.innerHTML = phaseOptions(phases, cur);
+  if(!phases.some(p=>p.id===cur)) sel.value = '';
+  wrap.style.display = phases.length ? '' : 'none';
+}
+// للنوافذ الثابتة: بيحط خانة البند بعد خانة معيّنة (مرة واحدة)
+function mountPhaseField(anchorId, prefix, projectName, cur){
+  let wrap = document.getElementById(prefix+'-phase-wrap');
+  if(!wrap){
+    const anchor = document.getElementById(anchorId);
+    if(!anchor) return;
+    const field = anchor.closest('.field') || anchor;
+    const holder = document.createElement('div');
+    holder.innerHTML = phaseFieldHtml(prefix, projectName, cur);
+    field.parentNode.insertBefore(holder.firstElementChild, field.nextSibling);
+  }else{
+    const sel = document.getElementById(prefix+'-phase');
+    sel.innerHTML = phaseOptions(projectPhasesByName(projectName), cur||'');
+    sel.value = cur||'';
+    wrap.style.display = projectPhasesByName(projectName).length ? '' : 'none';
+  }
+}
+function readPhase(prefix){
+  const wrap = document.getElementById(prefix+'-phase-wrap'), sel = document.getElementById(prefix+'-phase');
+  if(!wrap || !sel || wrap.style.display==='none') return '';
+  return sel.value || '';
+}
+function phaseBadge(projectName, phaseId){
+  const n = phaseId ? phaseName(projectName, phaseId) : '';
+  return n ? `<div style="font-size:11.5px; color:var(--text-dim);">البند: ${n}</div>` : '';
+}
+
 /* ================= مشتريات الموردين على المشاريع ================= */
 function projectSupplierInvoices(projectName){
   const out = [];
@@ -11006,7 +11091,7 @@ function renderProjectSupplierSection(p){
       <thead><tr><th>التاريخ</th><th>المورد</th><th>رقم الفاتورة</th><th>قيمة الفاتورة</th><th>المسدد</th><th>المستحق للمورد</th><th></th></tr></thead>
       <tbody>${list.map(({s, inv})=>{ const pd = supplierInvoicePaidTotal(inv); const rem = supplierInvoiceRemaining(inv); return `<tr>
         <td>${inv.date||'—'}</td>
-        <td style="font-weight:700; cursor:pointer;" onclick="goTo('suppliers'); openSupplierDetail('${s._id}')">${s.name}</td>
+        <td style="font-weight:700; cursor:pointer;" onclick="goTo('suppliers'); openSupplierDetail('${s._id}')">${s.name}${phaseBadge(inv.project, inv.phase)}</td>
         <td style="cursor:pointer; color:var(--accent); text-decoration:underline;" onclick="openSupplierInvoiceView('${s._id}','${inv.id}')">${inv.number||'عرض'}${inv.note?`<div style="color:var(--text-dim); font-size:11.5px;">${inv.note}</div>`:''}</td>
         <td style="font-weight:700;">${fmtMoney(inv.amount)}</td>
         <td style="color:var(--good);">${fmtMoney(pd)}</td>
@@ -11022,7 +11107,7 @@ function renderProjectSupplierSection(p){
 
 /* نافذة "مشتريات من مورد" من جوه المشروع — بتسجل فاتورة في حساب المورد تلقائيًا */
 let projectPurchaseState = {project:''};
-function openProjectPurchaseForm(projectName){
+function openProjectPurchaseForm(projectName, prefill){
   if(!canEdit('suppliers')){ alert('محتاج صلاحية على الموردين عشان تسجل فاتورة مشتريات'); return; }
   projectPurchaseState = {project: projectName||''};
   const sups = DATA.suppliers || [];
@@ -11036,7 +11121,8 @@ function openProjectPurchaseForm(projectName){
       <div class="field"><label>اسم المورد الجديد</label><input id="pp-new-name" type="text"></div>
       <div class="field"><label>تليفون المورد (اختياري)</label><input id="pp-new-phone" type="text"></div>
     </div>
-    <div class="field"><label>المشروع</label><select id="pp-project">${cbProjectOptions(projectName||'')}</select></div>
+    <div class="field"><label>المشروع</label><select id="pp-project" onchange="refreshPhaseField('pp', this.value)">${cbProjectOptions(projectName||'')}</select></div>
+    ${phaseFieldHtml('pp', projectName||'', (prefill&&prefill.phase)||'')}
     <div class="field"><label>رقم فاتورة المورد (اختياري)</label><input id="pp-number" type="text"></div>
     <div class="field"><label>تاريخ الفاتورة</label><input id="pp-date" type="date" value="${todayStr()}"></div>
     <div class="field"><label>قيمة الفاتورة (جنيه)</label><input id="pp-amount" type="number" min="0" oninput="document.getElementById('pp-paid').value = this.value"></div>
@@ -11047,11 +11133,17 @@ function openProjectPurchaseForm(projectName){
     <div style="display:flex; gap:8px; justify-content:flex-end;"><button class="btn secondary" onclick="cbClose('projectPurchaseOverlay')">إلغاء</button><button class="btn" onclick="saveProjectPurchase()">حفظ</button></div>
   `);
   if(!sups.length) document.getElementById('pp-supplier').value = '__new__';
+  if(prefill){
+    if(prefill.date) document.getElementById('pp-date').value = prefill.date;
+    if(prefill.amount){ document.getElementById('pp-amount').value = prefill.amount; document.getElementById('pp-paid').value = prefill.amount; }
+    if(prefill.note) document.getElementById('pp-note').value = prefill.note;
+  }
 }
 function saveProjectPurchase(){
   if(!canEdit('suppliers')) return;
   let supId = document.getElementById('pp-supplier').value;
   const project = document.getElementById('pp-project').value;
+  const phase = readPhase('pp');
   const number = document.getElementById('pp-number').value.trim();
   const date = document.getElementById('pp-date').value;
   const amount = Number(document.getElementById('pp-amount').value)||0;
@@ -11082,7 +11174,7 @@ function saveProjectPurchase(){
   if(!s) return;
   if(!Array.isArray(s.invoices)) s.invoices = [];
   const n = (s.invoices.length ? Math.max(...s.invoices.map(i=>i._n||0)) : 0) + 1;
-  const inv = {id:s._id+'-INV'+n, _n:n, number, date, project, amount, dueDate, note, payments:[]};
+  const inv = {id:s._id+'-INV'+n, _n:n, number, date, project, phase, amount, dueDate, note, payments:[]};
   if(paidNow>0){ const pay = {id:inv.id+'-PAY1', _n:1, date, amount:paidNow, note:'دفعة عند التسجيل'}; applyPaySource(pay, ps); inv.payments.push(pay); }
   s.invoices.push(inv);
   syncSupplierInvoiceStatus(inv);
@@ -11577,7 +11669,7 @@ function laborAutoEntries(upsert){
       if(!a.date || !amount) return;
       const u = attendanceUnits(a);
       const proj = attendanceProject(h, a);
-      upsert('labor:'+h._id+':'+a.id, {date:a.date, type:'مصروف', account:'أجور ومرتبات', amount, project:proj,
+      upsert('labor:'+h._id+':'+a.id, {phase: a.phase||'', date:a.date, type:'مصروف', account:'أجور ومرتبات', amount, project:proj,
         description:'يومية '+h.name+' — '+fmtUnits(u)+' يوم × '+fmtMoney(attendanceRate(h, a))+(proj?'':' (مصروف عام — بدون مشروع محدد)')});
     });
     (h.payrollEntries||[]).forEach(e=>{
@@ -11673,6 +11765,7 @@ function openProjectLaborForm(projectName){
       </tr>`).join('')}</tbody>
     </table></div></div>
     <div class="field"><label>ملاحظة (اختياري)</label><input id="pl-note" type="text" placeholder="مثال: صب سقف الدور التاني"></div>
+    ${phaseFieldHtml('pl', projectName, '')}
     <div style="display:flex; gap:8px; justify-content:flex-end;"><button class="btn secondary" onclick="cbClose('projectLaborOverlay')">إلغاء</button><button class="btn" id="pl-save" onclick="saveProjectLabor()">حفظ اليوميات</button></div>
   `);
   refreshProjectLaborHints();
@@ -11703,7 +11796,7 @@ function saveProjectLabor(){
     if(dup){ problems.push(h.name+': متسجل له يومية على المشروع ده في نفس التاريخ'); return; }
     const n = (h.attendance.length ? Math.max(...h.attendance.map(x=>x._n||0)) : 0)+1;
     const status = units===0.5 ? 'نصف يوم' : 'حاضر';
-    h.attendance.push({id:h._id+'-ATT'+n, _n:n, date, status, units: status==='حاضر'?units:0.5, project, note, rate:Number(h.dailyWage)||0});
+    h.attendance.push({id:h._id+'-ATT'+n, _n:n, date, status, units: status==='حاضر'?units:0.5, project, note, phase: readPhase('pl'), rate:Number(h.dailyWage)||0});
     added++;
   });
   if(added){
@@ -11859,7 +11952,8 @@ function openSupplierInvoiceForm(supplierId, editId){
       <div class="field" style="flex:1; min-width:140px;"><label>رقم فاتورة المورد</label><input id="si-number" type="text" value="${rec?(rec.number||''):''}"></div>
       <div class="field" style="flex:1; min-width:140px;"><label>التاريخ</label><input id="si-date" type="date" value="${rec?rec.date:todayStr()}"></div>
     </div>
-    <div class="field"><label>المشروع</label><select id="si-project">${cbProjectOptions(rec?(rec.project||''):'').replace('بدون مشروع (مصروف عام)','بدون مشروع محدد (مصروف عام على الشركة)')}</select></div>
+    <div class="field"><label>المشروع</label><select id="si-project" onchange="refreshPhaseField('si', this.value)">${cbProjectOptions(rec?(rec.project||''):'').replace('بدون مشروع (مصروف عام)','بدون مشروع محدد (مصروف عام على الشركة)')}</select></div>
+    ${phaseFieldHtml('si', rec?(rec.project||''):'', rec?(rec.phase||''):'')}
     <div class="section-title" style="margin:6px 0 8px; font-size:14px;">بنود الفاتورة</div>
     <div style="font-size:12px; color:var(--text-dim); margin-bottom:6px;">اختار من أصناف المورد ده أو اكتب صنف جديد (هيتضاف لأصنافه) — السعر والوحدة بيتملوا لوحدهم من آخر مرة.</div>
     <div id="si-items"></div>
@@ -11926,6 +12020,7 @@ function saveSupplierInvoice(){
   const number = document.getElementById('si-number').value.trim();
   const date = document.getElementById('si-date').value;
   const project = document.getElementById('si-project').value;
+  const phase = readPhase('si');
   const dueDate = document.getElementById('si-due').value;
   const note = document.getElementById('si-note').value.trim();
   const items = readSupInvItems();
@@ -11936,10 +12031,10 @@ function saveSupplierInvoice(){
   if(!(amount>0)){ alert('من فضلك أدخل بنود الفاتورة أو قيمتها'); return; }
   if(editId){
     const rec = s.invoices.find(i=>i.id===editId);
-    if(rec) Object.assign(rec, {number, date, project, amount, dueDate, note, items});
+    if(rec) Object.assign(rec, {number, date, project, phase, amount, dueDate, note, items});
   }else{
     const n = (s.invoices.length ? Math.max(...s.invoices.map(i=>i._n||0)) : 0)+1;
-    s.invoices.push({id:s._id+'-INV'+n, _n:n, number, date, project, amount, dueDate, note, items, payments:[]});
+    s.invoices.push({id:s._id+'-INV'+n, _n:n, number, date, project, phase, amount, dueDate, note, items, payments:[]});
   }
   // الأصناف الجديدة بتتضاف لأصناف المورد (بآخر سعر) عشان تظهر اختيارات المرة الجاية
   if(!Array.isArray(s.items)) s.items = [];
@@ -11981,7 +12076,7 @@ function supplierInvoiceHtml(s, inv, forPrint){
   return `
     <table style="width:100%; border-collapse:collapse; font-size:13px; margin-bottom:12px;">
       <tr><td ${td}><b>المورد</b></td><td ${td}>${s.name}</td><td ${td}><b>رقم الفاتورة</b></td><td ${td}>${inv.number||'—'}</td></tr>
-      <tr><td ${td}><b>التاريخ</b></td><td ${td}>${inv.date||'—'}</td><td ${td}><b>المشروع</b></td><td ${td}>${inv.project||'مصروف عام'}</td></tr>
+      <tr><td ${td}><b>التاريخ</b></td><td ${td}>${inv.date||'—'}</td><td ${td}><b>المشروع</b></td><td ${td}>${inv.project||'مصروف عام'}${inv.phase&&phaseName(inv.project, inv.phase)?' — البند: '+phaseName(inv.project, inv.phase):''}</td></tr>
       ${inv.dueDate||inv.note ? `<tr><td ${td}><b>الاستحقاق</b></td><td ${td}>${inv.dueDate||'—'}</td><td ${td}><b>ملاحظة</b></td><td ${td}>${inv.note||'—'}</td></tr>` : ''}
     </table>
     ${tbl(['الصنف','الوحدة','الكمية','السعر','الإجمالي'], items.length ? items.map(it=>`<tr><td ${td}>${it.name}</td><td ${td}>${it.unit||'—'}</td><td ${td}>${it.qty}</td><td ${td}>${fmtMoney(it.price)}</td><td ${td}><b>${fmtMoney(it.total)}</b></td></tr>`).join('') + `<tr style="font-weight:900;"><td ${td} colspan="4">إجمالي الفاتورة</td><td ${td}>${fmtMoney(inv.amount)}</td></tr>` : `<tr><td ${td} colspan="4">فاتورة بدون بنود تفصيلية</td><td ${td}><b>${fmtMoney(inv.amount)}</b></td></tr>`)}
@@ -12415,6 +12510,7 @@ function openProjectSubPaymentForm(projectName, subId){
     <div class="field"><label>التاريخ</label><input id="psp-date" type="date" value="${todayStr()}"></div>
     <div class="field"><label>المبلغ</label><input id="psp-amount" type="number" min="0"></div>
     <div class="field"><label>البيان (اختياري)</label><input id="psp-desc" type="text" placeholder="مثال: دفعة تحت الحساب"></div>
+    ${phaseFieldHtml('psp', projectName, '')}
     ${typeof paySourceHtml==='function' ? paySourceHtml('psp', '', '') : ''}
     <div style="display:flex; gap:8px; justify-content:flex-end;"><button class="btn secondary" onclick="cbClose('projectSubPayOverlay')">إلغاء</button><button class="btn" id="psp-save" onclick="saveProjectSubPayment()">حفظ الدفعة</button></div>
   `);
@@ -12448,7 +12544,7 @@ function saveProjectSubPayment(){
   }
   if(!Array.isArray(a.entries)) a.entries = [];
   const n = (a.entries.length ? Math.max(...a.entries.map(e=>e._n||0)) : 0)+1;
-  const rec = {id:a.id+'-E'+n, _n:n, date, kind:'دفعة', description, quantity:'', unitPrice:'', amount};
+  const rec = {id:a.id+'-E'+n, _n:n, date, kind:'دفعة', description, quantity:'', unitPrice:'', amount, phase: readPhase('psp')};
   if(typeof applyPaySource==='function') applyPaySource(rec, ps);
   a.entries.push(rec);
   logAudit('إضافة', 'بند مقاول باطن', s.name, 'دفعة - '+project+' - '+fmtMoney(amount));
@@ -12490,7 +12586,7 @@ function casualAutoEntries(upsert){
   (DATA.projects||[]).forEach(p=>(p.casualLabor||[]).forEach(r=>{
     const amount = Number(r.amount)||0;
     if(!r.date || !amount) return;
-    upsert('casual:'+p._id+':'+r.id, {date:r.date, type:'مصروف', account:'أجور العمالة', amount, project:p.name,
+    upsert('casual:'+p._id+':'+r.id, {phase: r.phase||'', date:r.date, type:'مصروف', account:'أجور العمالة', amount, project:p.name,
       description:'عمالة مؤقتة: '+r.name+(r.trade?' ('+r.trade+')':'')+' — '+fmtUnits(Number(r.units)||0)+' يوم × '+fmtMoney(r.rate)+(r.paid?'':' (لسه متصرفتش)')});
   }));
 }
@@ -12560,6 +12656,7 @@ function openCasualForm(projectId){
     <button class="btn secondary small" onclick="addCasualRow()" style="margin-bottom:12px;">+ عامل</button>
     <div id="cl-total" style="font-weight:700; margin-bottom:10px;"></div>
     <div class="field"><label>ملاحظة (اختياري)</label><input id="cl-note" type="text" placeholder="مثال: تكسير وتنظيف الدور الأرضي"></div>
+    ${phaseFieldHtml('cl', p.name, '')}
     <div class="field"><label><input type="checkbox" id="cl-paidnow" onchange="document.getElementById('cl-paywrap').style.display=this.checked?'':'none'"> اتصرفت لهم دلوقتي</label></div>
     <div id="cl-paywrap" style="display:none;">${typeof paySourceHtml==='function' ? paySourceHtml('cl', '', '') : ''}</div>
     <div style="display:flex; gap:8px; justify-content:flex-end;"><button class="btn secondary" onclick="cbClose('casualOverlay')">إلغاء</button><button class="btn" id="cl-save" onclick="saveCasualForm()">حفظ</button></div>
@@ -12619,7 +12716,7 @@ function saveCasualForm(){
   const list = casualList(p);
   rows.forEach(x=>{
     const n = (list.length ? Math.max(...list.map(r=>r._n||0)) : 0)+1;
-    const rec = {id:'CL-'+n+'-'+Math.random().toString(36).slice(2,6), _n:n, date, name:x.name, trade:x.trade, units:x.units, rate:x.rate, amount:round2(x.units*x.rate), note, by: currentUser ? currentUser.name : ''};
+    const rec = {id:'CL-'+n+'-'+Math.random().toString(36).slice(2,6), _n:n, date, name:x.name, trade:x.trade, units:x.units, rate:x.rate, amount:round2(x.units*x.rate), note, phase: readPhase('cl'), by: currentUser ? currentUser.name : ''};
     if(paidNow){ rec.paid = true; rec.paidDate = date; if(typeof applyPaySource==='function') applyPaySource(rec, ps); }
     list.push(rec);
   });
