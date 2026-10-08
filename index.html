@@ -1479,7 +1479,7 @@ const rpc = (fn, args)=>api('POST', 'rpc/' + fn, args || {});
 const q = v=>encodeURIComponent(v);
 
 /* ---------- تحميل ومزامنة البيانات ---------- */
-const SYNC_COLLECTIONS = ['projects','hr','finance','contracts','assets','subs','ledger','generalExpenses','collections','purchases','materials','quotations','boq','reminders','auditLog','suppliers','cashboxes'];
+const SYNC_COLLECTIONS = ['projects','hr','finance','contracts','assets','subs','ledger','generalExpenses','collections','purchases','materials','quotations','boq','reminders','auditLog','suppliers','cashboxes','extraWorks'];
 const SYNC_SETTINGS = ['revenueAccounts','expenseAccounts','capital','overheadAllocationBasis','projectStatuses','procedureTypes','contractTypes','materialCategories','alertRules','alertLog','contractCalcMethods','assetTypes','assetExpenseKinds','companyInfo'];
 // إعدادات حساسة (زي رمز واتساب) — بتتخزن في جدول المدير بس يقدر يقراه
 const ADMIN_SETTINGS = ['whatsappSettings','userPins'];
@@ -1945,7 +1945,7 @@ function checkLegacyLocalData(){
   if(!isAdmin()) return;
   const data = readLegacyLocalData();
   if(!data) return;
-  const labels = {cashboxes:'خزائن وعهد', suppliers:'موردين', quotations:'عروض أسعار', boq:'مقايسات', reminders:'تذكيرات', auditLog:'سجل التدقيق', projects:'مشاريع', subs:'مقاولين باطن', materials:'أصناف مخزون', purchases:'فواتير شراء', hr:'موظفين', finance:'فواتير عملاء', ledger:'قيود يدوية', generalExpenses:'مصروفات عامة', collections:'دفعات محصّلة', contracts:'عقود', assets:'أصول'};
+  const labels = {extraWorks:'أعمال إضافية', cashboxes:'خزائن وعهد', suppliers:'موردين', quotations:'عروض أسعار', boq:'مقايسات', reminders:'تذكيرات', auditLog:'سجل التدقيق', projects:'مشاريع', subs:'مقاولين باطن', materials:'أصناف مخزون', purchases:'فواتير شراء', hr:'موظفين', finance:'فواتير عملاء', ledger:'قيود يدوية', generalExpenses:'مصروفات عامة', collections:'دفعات محصّلة', contracts:'عقود', assets:'أصول'};
   const rows = SYNC_COLLECTIONS.map(c=>{
     const local = Array.isArray(data[c]) ? data[c].filter(it=>isSyncable(c, it)).length : 0;
     const server = (DATA[c]||[]).filter(it=>isSyncable(c, it)).length;
@@ -2114,6 +2114,7 @@ function normalizeData(){
   if(!Array.isArray(DATA.ledger)) DATA.ledger = [];
   if(!Array.isArray(DATA.generalExpenses)) DATA.generalExpenses = [];
   if(!Array.isArray(DATA.revenueAccounts)) DATA.revenueAccounts = DEFAULT_REVENUE_ACCOUNTS.slice();
+  if(!DATA.revenueAccounts.includes('إيرادات أعمال إضافية')) DATA.revenueAccounts.push('إيرادات أعمال إضافية');
   if(!Array.isArray(DATA.expenseAccounts)) DATA.expenseAccounts = DEFAULT_EXPENSE_ACCOUNTS.slice();
   ['أجور ومرتبات','سلف الموظفين','مشتريات من الموردين','مصروفات مقاولي الباطن','أجور العمالة'].forEach(acc=>{ if(!DATA.expenseAccounts.includes(acc)) DATA.expenseAccounts.push(acc); });
   if(!Array.isArray(DATA.collections)) DATA.collections = [];
@@ -2136,6 +2137,8 @@ function normalizeData(){
     s.assignments.forEach((a,idx)=>ensureAssignmentShape(a, s._id+'-ASG'+(idx+1)));
   });
   if(!Array.isArray(DATA.suppliers)) DATA.suppliers = [];
+  if(!Array.isArray(DATA.extraWorks)) DATA.extraWorks = [];
+  if(typeof ensureExtraShape==='function') DATA.extraWorks.forEach(ensureExtraShape);
   if(!Array.isArray(DATA.cashboxes)) DATA.cashboxes = [];
   if(typeof ensureCashboxShape==='function') DATA.cashboxes.forEach(ensureCashboxShape);
   // تغذيات قديمة مكتوب مصدرها "الخزينة الرئيسية" — بنربطها بالخزينة الرئيسية لو فيه واحدة بس، عشان تتخصم منها
@@ -2301,6 +2304,7 @@ const pagesEl = document.getElementById('pages');
 function buildNav(){
   const allItems = [
     {key:'projects', label:MODULES.projects.label, icon:MODULES.projects.icon},
+    {key:'extraworks', label:'الأعمال الإضافية', icon:ICONS.subs},
     {key:'subs', label:'مقاولو الباطن', icon:ICONS.subs},
     {key:'suppliers', label:'الموردون', icon:ICONS.suppliers},
     {key:'materials', label:'المخزون والمشتريات', icon:ICONS.materials},
@@ -2348,6 +2352,7 @@ function goTo(key){
   selectedAssetId = null;
   selectedSupplierId = null;
   if(typeof selectedCashboxId!=='undefined'){ selectedCashboxId = null; cashboxMonthView = null; }
+  if(typeof selectedExtraId!=='undefined') selectedExtraId = null;
   buildNav();
   renderPage();
 }
@@ -2903,6 +2908,7 @@ function renderPage(){
   else if(currentPage==='quotations' && selectedQuotationId){ pagesEl.innerHTML = renderQuotationDetail(selectedQuotationId); attachQuotationDetailEvents(); }
   else if(currentPage==='quotations'){ pagesEl.innerHTML = renderQuotationsPage(); attachQuotationsEvents(); }
   else if(currentPage==='cashbox'){ pagesEl.innerHTML = renderCashboxPage(); }
+  else if(currentPage==='extraworks'){ pagesEl.innerHTML = renderExtraWorksPage(); }
   else if(currentPage==='assets' && selectedAssetId){ pagesEl.innerHTML = renderAssetDetail(selectedAssetId); attachAssetDetailEvents(); }
   else if(currentPage==='assets'){ pagesEl.innerHTML = renderAssetsPage(); attachAssetsEvents(); }
   else{ pagesEl.innerHTML = renderModulePage(currentPage); attachModuleEvents(currentPage); }
@@ -6541,6 +6547,7 @@ function generateAutoEntries(){
   }));
   if(typeof laborValidSources==='function') laborValidSources(validSources);
   if(typeof casualValidSources==='function') casualValidSources(validSources);
+  if(typeof extraValidSources==='function') extraValidSources(validSources);
   // فواتير الموردين (مواد خام: أسمنت، حديد، رمل، طوب...): بنفس منطق فواتير العميل ومقاولي الباطن —
   // المصروف الفعلي في السجلات = المبلغ اللي اتسدد فعليًا للمورد بتاريخ كل دفعة، مش قيمة الفاتورة كاملة
   // فواتير الموردين: قيمة الفاتورة كاملة بتتحسب مصروف على المشروع بتاريخها، والمتبقي بيظهر "مستحق للموردين" في المركز المالي
@@ -6561,6 +6568,7 @@ function generateAutoEntries(){
   if(typeof cashboxAutoEntries==='function') cashboxAutoEntries(upsert);
   if(typeof laborAutoEntries==='function') laborAutoEntries(upsert);
   if(typeof casualAutoEntries==='function') casualAutoEntries(upsert);
+  if(typeof extraAutoEntries==='function') extraAutoEntries(upsert);
   DATA.finance.filter(inv=>invoicePaidTotal(inv)>0).forEach(inv=>{
     const paidAmount = invoicePaidTotal(inv);
     const isPartial = paidAmount < (Number(inv.amount)||0);
@@ -8833,6 +8841,7 @@ function renderProjectDetail(id){
     </table></div></div>
     ` : `<div class="table-wrap" style="margin-bottom:24px;"><div class="empty-state">لا توجد خصومات أو غرامات أو تأمين محجوز مسجلة على هذا المشروع</div></div>`}
 
+    ${renderProjectExtraSection(p)}
     ${renderProjectSubsSection(p)}
     ${renderProjectLaborSection(p)}
     ${renderProjectCasualSection(p)}
@@ -9488,7 +9497,7 @@ async function sendTestWhatsapp(){
 const PERM_LABELS = {
   projects:'المشاريع', subs:'مقاولو الباطن', suppliers:'الموردون', materials:'المخزون والمشتريات',
   hr:'الموارد البشرية', finance:'الحسابات والفواتير', accounting:'المحاسبة والتقارير المالية',
-  contracts:'العقود', assets:'الأصول والمعدات', quotations:'عروض الأسعار',
+  contracts:'العقود', assets:'الأصول والمعدات', quotations:'عروض الأسعار', extraworks:'الأعمال الإضافية',
 };
 const PERM_MODULE_KEYS = Object.keys(PERM_LABELS);
 
@@ -12793,6 +12802,340 @@ function printCasualWorker(projectId, name){
     <div style="display:flex; justify-content:space-between; margin-top:36px; font-size:13px; color:#111;"><div>توقيع المستلم: ....................</div><div>مهندس الموقع: ....................</div></div>`;
   openPrintDocument('كشف يوميات عامل — '+name, 'عمالة مؤقتة — '+p.name, body);
 }
+
+/* ================= الأعمال الإضافية =================
+   دفتر أعمال إضافية لكل مشروع — حتى لو المشروع مش متسجل على السيستم (مشروع قديم مثلاً).
+   كل مشروع = سجل واحد فيه البنود (وصف/كمية/وحدة/سعر/حالة) والتحصيلات.
+   البنود المعتمدة = مستحق على العميل، والتحصيل بيتسجل إيراد على المشروع بتاريخه. */
+let selectedExtraId = null;
+let extraFilter = {from:'', to:'', status:''};
+const EXTRA_STATUSES = ['معتمد', 'تحت المراجعة', 'مرفوض'];
+function ensureExtraShape(g){ if(!Array.isArray(g.items)) g.items = []; if(!Array.isArray(g.payments)) g.payments = []; }
+function extraTotals(g, items){
+  items = items || g.items || [];
+  const sum = st => round2(items.filter(i=>i.status===st).reduce((t,i)=>t+(Number(i.amount)||0),0));
+  const approved = sum('معتمد'), pending = sum('تحت المراجعة'), rejected = sum('مرفوض');
+  const collected = round2((g.payments||[]).reduce((t,p)=>t+(Number(p.amount)||0),0));
+  return {approved, pending, rejected, collected, remaining: round2(approved - collected), count: items.length};
+}
+function extraGroupForProject(name){ return (DATA.extraWorks||[]).find(g=>g.projectName===name); }
+
+/* ---------- القيود: التحصيل = إيراد على المشروع ---------- */
+function extraValidSources(set){
+  (DATA.extraWorks||[]).forEach(g=>(g.payments||[]).forEach(p=>{ if(p.date && Number(p.amount)) set.add('xwpay:'+g._id+':'+p.id); }));
+}
+function extraAutoEntries(upsert){
+  (DATA.extraWorks||[]).forEach(g=>(g.payments||[]).forEach(p=>{
+    const amount = Number(p.amount)||0;
+    if(!p.date || !amount) return;
+    upsert('xwpay:'+g._id+':'+p.id, {date:p.date, type:'إيراد', account:'إيرادات أعمال إضافية', amount, project:g.projectName,
+      description:'تحصيل أعمال إضافية — '+g.projectName+(g.client?' ('+g.client+')':'')+(p.note?' — '+p.note:'')});
+  }));
+}
+
+/* ---------- القائمة ---------- */
+function renderExtraWorksPage(){
+  if(selectedExtraId) return renderExtraDetail(selectedExtraId);
+  const list = (DATA.extraWorks||[]).slice().sort((a,b)=>a.projectName.localeCompare(b.projectName));
+  const editable = canEdit('extraworks');
+  const all = list.map(g=>({g, t:extraTotals(g)}));
+  const sum = k => round2(all.reduce((t,x)=>t+x.t[k],0));
+  return `
+    <div class="page-head">
+      <div><div class="page-title">الأعمال الإضافية</div>
+        <div class="page-desc">حصر الأعمال الإضافية لكل مشروع (حتى لو المشروع مش متسجل على السيستم) — المعتمد منها مستحق على العميل</div></div>
+      ${editable ? `<button class="btn" onclick="openExtraGroupForm()">+ مشروع جديد</button>` : ''}
+    </div>
+    <div class="kpi-grid" style="margin-bottom:18px;">
+      <div class="kpi"><div class="kpi-label">إجمالي المعتمد</div><div class="kpi-value">${fmtMoney(sum('approved'))}</div></div>
+      <div class="kpi"><div class="kpi-label">تحت المراجعة</div><div class="kpi-value">${fmtMoney(sum('pending'))}</div></div>
+      <div class="kpi ok"><div class="kpi-label">اتحصّل</div><div class="kpi-value">${fmtMoney(sum('collected'))}</div></div>
+      <div class="kpi ${sum('remaining')>0?'alert':'ok'}"><div class="kpi-label">باقي على العملاء</div><div class="kpi-value">${fmtMoney(sum('remaining'))}</div></div>
+    </div>
+    ${list.length ? `
+    <div class="table-wrap"><div class="table-scroll"><table>
+      <thead><tr><th>المشروع</th><th>العميل</th><th>عدد البنود</th><th>المعتمد</th><th>تحت المراجعة</th><th>اتحصّل</th><th>الباقي</th></tr></thead>
+      <tbody>${all.map(({g, t})=>`<tr style="cursor:pointer;" onclick="openExtraDetail('${g._id}')">
+        <td style="font-weight:700;">${g.projectName}${(DATA.projects||[]).some(p=>p.name===g.projectName)?'':' <span class="badge b-neutral" style="font-size:10.5px;">مش على السيستم</span>'}</td>
+        <td>${g.client||'—'}</td><td>${t.count}</td><td>${fmtMoney(t.approved)}</td><td>${fmtMoney(t.pending)}</td>
+        <td style="color:var(--good);">${fmtMoney(t.collected)}</td>
+        <td style="font-weight:700; color:${t.remaining>0?'var(--bad)':'var(--good)'};">${fmtMoney(t.remaining)}</td>
+      </tr>`).join('')}</tbody>
+    </table></div></div>` : `<div class="table-wrap"><div class="empty-state">لسه مفيش أعمال إضافية مسجلة${editable?`<br><button class="btn small" style="margin-top:12px" onclick="openExtraGroupForm()">+ أول مشروع</button>`:''}</div></div>`}
+  `;
+}
+function openExtraDetail(id){ selectedExtraId = id; extraFilter = {from:'', to:'', status:''}; if(currentPage!=='extraworks'){ goTo('extraworks'); selectedExtraId = id; } renderPage(); }
+function backToExtraList(){ selectedExtraId = null; renderPage(); }
+
+/* ---------- مشروع جديد / تعديل ---------- */
+let extraGroupEditId = null;
+function openExtraGroupForm(editId, presetName){
+  if(!canEdit('extraworks')) return;
+  extraGroupEditId = editId || null;
+  const g = editId ? (DATA.extraWorks||[]).find(x=>x._id===editId) : null;
+  const known = Array.from(new Set((DATA.projects||[]).map(p=>p.name)));
+  cbOverlay('extraGroupOverlay', editId ? 'تعديل بيانات المشروع' : '+ أعمال إضافية لمشروع', `
+    <datalist id="xwProjects">${known.map(n=>`<option value="${n}">`).join('')}</datalist>
+    <div class="field"><label>اسم المشروع (اختار من المشاريع أو اكتب اسم مشروع قديم مش على السيستم)</label>
+      <input id="xg-name" type="text" list="xwProjects" value="${(g?g.projectName:(presetName||'')).replace(/"/g,'&quot;')}" onchange="const p=(DATA.projects||[]).find(x=>x.name===this.value.trim()); const c=document.getElementById('xg-client'); if(p&&p.client&&!c.value) c.value=p.client;"></div>
+    <div class="field"><label>العميل</label><input id="xg-client" type="text" value="${g?(g.client||'').replace(/"/g,'&quot;'):((DATA.projects||[]).find(p=>p.name===presetName)||{}).client||''}"></div>
+    <div class="field"><label>ملاحظات (اختياري)</label><input id="xg-note" type="text" value="${g?(g.note||'').replace(/"/g,'&quot;'):''}"></div>
+    <div style="display:flex; gap:8px; justify-content:flex-end;"><button class="btn secondary" onclick="cbClose('extraGroupOverlay')">إلغاء</button><button class="btn" id="xg-save" onclick="saveExtraGroup()">حفظ</button></div>`);
+}
+function saveExtraGroup(){
+  const name = document.getElementById('xg-name').value.trim();
+  if(!name){ alert('اكتب اسم المشروع'); return; }
+  if(!Array.isArray(DATA.extraWorks)) DATA.extraWorks = [];
+  const dup = DATA.extraWorks.find(x=>x.projectName===name && x._id!==extraGroupEditId);
+  if(dup){ cbClose('extraGroupOverlay'); openExtraDetail(dup._id); showToast('المشروع ده عنده دفتر أعمال إضافية بالفعل — فتحناه', 'good'); return; }
+  const data = {projectName:name, client:document.getElementById('xg-client').value.trim(), note:document.getElementById('xg-note').value.trim()};
+  let g;
+  if(extraGroupEditId){
+    g = DATA.extraWorks.find(x=>x._id===extraGroupEditId);
+    Object.assign(g, data);
+  }else{
+    const n = (DATA.extraWorks.length ? Math.max(...DATA.extraWorks.map(x=>x._n||0)) : 0)+1;
+    g = Object.assign({_id:'XW-'+String(n).padStart(3,'0'), _n:n, items:[], payments:[]}, data);
+    DATA.extraWorks.push(g);
+  }
+  logAudit(extraGroupEditId?'تعديل':'إضافة', 'أعمال إضافية', name);
+  generateAutoEntries();
+  saveData();
+  cbClose('extraGroupOverlay');
+  openExtraDetail(g._id);
+}
+
+/* ---------- تفاصيل مشروع ---------- */
+function extraFilteredItems(g){
+  return (g.items||[]).filter(i=>(!extraFilter.from || (i.date||'')>=extraFilter.from) && (!extraFilter.to || (i.date||'')<=extraFilter.to) && (!extraFilter.status || i.status===extraFilter.status))
+    .sort((a,b)=>(a.date||'').localeCompare(b.date||'') || (a._n||0)-(b._n||0));
+}
+function setExtraFilter(k, v){ extraFilter[k] = v; renderPage(); }
+function renderExtraDetail(id){
+  const g = (DATA.extraWorks||[]).find(x=>x._id===id);
+  if(!g){ selectedExtraId = null; return renderExtraWorksPage(); }
+  ensureExtraShape(g);
+  const editable = canEdit('extraworks');
+  const admin = isAdmin();
+  const items = extraFilteredItems(g);
+  const tAll = extraTotals(g), tF = extraTotals(g, items);
+  const filtered = extraFilter.from || extraFilter.to || extraFilter.status;
+  const onSystem = (DATA.projects||[]).find(p=>p.name===g.projectName);
+  const badge = st => st==='معتمد' ? 'b-good' : st==='مرفوض' ? 'b-bad' : 'b-warn';
+  const pays = (g.payments||[]).slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  return `
+    <button class="btn secondary small" onclick="backToExtraList()" style="margin-bottom:16px;">→ رجوع لكل المشاريع</button>
+    <div class="page-head">
+      <div><div class="page-title">أعمال إضافية — ${g.projectName}</div>
+        <div class="page-desc">${g.client?'العميل: '+g.client:''}${onSystem?` — <a href="#" onclick="event.preventDefault(); goTo('projects'); openProjectDetail('${onSystem._id}')">فتح المشروع</a>`:' — مشروع مش متسجل على السيستم'}${g.note?' — '+g.note:''}</div></div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <button class="btn secondary" onclick="printExtraWorks('${g._id}')">🖨 طباعة الحصر${filtered?' (حسب الفلتر)':''}</button>
+        ${editable ? `<button class="btn secondary" onclick="openExtraGroupForm('${g._id}')">تعديل</button>
+        <button class="btn secondary" onclick="openExtraPayForm('${g._id}')">💵 تحصيل</button>
+        <button class="btn" onclick="openExtraItemForm('${g._id}')">+ بند</button>` : ''}
+        ${admin ? `<button class="btn danger small" onclick="deleteExtraGroup('${g._id}')">حذف</button>` : ''}
+      </div>
+    </div>
+    <div class="kpi-grid" style="margin-bottom:18px;">
+      <div class="kpi"><div class="kpi-label">المعتمد (مستحق على العميل)</div><div class="kpi-value">${fmtMoney(tAll.approved)}</div></div>
+      <div class="kpi"><div class="kpi-label">تحت المراجعة</div><div class="kpi-value">${fmtMoney(tAll.pending)}</div></div>
+      <div class="kpi ok"><div class="kpi-label">اتحصّل</div><div class="kpi-value">${fmtMoney(tAll.collected)}</div></div>
+      <div class="kpi ${tAll.remaining>0?'alert':'ok'}"><div class="kpi-label">الباقي على العميل</div><div class="kpi-value">${fmtMoney(tAll.remaining)}</div></div>
+    </div>
+    <div class="toolbar" style="gap:8px; align-items:flex-end; flex-wrap:wrap;">
+      <div class="field" style="margin:0;"><label>من تاريخ</label><input type="date" value="${extraFilter.from}" onchange="setExtraFilter('from', this.value)"></div>
+      <div class="field" style="margin:0;"><label>لحد تاريخ</label><input type="date" value="${extraFilter.to}" onchange="setExtraFilter('to', this.value)"></div>
+      <div class="field" style="margin:0;"><label>الحالة</label><select onchange="setExtraFilter('status', this.value)"><option value="">الكل</option>${EXTRA_STATUSES.map(s=>`<option ${extraFilter.status===s?'selected':''}>${s}</option>`).join('')}</select></div>
+      ${filtered ? `<button class="btn secondary small" onclick="extraFilter={from:'',to:'',status:''}; renderPage();">مسح الفلتر</button>` : ''}
+    </div>
+    <div class="table-wrap" style="margin-bottom:24px;"><div class="table-scroll"><table>
+      <thead><tr><th>#</th><th>التاريخ</th><th>البيان</th><th>الكمية</th><th>الوحدة</th><th>سعر الوحدة</th><th>الإجمالي</th><th>الحالة</th><th>ملاحظة</th><th></th></tr></thead>
+      <tbody>${items.length ? items.map((i, k)=>`<tr>
+        <td>${k+1}</td><td>${i.date||'—'}</td><td style="font-weight:700;">${i.description}</td><td>${i.qty}</td><td>${i.unit||'—'}</td>
+        <td>${fmtMoney(i.unitPrice)}</td><td style="font-weight:700;">${fmtMoney(i.amount)}</td>
+        <td><span class="badge ${badge(i.status)}">${i.status}</span></td><td>${i.note||'—'}</td>
+        <td class="row-actions">${editable ? `<button class="btn secondary small" onclick="openExtraItemForm('${g._id}','${i.id}')">تعديل</button>` : ''}${admin ? `<button class="btn danger small" onclick="deleteExtraItem('${g._id}','${i.id}')">حذف</button>` : ''}</td>
+      </tr>`).join('') + `<tr style="background:var(--surface-2); font-weight:900;"><td colspan="6">${filtered?'إجمالي المعروض':'الإجمالي'} (معتمد ${fmtMoney(tF.approved)}${tF.pending?' + تحت المراجعة '+fmtMoney(tF.pending):''})</td><td>${fmtMoney(tF.approved+tF.pending)}</td><td colspan="3"></td></tr>`
+        : `<tr><td colspan="10" style="text-align:center;">${filtered?'مفيش بنود بالفلتر ده':'لسه مفيش بنود — دوس "+ بند"'}</td></tr>`}</tbody>
+    </table></div></div>
+    <div class="section-title">💵 التحصيلات</div>
+    <div class="table-wrap" style="margin-bottom:24px;"><div class="table-scroll"><table>
+      <thead><tr><th>التاريخ</th><th>المبلغ</th><th>ملاحظة</th><th></th></tr></thead>
+      <tbody>${pays.length ? pays.map(p=>`<tr><td>${p.date}</td><td style="font-weight:700; color:var(--good);">${fmtMoney(p.amount)}</td><td>${p.note||'—'}</td>
+        <td class="row-actions">${admin ? `<button class="btn danger small" onclick="deleteExtraPay('${g._id}','${p.id}')">حذف</button>` : ''}</td></tr>`).join('') : '<tr><td colspan="4" style="text-align:center;">لسه مفيش تحصيلات</td></tr>'}</tbody>
+    </table></div></div>
+    <div style="font-size:12px; color:var(--text-dim);">البنود "المعتمدة" بس هي اللي بتتحسب مستحق على العميل. التحصيل بيتسجل إيراد "أعمال إضافية" على المشروع بتاريخه${onSystem?' وبيظهر في حسابات المشروع':''}.</div>
+  `;
+}
+
+/* ---------- البنود ---------- */
+let extraItemState = {groupId:null, editId:null};
+function openExtraItemForm(groupId, editId){
+  if(!canEdit('extraworks')) return;
+  const g = (DATA.extraWorks||[]).find(x=>x._id===groupId);
+  if(!g) return;
+  extraItemState = {groupId, editId: editId||null};
+  const it = editId ? g.items.find(x=>x.id===editId) : null;
+  const units = Array.from(new Set((DATA.extraWorks||[]).flatMap(x=>(x.items||[]).map(i=>i.unit)).filter(Boolean).concat(['م²','م³','م.ط','عدد','مقطوعية'])));
+  const descs = Array.from(new Set((DATA.extraWorks||[]).flatMap(x=>(x.items||[]).map(i=>i.description)).filter(Boolean)));
+  const q = v => String(v===undefined||v===null?'':v).replace(/"/g,'&quot;');
+  cbOverlay('extraItemOverlay', (it?'تعديل بند':'+ بند أعمال إضافية')+' — '+g.projectName, `
+    <datalist id="xwUnits">${units.map(u=>`<option value="${u}">`).join('')}</datalist>
+    <datalist id="xwDescs">${descs.map(d=>`<option value="${q(d)}">`).join('')}</datalist>
+    <div class="field"><label>التاريخ</label><input id="xi-date" type="date" value="${it?it.date:todayStr()}"></div>
+    <div class="field"><label>البيان (وصف العمل)</label><input id="xi-desc" type="text" list="xwDescs" value="${it?q(it.description):''}" placeholder="مثال: بياض زيادة في السلم"></div>
+    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+      <div class="field" style="flex:1; min-width:90px;"><label>الكمية</label><input id="xi-qty" type="number" step="any" min="0" value="${it?it.qty:''}" oninput="xiCalc()"></div>
+      <div class="field" style="flex:1; min-width:90px;"><label>الوحدة</label><input id="xi-unit" type="text" list="xwUnits" value="${it?q(it.unit):''}"></div>
+      <div class="field" style="flex:1; min-width:100px;"><label>سعر الوحدة</label><input id="xi-price" type="number" step="any" min="0" value="${it?it.unitPrice:''}" oninput="xiCalc()"></div>
+    </div>
+    <div id="xi-total" style="font-weight:700; margin-bottom:10px;"></div>
+    <div class="field"><label>الحالة</label><select id="xi-status">${EXTRA_STATUSES.map(s=>`<option ${it?(it.status===s?'selected':''):(s==='معتمد'?'selected':'')}>${s}</option>`).join('')}</select></div>
+    <div class="field"><label>ملاحظة (اختياري)</label><input id="xi-note" type="text" value="${it?q(it.note):''}"></div>
+    <div style="display:flex; gap:8px; justify-content:flex-end;"><button class="btn secondary" onclick="cbClose('extraItemOverlay')">إلغاء</button>
+      ${it?'':`<button class="btn secondary" onclick="saveExtraItem(true)">حفظ وإضافة بند تاني</button>`}
+      <button class="btn" id="xi-save" onclick="saveExtraItem()">حفظ</button></div>`);
+  xiCalc();
+}
+function xiCalc(){
+  const t = (Number(document.getElementById('xi-qty').value)||0) * (Number(document.getElementById('xi-price').value)||0);
+  document.getElementById('xi-total').textContent = t ? 'الإجمالي: '+fmtMoney(t) : '';
+}
+function saveExtraItem(again){
+  const g = (DATA.extraWorks||[]).find(x=>x._id===extraItemState.groupId);
+  if(!g) return;
+  ensureExtraShape(g);
+  const date = document.getElementById('xi-date').value;
+  const description = document.getElementById('xi-desc').value.trim();
+  const qty = Number(document.getElementById('xi-qty').value)||0;
+  const unitPrice = Number(document.getElementById('xi-price').value)||0;
+  if(!date){ alert('اختار التاريخ'); return; }
+  if(!description){ alert('اكتب وصف العمل'); return; }
+  if(!(qty>0) || !(unitPrice>0)){ alert('اكتب الكمية وسعر الوحدة'); return; }
+  const data = {date, description, qty, unit:document.getElementById('xi-unit').value.trim(), unitPrice, amount:round2(qty*unitPrice), status:document.getElementById('xi-status').value, note:document.getElementById('xi-note').value.trim()};
+  if(extraItemState.editId){
+    Object.assign(g.items.find(x=>x.id===extraItemState.editId), data);
+  }else{
+    const n = (g.items.length ? Math.max(...g.items.map(x=>x._n||0)) : 0)+1;
+    g.items.push(Object.assign({id:g._id+'-I'+n, _n:n, by: currentUser ? currentUser.name : ''}, data));
+  }
+  logAudit(extraItemState.editId?'تعديل':'إضافة', 'بند أعمال إضافية', g.projectName, description+' — '+fmtMoney(data.amount));
+  saveData();
+  cbClose('extraItemOverlay');
+  renderPage();
+  if(again) openExtraItemForm(g._id);
+}
+function deleteExtraItem(groupId, id){
+  if(!isAdmin()) return;
+  const g = (DATA.extraWorks||[]).find(x=>x._id===groupId);
+  const it = g && g.items.find(x=>x.id===id);
+  if(!it) return;
+  openConfirmModal('حذف البند "'+it.description+'"؟', ()=>{
+    g.items = g.items.filter(x=>x.id!==id);
+    logAudit('حذف', 'بند أعمال إضافية', g.projectName, it.description);
+    saveData(); renderPage();
+  });
+}
+function deleteExtraGroup(groupId){
+  if(!isAdmin()) return;
+  const g = (DATA.extraWorks||[]).find(x=>x._id===groupId);
+  if(!g) return;
+  openConfirmModal('حذف كل الأعمال الإضافية والتحصيلات الخاصة بـ"'+g.projectName+'"؟', ()=>{
+    DATA.extraWorks = DATA.extraWorks.filter(x=>x._id!==groupId);
+    selectedExtraId = null;
+    logAudit('حذف', 'أعمال إضافية', g.projectName);
+    generateAutoEntries(); saveData(); renderPage();
+  });
+}
+
+/* ---------- التحصيل ---------- */
+let extraPayGroupId = null;
+function openExtraPayForm(groupId){
+  if(!canEdit('extraworks')) return;
+  const g = (DATA.extraWorks||[]).find(x=>x._id===groupId);
+  if(!g) return;
+  extraPayGroupId = groupId;
+  const t = extraTotals(g);
+  cbOverlay('extraPayOverlay', '💵 تحصيل أعمال إضافية — '+g.projectName, `
+    <div class="kpi" style="margin-bottom:12px;"><div class="kpi-label">الباقي على العميل</div><div class="kpi-value">${fmtMoney(t.remaining)}</div></div>
+    <div class="field"><label>التاريخ</label><input id="xp-date" type="date" value="${todayStr()}"></div>
+    <div class="field"><label>المبلغ</label><input id="xp-amount" type="number" min="0" value="${t.remaining>0?t.remaining:''}"></div>
+    <div class="field"><label>ملاحظة (اختياري)</label><input id="xp-note" type="text" placeholder="مثال: شيك رقم / نقدي"></div>
+    <div style="display:flex; gap:8px; justify-content:flex-end;"><button class="btn secondary" onclick="cbClose('extraPayOverlay')">إلغاء</button><button class="btn" id="xp-save" onclick="saveExtraPay()">حفظ</button></div>`);
+}
+function saveExtraPay(){
+  const g = (DATA.extraWorks||[]).find(x=>x._id===extraPayGroupId);
+  if(!g) return;
+  ensureExtraShape(g);
+  const date = document.getElementById('xp-date').value;
+  const amount = Number(document.getElementById('xp-amount').value)||0;
+  if(!date){ alert('اختار التاريخ'); return; }
+  if(!(amount>0)){ alert('اكتب المبلغ'); return; }
+  const n = (g.payments.length ? Math.max(...g.payments.map(x=>x._n||0)) : 0)+1;
+  g.payments.push({id:g._id+'-P'+n, _n:n, date, amount, note:document.getElementById('xp-note').value.trim(), by: currentUser ? currentUser.name : ''});
+  logAudit('تحصيل', 'أعمال إضافية', g.projectName, fmtMoney(amount));
+  generateAutoEntries(); saveData();
+  cbClose('extraPayOverlay'); renderPage();
+}
+function deleteExtraPay(groupId, id){
+  if(!isAdmin()) return;
+  const g = (DATA.extraWorks||[]).find(x=>x._id===groupId);
+  const p = g && g.payments.find(x=>x.id===id);
+  if(!p) return;
+  openConfirmModal('حذف التحصيل '+fmtMoney(p.amount)+' بتاريخ '+p.date+'؟', ()=>{
+    g.payments = g.payments.filter(x=>x.id!==id);
+    logAudit('حذف', 'تحصيل أعمال إضافية', g.projectName, fmtMoney(p.amount));
+    generateAutoEntries(); saveData(); renderPage();
+  });
+}
+
+/* ---------- الطباعة (حصر الأعمال الإضافية) ---------- */
+function printExtraWorks(groupId){
+  const g = (DATA.extraWorks||[]).find(x=>x._id===groupId);
+  if(!g) return;
+  const items = extraFilteredItems(g);
+  const t = extraTotals(g, items), tAll = extraTotals(g);
+  const td = 'style="padding:6px; border:1px solid #ccc;"';
+  const range = (extraFilter.from||extraFilter.to) ? 'الفترة: '+(extraFilter.from||'البداية')+' إلى '+(extraFilter.to||'الآن') : '';
+  const rows = items.map((i,k)=>`<tr><td ${td}>${k+1}</td><td ${td}>${i.date}</td><td ${td}>${i.description}${i.note?`<div style="font-size:11px; color:#555;">${i.note}</div>`:''}</td><td ${td}>${i.qty}</td><td ${td}>${i.unit||''}</td><td ${td}>${fmtMoney(i.unitPrice)}</td><td ${td}><b>${fmtMoney(i.amount)}</b></td><td ${td}>${i.status}</td></tr>`).join('')
+    + `<tr style="font-weight:900;"><td ${td} colspan="6">إجمالي البنود المعتمدة</td><td ${td}>${fmtMoney(t.approved)}</td><td ${td}></td></tr>`
+    + (t.pending ? `<tr><td ${td} colspan="6">بنود تحت المراجعة (مش داخلة في المستحق)</td><td ${td}>${fmtMoney(t.pending)}</td><td ${td}></td></tr>` : '');
+  const body = `
+    <table style="width:100%; border-collapse:collapse; font-size:13px; margin-bottom:10px;"><tbody>
+      <tr><td ${td}><b>المشروع</b></td><td ${td}>${g.projectName}</td><td ${td}><b>العميل</b></td><td ${td}>${g.client||'—'}</td></tr>
+      ${range||extraFilter.status ? `<tr><td ${td}><b>الفلتر</b></td><td ${td} colspan="3">${[range, extraFilter.status?'الحالة: '+extraFilter.status:''].filter(Boolean).join(' — ')}</td></tr>` : ''}
+    </tbody></table>
+    ${buildStatementTable(['#','التاريخ','البيان','الكمية','الوحدة','سعر الوحدة','الإجمالي','الحالة'], rows)}
+    ${!(range||extraFilter.status) ? `<table style="width:60%; border-collapse:collapse; font-size:13px; margin-top:12px;"><tbody>
+      <tr><td ${td}>إجمالي المعتمد</td><td ${td}><b>${fmtMoney(tAll.approved)}</b></td></tr>
+      <tr><td ${td}>المحصّل</td><td ${td}>${fmtMoney(tAll.collected)}</td></tr>
+      <tr><td ${td}>الباقي على العميل</td><td ${td}><b>${fmtMoney(tAll.remaining)}</b></td></tr>
+    </tbody></table>` : ''}
+    ${typeof tafqeetLine==='function' ? tafqeetLine(range||extraFilter.status ? t.approved : tAll.approved, 'إجمالي الأعمال الإضافية المعتمدة فقط وقدره') : ''}
+    <div style="display:flex; justify-content:space-between; margin-top:40px; font-size:13px; color:#111;"><div>مهندس الموقع: ....................</div><div>ممثل العميل: ....................</div><div>الاعتماد: ....................</div></div>`;
+  openPrintDocument('حصر أعمال إضافية — '+g.projectName, g.client ? 'العميل: '+g.client : '', body);
+}
+
+/* ---------- ملخص جوه صفحة المشروع ---------- */
+function renderProjectExtraSection(p){
+  if(!canView('extraworks')) return '';
+  const g = extraGroupForProject(p.name);
+  const pn = JSON.stringify(p.name).replace(/"/g,'&quot;');
+  if(!g) return canEdit('extraworks') ? `<div style="margin-bottom:24px;"><button class="btn secondary small" onclick="openExtraGroupForm(null, ${pn})">+ أعمال إضافية للمشروع ده</button></div>` : '';
+  const t = extraTotals(g);
+  return `
+    <div class="section-title" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+      <span>➕ الأعمال الإضافية (${t.count} بند)</span>
+      <span style="display:flex; gap:8px;"><button class="btn secondary small" onclick="printExtraWorksQuick('${g._id}')">🖨 طباعة الحصر</button><button class="btn secondary small" onclick="openExtraDetail('${g._id}')">فتح التفاصيل</button></span>
+    </div>
+    <div class="kpi-grid" style="margin-bottom:24px;">
+      <div class="kpi"><div class="kpi-label">المعتمد</div><div class="kpi-value">${fmtMoney(t.approved)}</div></div>
+      <div class="kpi"><div class="kpi-label">تحت المراجعة</div><div class="kpi-value">${fmtMoney(t.pending)}</div></div>
+      <div class="kpi ok"><div class="kpi-label">اتحصّل</div><div class="kpi-value">${fmtMoney(t.collected)}</div></div>
+      <div class="kpi ${t.remaining>0?'alert':'ok'}"><div class="kpi-label">الباقي على العميل</div><div class="kpi-value">${fmtMoney(t.remaining)}</div></div>
+    </div>`;
+}
+function printExtraWorksQuick(groupId){ extraFilter = {from:'', to:'', status:''}; printExtraWorks(groupId); }
 </script>
 </body>
 </html>
