@@ -1554,8 +1554,9 @@ function saveData(){
       const k = col + '|' + item._id;
       if(seen.has(k)) return;
       seen.add(k);
-      const json = JSON.stringify(item);
       const prev = syncedRecords.get(k);
+      if(typeof stampCreated==='function') stampCreated(item, prev ? prev.json : null);
+      const json = JSON.stringify(item);
       if(!prev){
         ops.push({ t:'ins', col, id:item._id, json });
         syncedRecords.set(k, { json, rev:null });
@@ -7893,7 +7894,7 @@ function printAccountingTab(){
   return printBalanceTabDoc();
 }
 function printLedgerTabDoc(){
-  const rows = DATA.ledger.slice().sort((a,b)=> (b.date||'').localeCompare(a.date||'') || (b._n-a._n));
+  const rows = DATA.ledger.slice().sort((a,b)=> -evCmp(a,b));
   const bodyRows = rows.length ? rows.map(e=>`<tr>
       <td>${e.date||'—'}</td><td>${e.description||'—'}</td><td>${e.type}</td><td>${e.account}</td>
       <td>${e.project||'—'}</td><td>${fmtMoney(e.amount)}</td><td>${e.source?'تلقائي':'يدوي'}</td>
@@ -8019,7 +8020,7 @@ function renderGeneralTab(){
 }
 
 function renderLedgerTab(){
-  const rows = DATA.ledger.slice().sort((a,b)=> (b.date||'').localeCompare(a.date||'') || (b._n-a._n));
+  const rows = DATA.ledger.slice().sort((a,b)=> -evCmp(a,b));
   const editable = canEdit('accounting');
   const canModify = isAdmin();
   const body = rows.length ? `
@@ -10385,7 +10386,7 @@ function renderCashboxDetail(id){
   const mv = months.find(x=>x.month===viewM);
   const openM = firstOpenCashboxMonth(b);
   const lastClosing = (b.closings||[]).slice().sort((x,y)=>x.month.localeCompare(y.month)).slice(-1)[0];
-  const entries = cashboxAllEntries(b).filter(e=>cbMonth(e.date)===viewM).sort((x,y)=>((x.date||'').localeCompare(y.date||'')) || ((x._n||0)-(y._n||0)));
+  const entries = cashboxAllEntries(b).filter(e=>cbMonth(e.date)===viewM).sort(evCmp);
   let running = mv.opening;
   const bal = cashboxCurrentBalance(b);
   return `
@@ -10427,7 +10428,7 @@ function renderCashboxDetail(id){
           const isIn = e.type==='تغذية';
           running = round2(running + (isIn?1:-1)*(Number(e.amount)||0));
           return `<tr>
-            <td>${e.date||'—'}</td>
+            <td>${e.date||'—'}${evTime(e)?`<div style="font-size:11px; color:var(--text-dim);">${evTime(e)}</div>`:''}</td>
             <td>${isIn?'<span class="badge b-good">تغذية</span> ':''}${e.description||'—'}${e.ref?` <span style="color:var(--text-dim); font-size:11.5px;">(إيصال ${e.ref})</span>`:''}${e.by?`<div style="color:var(--text-dim); font-size:11px;">بواسطة ${e.by}</div>`:''}</td>
             <td>${isIn ? (e.source||'—') : (e.account||'—')}</td>
             <td>${e.project||'<span style="color:var(--text-dim)">—</span>'}</td>
@@ -11007,7 +11008,7 @@ function printCashboxMonth(boxId, month){
   if(!b) return;
   const mv = computeCashboxMonths(b).find(x=>x.month===month);
   if(!mv) return;
-  const entries = cashboxAllEntries(b).filter(e=>cbMonth(e.date)===month).sort((x,y)=>(x.date||'').localeCompare(y.date||''));
+  const entries = cashboxAllEntries(b).filter(e=>cbMonth(e.date)===month).sort(evCmp);
   let running = mv.opening;
   const info = `<table><tbody>
     <tr><td style="font-weight:700; width:180px;">المسؤول عن العهدة</td><td>${b.custodian||'—'}</td></tr>
@@ -11074,6 +11075,34 @@ function readPhase(prefix){
 function phaseBadge(projectName, phaseId){
   const n = phaseId ? phaseName(projectName, phaseId) : '';
   return n ? `<div style="font-size:11.5px; color:var(--text-dim);">البند: ${n}</div>` : '';
+}
+
+/* ================= ترتيب الأحداث بوقت حدوثها =================
+   كل حركة جديدة (في أي مكان) بيتسجل معاها وقت إنشائها (createdAt) تلقائي وقت الحفظ،
+   والكشوفات بتترتب بالتاريخ وبعده بالوقت الفعلي — فالحركات اللي في نفس اليوم بتظهر بترتيب حدوثها. */
+const _ID_RE = /"(?:id|_id)":"([^"]+)"/g;
+function stampCreated(item, prevJson){
+  const now = new Date().toISOString();
+  let known = null;
+  if(prevJson){ known = new Set(); let m; _ID_RE.lastIndex = 0; while((m = _ID_RE.exec(prevJson))) known.add(m[1]); }
+  if(!prevJson && !item.createdAt) item.createdAt = now;
+  const walk = (v, depth)=>{
+    if(depth > 6 || !v || typeof v!=='object') return;
+    if(Array.isArray(v)){ v.forEach(x=>walk(x, depth+1)); return; }
+    const id = v.id || v._id;
+    if(v!==item && typeof id==='string' && !v.createdAt && (!known || !known.has(id))) v.createdAt = now;
+    for(const k in v){ const x = v[k]; if(x && typeof x==='object') walk(x, depth+1); }
+  };
+  walk(item, 0);
+}
+// ترتيب: التاريخ ← وقت التسجيل ← رقم الحركة
+function evCmp(a, b){
+  return (a.date||'').localeCompare(b.date||'') || (a.createdAt||'').localeCompare(b.createdAt||'') || ((a._n||0)-(b._n||0));
+}
+function evTime(x){
+  if(!x || !x.createdAt) return '';
+  const d = new Date(x.createdAt);
+  return isNaN(d) ? '' : d.toLocaleTimeString('ar-EG', {hour:'2-digit', minute:'2-digit'});
 }
 
 /* ================= مشتريات الموردين على المشاريع ================= */
@@ -11566,7 +11595,7 @@ function cashboxLinkedOutflows(b){
     if(!rec || rec.paidFrom!==key) return;
     const amt = Number(amount)||0;
     if(!(amt>0) || !date) return;
-    out.push({id:'LNK:'+origin+':'+(rec.id||rec._id), linked:true, origin, type:'مصروف', date, amount:amt, description, account, project:project||'', chequeNo:rec.chequeNo, srcRec:rec, emp:emp||null, sub:sub||null, casual:casual||null});
+    out.push({id:'LNK:'+origin+':'+(rec.id||rec._id), linked:true, origin, type:'مصروف', date, amount:amt, description, account, project:project||'', chequeNo:rec.chequeNo, createdAt:rec.createdAt||'', _n:rec._n||0, srcRec:rec, emp:emp||null, sub:sub||null, casual:casual||null});
   };
   (DATA.hr||[]).forEach(h=>{
     (h.payrollEntries||[]).forEach(e=>{ if(e.type==='سلفة') add(e, e.date, e.amount, 'سلفة لـ'+h.name+(e.note?' — '+e.note:''), 'سلف الموظفين', h.project, 'سلف الموظفين', h); });
@@ -11588,7 +11617,7 @@ function cashboxLinkedOutflows(b){
   // تحويل لخزينة/عهدة تانية (تغذية عهدة من الخزينة دي) — مش مصروف، بس بيقلل الرصيد
   (DATA.cashboxes||[]).forEach(o=>{ if(o._id===b._id) return; (o.entries||[]).forEach(e=>{
     if(e.type==='تغذية' && e.fromBox===b._id && Number(e.amount)>0 && e.date)
-      out.push({id:'TRF:'+o._id+':'+e.id, linked:true, transfer:true, origin:'تحويل', type:'مصروف', date:e.date, amount:Number(e.amount), description:'تحويل لـ'+o.name+(e.description?' — '+e.description:''), account:'تحويل بين الخزائن', project:''});
+      out.push({id:'TRF:'+o._id+':'+e.id, linked:true, transfer:true, origin:'تحويل', type:'مصروف', createdAt:e.createdAt||'', _n:e._n||0, date:e.date, amount:Number(e.amount), description:'تحويل لـ'+o.name+(e.description?' — '+e.description:''), account:'تحويل بين الخزائن', project:''});
   }); });
   return out;
 }
@@ -12388,11 +12417,11 @@ function printSupplierStatement(id){
   const moves = [];
   if(t.opening) moves.push({date:s.openingDate||'', desc:'رصيد أول المدة', debit: t.opening>0?t.opening:0, credit: t.opening<0?-t.opening:0, o:0});
   (s.invoices||[]).forEach(inv=>{
-    moves.push({date:inv.date, desc:'فاتورة '+(inv.number||'')+(inv.project?' — '+inv.project:'')+((inv.items||[]).length?' ('+inv.items.map(it=>it.name+' '+it.qty+' '+(it.unit||'')).join('، ')+')':''), debit:Number(inv.amount)||0, credit:0, o:1});
-    (inv.payments||[]).forEach(p=>moves.push({date:p.date, desc:'سداد على فاتورة '+(inv.number||'')+(p.note?' — '+p.note:''), debit:0, credit:Number(p.amount)||0, o:2}));
+    moves.push({createdAt:inv.createdAt, date:inv.date, desc:'فاتورة '+(inv.number||'')+(inv.project?' — '+inv.project:'')+((inv.items||[]).length?' ('+inv.items.map(it=>it.name+' '+it.qty+' '+(it.unit||'')).join('، ')+')':''), debit:Number(inv.amount)||0, credit:0, o:1});
+    (inv.payments||[]).forEach(p=>moves.push({createdAt:p.createdAt, date:p.date, desc:'سداد على فاتورة '+(inv.number||'')+(p.note?' — '+p.note:''), debit:0, credit:Number(p.amount)||0, o:2}));
   });
-  (s.payments||[]).forEach(p=>moves.push({date:p.date, desc:'دفعة على الحساب'+(p.note?' — '+p.note:'')+(typeof paySourceLabel==='function' && paySourceLabel(p)?' — '+paySourceLabel(p):''), debit:0, credit:Number(p.amount)||0, o:2}));
-  moves.sort((a,b)=>(a.date||'').localeCompare(b.date||'') || a.o-b.o);
+  (s.payments||[]).forEach(p=>moves.push({createdAt:p.createdAt, date:p.date, desc:'دفعة على الحساب'+(p.note?' — '+p.note:'')+(typeof paySourceLabel==='function' && paySourceLabel(p)?' — '+paySourceLabel(p):''), debit:0, credit:Number(p.amount)||0, o:2}));
+  moves.sort((a,b)=>(a.date||'').localeCompare(b.date||'') || (a.createdAt||'').localeCompare(b.createdAt||'') || a.o-b.o);
   let run = 0;
   const td = 'style="padding:6px; border:1px solid #ccc;"';
   const rows = moves.map(m=>{ run = round2(run + m.debit - m.credit); return `<tr><td ${td}>${m.date||'—'}</td><td ${td}>${m.desc}</td><td ${td}>${m.debit?fmtMoney(m.debit):''}</td><td ${td}>${m.credit?fmtMoney(m.credit):''}</td><td ${td}><b>${fmtMoney(Math.abs(run))} ${run>0?'له':run<0?'عليه':''}</b></td></tr>`; }).join('');
