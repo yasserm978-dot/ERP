@@ -12658,6 +12658,8 @@ function renderProjectCasualSection(p){
         <td class="row-actions">
           ${(canAdd && w.due>0) ? `<button class="btn small" onclick="openCasualPayForm('${p._id}', ${nm})">💵 صرف</button>` : ''}
           <button class="btn secondary small" onclick="printCasualWorker('${p._id}', ${nm})">🖨 كشف</button>
+          ${canAdd ? `<button class="btn secondary small" onclick="openCasualWorkerForm('${p._id}', ${nm})">تعديل</button>` : ''}
+          ${isAdmin() ? `<button class="btn danger small" onclick="deleteCasualWorker('${p._id}', ${nm})">حذف</button>` : ''}
         </td></tr>`; }).join('')}
       </tbody>
     </table></div></div>
@@ -12669,7 +12671,7 @@ function renderProjectCasualSection(p){
         <td>${fmtUnits(Number(r.units)||0)}</td><td>${fmtMoney(r.rate)}</td><td style="font-weight:700;">${fmtMoney(r.amount)}</td>
         <td>${r.paid ? `<span class="badge b-good">اتصرف ${r.paidDate||''}</span>${typeof paySourceBadge==='function'?paySourceBadge(r):''}` : '<span class="badge b-warn">مستحق</span>'}</td>
         <td>${r.note||'—'}</td>
-        <td class="row-actions">${isAdmin() ? `<button class="btn danger small" onclick="deleteCasualRow('${p._id}','${r.id}')">حذف</button>` : ''}</td>
+        <td class="row-actions">${canAdd ? `<button class="btn secondary small" onclick="openCasualEditForm('${p._id}','${r.id}')">تعديل</button>` : ''}${isAdmin() ? `<button class="btn danger small" onclick="deleteCasualRow('${p._id}','${r.id}')">حذف</button>` : ''}</td>
       </tr>`).join('')}</tbody>
     </table></div></div>
     ${rows.length>15 ? `<button class="btn secondary small" onclick="casualShowAll=!casualShowAll; renderPage();" style="margin-bottom:10px;">${casualShowAll?'عرض آخر 15 بس':'عرض الكل ('+rows.length+')'}</button>` : ''}
@@ -12810,6 +12812,106 @@ function deleteCasualRow(projectId, id){
   openConfirmModal('حذف يومية '+r.name+' بتاريخ '+r.date+' ('+fmtMoney(r.amount)+')؟', ()=>{
     p.casualLabor = casualList(p).filter(x=>x.id!==id);
     logAudit('حذف', 'عمالة مؤقتة', p.name, r.name+' '+r.date);
+    generateAutoEntries();
+    saveData();
+    renderPage();
+  });
+}
+/* ---------- تعديل يومية عامل مؤقت / تعديل بيانات العامل / حذف العامل ---------- */
+let casualEditState = {projectId:null, id:null};
+function openCasualEditForm(projectId, id){
+  if(!canEdit('projects')) return;
+  const p = DATA.projects.find(x=>x._id===projectId);
+  const r = p && casualList(p).find(x=>x.id===id);
+  if(!r) return;
+  casualEditState = {projectId, id};
+  const q = v => String(v===undefined||v===null?'':v).replace(/"/g,'&quot;');
+  cbOverlay('casualEditOverlay', '✏️ تعديل يومية — '+r.name, `
+    <div class="field"><label>التاريخ</label><input id="ce2-date" type="date" value="${r.date}"></div>
+    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+      <div class="field" style="flex:2; min-width:130px;"><label>اسم العامل</label><input id="ce2-name" type="text" value="${q(r.name)}"></div>
+      <div class="field" style="flex:2; min-width:100px;"><label>الشغلانة</label><input id="ce2-trade" type="text" value="${q(r.trade)}"></div>
+    </div>
+    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+      <div class="field" style="flex:1; min-width:70px;"><label>أيام</label><input id="ce2-units" type="number" step="0.25" min="0" value="${r.units}" oninput="ce2Calc()"></div>
+      <div class="field" style="flex:1; min-width:90px;"><label>اليومية</label><input id="ce2-rate" type="number" min="0" value="${r.rate}" oninput="ce2Calc()"></div>
+    </div>
+    <div id="ce2-total" style="font-weight:700; margin-bottom:10px;"></div>
+    ${phaseFieldHtml('ce2', p.name, r.phase||'')}
+    <div class="field"><label>ملاحظة</label><input id="ce2-note" type="text" value="${q(r.note)}"></div>
+    ${r.paid ? `<div style="font-size:12.5px; color:var(--text-dim); margin-bottom:10px;">اليومية دي اتصرفت ${r.paidDate||''}${typeof paySourceLabel==='function' && paySourceLabel(r)?' من '+paySourceLabel(r):''} — لو غيّرت المبلغ، رصيد المكان اللي اتصرفت منه بيتعدّل تلقائي.
+      <label style="display:block; margin-top:6px;"><input type="checkbox" id="ce2-unpay"> رجّعها "مستحق" (إلغاء الصرف)</label></div>` : ''}
+    <div style="display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap;">
+      ${isAdmin() ? `<button class="btn danger" onclick="cbClose('casualEditOverlay'); deleteCasualRow('${projectId}','${id}')">حذف اليومية</button>` : ''}
+      <button class="btn secondary" onclick="cbClose('casualEditOverlay')">إلغاء</button><button class="btn" id="ce2-save" onclick="saveCasualEdit()">حفظ</button></div>`);
+  ce2Calc();
+}
+function ce2Calc(){
+  const t = (Number(document.getElementById('ce2-units').value)||0) * (Number(document.getElementById('ce2-rate').value)||0);
+  document.getElementById('ce2-total').textContent = t ? 'المبلغ: '+fmtMoney(t) : '';
+}
+function saveCasualEdit(){
+  const p = DATA.projects.find(x=>x._id===casualEditState.projectId);
+  const r = p && casualList(p).find(x=>x.id===casualEditState.id);
+  if(!r) return;
+  const date = document.getElementById('ce2-date').value;
+  const name = document.getElementById('ce2-name').value.trim();
+  const units = Number(document.getElementById('ce2-units').value)||0;
+  const rate = Number(document.getElementById('ce2-rate').value)||0;
+  if(!date || !name){ alert('اكتب التاريخ واسم العامل'); return; }
+  if(!(units>0) || !(rate>0)){ alert('اكتب الأيام واليومية'); return; }
+  const unpay = document.getElementById('ce2-unpay') && document.getElementById('ce2-unpay').checked;
+  // لو اتصرفت من عهدة: الشهر لازم يكون مفتوح فيها
+  if(r.paid && typeof cashboxAllowsMove==='function' && !cashboxAllowsMove(r.paidFrom, r.paidDate, 'التعديل')) return;
+  Object.assign(r, {date, name, trade: document.getElementById('ce2-trade').value.trim(), units, rate, amount: round2(units*rate), note: document.getElementById('ce2-note').value.trim(), phase: readPhase('ce2')});
+  if(unpay){ r.paid = false; delete r.paidDate; delete r.paidFrom; delete r.chequeNo; delete r.paidBy; }
+  logAudit('تعديل', 'عمالة مؤقتة', p.name, name+' '+date+' — '+fmtMoney(r.amount)+(unpay?' — إلغاء الصرف':''));
+  generateAutoEntries();
+  saveData();
+  cbClose('casualEditOverlay');
+  renderPage();
+}
+// تعديل اسم/شغلانة العامل في كل يومياته على المشروع
+let casualWorkerState = {projectId:null, name:''};
+function openCasualWorkerForm(projectId, name){
+  if(!canEdit('projects')) return;
+  const p = DATA.projects.find(x=>x._id===projectId);
+  if(!p) return;
+  const rows = casualList(p).filter(r=>r.name===name);
+  if(!rows.length) return;
+  casualWorkerState = {projectId, name};
+  const q = v => String(v||'').replace(/"/g,'&quot;');
+  cbOverlay('casualWorkerOverlay', '✏️ تعديل بيانات العامل', `
+    <div class="field"><label>اسم العامل</label><input id="cw-name" type="text" value="${q(name)}"></div>
+    <div class="field"><label>الشغلانة</label><input id="cw-trade" type="text" value="${q((rows.find(r=>r.trade)||{}).trade)}"></div>
+    <div style="font-size:12px; color:var(--text-dim); margin-bottom:10px;">التعديل هيتطبق على كل يوميات العامل على المشروع ده (${rows.length} يومية). لو عايز تعدّل أيام أو يومية معيّنة، استخدم "تعديل" في سجل اليوميات.</div>
+    <div style="display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap;">
+      ${isAdmin() ? `<button class="btn danger" onclick="cbClose('casualWorkerOverlay'); deleteCasualWorker('${projectId}', ${JSON.stringify(name).replace(/"/g,'&quot;')})">حذف العامل بكل يومياته</button>` : ''}
+      <button class="btn secondary" onclick="cbClose('casualWorkerOverlay')">إلغاء</button><button class="btn" id="cw-save" onclick="saveCasualWorker()">حفظ</button></div>`);
+}
+function saveCasualWorker(){
+  const p = DATA.projects.find(x=>x._id===casualWorkerState.projectId);
+  if(!p) return;
+  const name = document.getElementById('cw-name').value.trim();
+  const trade = document.getElementById('cw-trade').value.trim();
+  if(!name){ alert('اكتب اسم العامل'); return; }
+  casualList(p).forEach(r=>{ if(r.name===casualWorkerState.name){ r.name = name; r.trade = trade; } });
+  logAudit('تعديل', 'عمالة مؤقتة', p.name, casualWorkerState.name+' ← '+name);
+  generateAutoEntries();
+  saveData();
+  cbClose('casualWorkerOverlay');
+  renderPage();
+}
+function deleteCasualWorker(projectId, name){
+  if(!isAdmin()) return;
+  const p = DATA.projects.find(x=>x._id===projectId);
+  if(!p) return;
+  const rows = casualList(p).filter(r=>r.name===name);
+  for(const r of rows){ if(r.paid && typeof cashboxAllowsMove==='function' && !cashboxAllowsMove(r.paidFrom, r.paidDate, 'الحذف')) return; }
+  const tot = rows.reduce((t,r)=>t+(Number(r.amount)||0),0);
+  openConfirmModal('حذف '+name+' بكل يومياته على المشروع ('+rows.length+' يومية — '+fmtMoney(tot)+')؟\nاللي اتصرف منها من عهدة هيرجع لرصيدها.', ()=>{
+    p.casualLabor = casualList(p).filter(r=>r.name!==name);
+    logAudit('حذف', 'عمالة مؤقتة', p.name, name+' — '+rows.length+' يومية');
     generateAutoEntries();
     saveData();
     renderPage();
