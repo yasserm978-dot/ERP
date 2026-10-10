@@ -35,7 +35,7 @@
 body{
   background:var(--bg);
   color:var(--text);
-  min-height:100vh;
+  min-height:calc(100vh / var(--fz,1));
   overflow-x:hidden;
   position:relative;
 }
@@ -71,13 +71,13 @@ body{
 ::-webkit-scrollbar-thumb{background:var(--border); border-radius:4px;}
 
 /* ---------- Layout ---------- */
-.app{display:flex; min-height:100vh;}
+.app{display:flex; min-height:calc(100vh / var(--fz,1));}
 .sidebar{
   width:230px; flex-shrink:0;
   background:var(--surface);
   border-left:1px solid var(--border);
   display:flex; flex-direction:column;
-  position:sticky; top:0; height:100vh;
+  position:sticky; top:0; height:calc(100vh / var(--fz,1));
 }
 .brand{
   padding:22px 18px 16px;
@@ -201,7 +201,7 @@ tbody tr:hover{background:var(--surface-2);}
 .overlay.open{display:flex;}
 .modal{
   background:var(--surface); border:1px solid var(--border); border-radius:8px;
-  width:100%; max-width:480px; max-height:88vh; overflow-y:auto;
+  width:100%; max-width:480px; max-height:calc(88vh / var(--fz,1)); overflow-y:auto;
 }
 .modal-head{
   padding:18px 20px; border-bottom:1px solid var(--border);
@@ -223,6 +223,9 @@ tbody tr:hover{background:var(--surface-2);}
 #printModalBody table{width:100%; border-collapse:collapse; font-size:13px; margin-top:10px;}
 #printModalBody th,#printModalBody td{border:1px solid #999; padding:7px; text-align:right;}
 #printModalBody th{background:#eee; color:#000;}
+@media print{ body{zoom:1 !important;} }
+.fz-ctl{display:inline-flex; gap:3px; align-items:center;}
+.fz-ctl .btn{padding:4px 8px; min-width:30px;}
 @media print{
   @page{ margin:12mm 10mm; }
   body > *:not(#printOverlay){display:none !important;}
@@ -256,7 +259,7 @@ tbody tr:hover{background:var(--surface-2);}
 @media(min-width:821px){.topbar{display:none;}}
 
 .auth-wrap{
-  min-height:100vh; display:none; align-items:center; justify-content:center;
+  min-height:calc(100vh / var(--fz,1)); display:none; align-items:center; justify-content:center;
   padding:20px; background:transparent;
 }
 .auth-card{
@@ -312,6 +315,11 @@ tbody tr:hover{background:var(--surface-2);}
     <div class="user-bar">
       <span class="live-clock" id="liveClock" title="التاريخ والوقت الحالي بتوقيت جهازك"></span>
       <span style="display:flex; align-items:center; gap:12px;">
+        <span class="fz-ctl" title="حجم الخط">
+          <button class="btn secondary small" onclick="changeFontScale(-1)" title="تصغير الخط">A−</button>
+          <button class="btn secondary small fz-label" onclick="changeFontScale(0)" title="رجوع للحجم الافتراضي">100%</button>
+          <button class="btn secondary small" onclick="changeFontScale(1)" title="تكبير الخط">A+</button>
+        </span>
         <span id="syncStatus" class="sync-pill sync-saved">✓ محفوظ</span>
         <span id="userBarName"></span>
         <button class="btn secondary small" onclick="logout()">تسجيل الخروج</button>
@@ -562,6 +570,7 @@ tbody tr:hover{background:var(--surface-2);}
           <option value="projectDelay">تأخر مشروع عن الجدول الزمني (جاهز)</option>
           <option value="overdueInvoice">فواتير متأخرة (جاهز)</option>
           <option value="budgetOverrun">مشروع تجاوز نسبة من الميزانية (جاهز)</option>
+          <option value="phaseOverrun">بند في مشروع تجاوز قيمته التقديرية (جاهز)</option>
           <option value="custom">— قاعدة جديدة كليًا (تحددها بنفسك) —</option>
         </select>
       </div>
@@ -2190,6 +2199,7 @@ function normalizeData(){
     {id:'RULE-lowStock', type:'lowStock', label:'مخزون وصل لحد إعادة الطلب', enabled:false, builtin:true},
   ];
   DATA.alertRules.forEach(r=>{ if(r.enabled===undefined) r.enabled=false; });
+  if(!DATA.alertRules.some(r=>r.type==='phaseOverrun')) DATA.alertRules.push({id:'RULE-phaseOverrun', type:'phaseOverrun', label:'بند في مشروع تجاوز قيمته التقديرية', enabled:true, thresholdPercent:100, builtin:true});
   if(!Array.isArray(DATA.alertLog)) DATA.alertLog = [];
   if(!Array.isArray(DATA.contractCalcMethods) || !DATA.contractCalcMethods.length) DATA.contractCalcMethods = ['بالمتر','يومية','مقطوعية'];
   if(!Array.isArray(DATA.quotations)) DATA.quotations = [];
@@ -4041,7 +4051,7 @@ function renderAssignmentLedger(s, a, editable){
     <div class="table-wrap" style="margin-bottom:28px;"><div class="table-scroll"><table>
       <thead><tr><th>التاريخ</th><th>النوع</th><th>العامل</th><th>البيان</th><th>الكمية</th><th>السعر</th><th>المبلغ</th><th></th></tr></thead>
       <tbody>
-        ${entries.map(e=>{
+        ${monthFoldRows('sube_'+s._id+'_'+a.id, entries, {cols:8, sum:l=>mfMoneySum(l, e=>e.kind==='خصم'?-(Number(e.amount)||0):e.amount), row:e=>{
           const k = ENTRY_KINDS[e.kind] || {label:e.kind, cls:'b-neutral'};
           const amountDisplay = (e.kind==='خصم') ? `<span style="color:var(--bad);">- ${fmtMoney(e.amount)}</span>` : fmtMoney(e.amount);
           const isSynced = !!e._syncContractId;
@@ -4058,7 +4068,7 @@ function renderAssignmentLedger(s, a, editable){
               <button class="btn danger small" data-entrydel="${s._id}|${a.id}|${e.id}">حذف</button>` : '')}
             </td>
           </tr>`;
-        }).join('')}
+        }})}
       </tbody>
     </table></div></div>
     ` : `<div class="table-wrap" style="margin-bottom:28px;"><div class="empty-state">لا توجد بنود مسجلة بعد على هذا المشروع</div></div>`}
@@ -7144,7 +7154,7 @@ function renderEmployeeDetail(id){
     <div class="table-wrap" style="margin-bottom:28px;"><div class="table-scroll"><table>
       <thead><tr><th>التاريخ</th><th>الحالة</th>${h.employeeType==='يومي'?'<th>المشروع</th>':''}${(h.employeeType==='يومي' && !attOnly)?'<th>أجر اليوم</th><th>المبلغ</th>':''}<th>ملاحظة</th><th></th></tr></thead>
       <tbody>
-        ${attendance.map(a=>`<tr>
+        ${monthFoldRows('att_'+h._id, attendance, {cols: 4+(h.employeeType==='يومي'?1:0)+((h.employeeType==='يومي' && !attOnly)?2:0), sum:l=>{ const u=l.reduce((s,a)=>s+attendanceUnits(a),0); return fmtUnits(u)+' يوم'+((h.employeeType==='يومي' && !attOnly)?' · '+mfMoneySum(l, a=>attendanceUnits(a)?attendanceCost(h,a):0):''); }, row:a=>`<tr>
           <td>${a.date||'—'}</td>
           <td><span class="badge ${a.status==='حاضر'?'b-good':a.status==='غائب'?'b-bad':'b-warn'}">${a.status}</span>${fmtDayUnits(a)}${a.settled?' <span class="badge b-good" title="اتصفّى في تصفية حساب">✓ مصفّى</span>':''}</td>
           ${h.employeeType==='يومي'?`<td>${a.project || '<span style="color:var(--text-dim)">'+(h.project?'(افتراضي: '+h.project+')':'غير محدد — يوزّع تلقائي')+'</span>'}</td>`:''}
@@ -7154,7 +7164,7 @@ function renderEmployeeDetail(id){
             ${(canModify && !a.settled) ? `<button class="btn secondary small" data-attedit="${h._id}|${a.id}">تعديل</button>
             <button class="btn danger small" data-attdel="${h._id}|${a.id}">حذف</button>` : ''}
           </td>
-        </tr>`).join('')}
+        </tr>`})}
       </tbody>
     </table></div></div>
     ` : `<div class="table-wrap" style="margin-bottom:28px;"><div class="empty-state">لا يوجد حضور مسجل بعد</div></div>`}
@@ -7168,7 +7178,7 @@ function renderEmployeeDetail(id){
     <div class="table-wrap" style="margin-bottom:28px;"><div class="table-scroll"><table>
       <thead><tr><th>التاريخ</th><th>الشهر</th><th>النوع</th><th>المبلغ</th><th>ملاحظة</th><th></th></tr></thead>
       <tbody>
-        ${payrollEntries.map(e=>`<tr>
+        ${monthFoldRows('pe_'+h._id, payrollEntries, {cols:6, sum:l=>{ const add=l.filter(e=>PAYROLL_ADDITION_TYPES.includes(e.type)).reduce((s,e)=>s+(Number(e.amount)||0),0), ded=l.filter(e=>!PAYROLL_ADDITION_TYPES.includes(e.type)).reduce((s,e)=>s+(Number(e.amount)||0),0); return (ded?'سلف وخصومات '+fmtMoney(ded):'')+(add&&ded?' · ':'')+(add?'إضافات '+fmtMoney(add):''); }, row:e=>`<tr>
           <td>${e.date||'—'}</td>
           <td>${monthLabel(monthKey(e.date))}</td>
           <td><span class="badge ${PAYROLL_ADDITION_TYPES.includes(e.type)?'b-good':'b-bad'}">${e.type}</span></td>
@@ -7178,7 +7188,7 @@ function renderEmployeeDetail(id){
             ${(canModify && !e.settled && !e.carryFrom) ? `<button class="btn secondary small" data-payedit="${h._id}|${e.id}">تعديل</button>
             <button class="btn danger small" data-paydel="${h._id}|${e.id}">حذف</button>` : ''}
           </td>
-        </tr>`).join('')}
+        </tr>`})}
       </tbody>
     </table></div></div>
     ` : `<div class="table-wrap" style="margin-bottom:28px;"><div class="empty-state">لا توجد سلف أو خصومات مسجلة</div></div>`}
@@ -8027,7 +8037,7 @@ function renderLedgerTab(){
     <div class="table-wrap"><div class="table-scroll"><table>
       <thead><tr><th>التاريخ</th><th>البيان</th><th>النوع</th><th>الحساب</th><th>المشروع</th><th>المبلغ</th><th>المصدر</th><th></th></tr></thead>
       <tbody>
-        ${rows.map(e=>`
+        ${monthFoldRows('ledger', rows, {cols:8, sum:l=>{ const r=l.filter(e=>e.type==='إيراد').reduce((s,e)=>s+(Number(e.amount)||0),0), x=l.filter(e=>e.type!=='إيراد').reduce((s,e)=>s+(Number(e.amount)||0),0); return 'مصروفات '+fmtMoney(x)+(r?' · إيرادات '+fmtMoney(r):''); }, row:e=>`
           <tr>
             <td>${e.date || '<span style="color:var(--text-dim)">—</span>'}</td>
             <td>${e.description || '—'}</td>
@@ -8040,7 +8050,7 @@ function renderLedgerTab(){
               <button class="btn secondary small" onclick="printExpenseStatement('${e._id}')">🖨</button>
               ${(!e.source && canModify) ? `<button class="btn secondary small" data-ledgeredit="${e._id}">تعديل</button><button class="btn danger small" data-ledgerdel="${e._id}">حذف</button>` : ''}
             </td>
-          </tr>`).join('')}
+          </tr>`})}
       </tbody>
     </table></div></div>
   ` : `<div class="table-wrap"><div class="empty-state">لا توجد قيود بعد<br>
@@ -8807,7 +8817,7 @@ function renderProjectDetail(id){
     <div class="table-wrap" style="margin-bottom:24px;"><div class="table-scroll"><table>
       <thead><tr><th>التاريخ</th><th>طريقة التحصيل</th><th>المبلغ</th><th>ملاحظة</th><th></th></tr></thead>
       <tbody>
-        ${projCollections.map(c=>`
+        ${monthFoldRows('pcol_'+p._id, projCollections, {cols:5, sum:l=>mfMoneySum(l, c=>c.amount), row:c=>`
           <tr>
             <td>${c.date||'—'}</td>
             <td><span class="badge b-neutral">${c.method}</span></td>
@@ -8817,7 +8827,7 @@ function renderProjectDetail(id){
               ${canModify ? `<button class="btn secondary small" data-coledit="${c._id}">تعديل</button>
               <button class="btn danger small" data-coldel="${c._id}">حذف</button>` : ''}
             </td>
-          </tr>`).join('')}
+          </tr>`})}
       </tbody>
     </table></div></div>
     ` : `<div class="table-wrap" style="margin-bottom:24px;"><div class="empty-state">لا توجد دفعات محصّلة بعد على هذا المشروع</div></div>`}
@@ -8878,14 +8888,14 @@ function renderProjectDetail(id){
                 <th style="text-align:left; padding:6px 0; color:var(--text-dim); font-weight:600;"></th>
               </tr></thead>
               <tbody>
-                ${sortedEntries.map(e=>`<tr>
+                ${monthFoldRows('pexp_'+p._id+'_'+acc, sortedEntries, {cols:4, sum:l=>mfMoneySum(l, e=>e.amount), row:e=>`<tr>
                   <td style="padding:5px 0;">${e.date||'—'}</td>
                   <td style="padding:5px 0;">${e.description||'—'}</td>
                   <td style="padding:5px 0;">${fmtMoney(e.amount)}</td>
                   <td style="padding:5px 0; text-align:left; white-space:nowrap;">
                     ${e.source ? sourceActionLabel(e) : (canModify ? `<button class="btn secondary small" onclick="openLedgerForm('${e._id}')">تعديل</button> <button class="btn danger small" onclick="deleteLedgerRecord('${e._id}')">حذف</button>` : '')}
                   </td>
-                </tr>`).join('')}
+                </tr>`})}
               </tbody>
             </table>
           </div>` : ''}
@@ -9063,6 +9073,7 @@ const ALERT_TYPE_LABELS = {
   overdueInvoice:'فواتير متأخرة',
   lowStock:'مخزون وصل لحد إعادة الطلب',
   budgetOverrun:'مشروع تجاوز نسبة من الميزانية',
+  phaseOverrun:'بند في مشروع تجاوز قيمته التقديرية',
   custom:'قاعدة مخصصة',
 };
 const CUSTOM_SOURCES = {
@@ -9149,6 +9160,24 @@ function evaluateAlerts(){
             message:`📊 تنبيه: مشروع "${p.name}" وصل صرفه لـ ${Math.round(pct)}% من الميزانية (${fmtMoney(spent)} من ${fmtMoney(budget)}).`});
         }
       });
+    }else if(rule.type==='phaseOverrun'){
+      const th = Number(rule.thresholdPercent)||100;
+      DATA.projects.forEach(p=>{
+        if(isProjectClosed(p.status)) return;
+        (p.phases||[]).forEach(ph=>{
+          const planned = Number(ph.plannedBudget)||0;
+          if(!planned) return;
+          const spend = computePhaseActualSpend(p.name, ph.id);
+          const pct = spend/planned*100;
+          if(spend>0 && pct >= th){
+            const over = spend - planned;
+            triggered.push({ruleId:rule.id, ruleLabel:rule.label, key:'phaseOverrun:'+p._id+':'+ph.id+':'+th,
+              message: over>0
+                ? `🚨 تنبيه: بند "${ph.name}" في مشروع "${p.name}" تجاوز قيمته التقديرية — المصروف ${fmtMoney(spend)} والمقدّر ${fmtMoney(planned)} (زيادة ${fmtMoney(over)} — ${Math.round(pct)}%).`
+                : `⚠ تنبيه: بند "${ph.name}" في مشروع "${p.name}" وصل لـ ${Math.round(pct)}% من قيمته التقديرية (${fmtMoney(spend)} من ${fmtMoney(planned)}).`});
+          }
+        });
+      });
     }else if(rule.type==='custom'){
       const src = CUSTOM_SOURCES[rule.source];
       if(!src) return;
@@ -9230,7 +9259,7 @@ function renderAlertsPage(){
             <td>${rule.label}</td>
             <td><input type="checkbox" data-ruletoggle="${rule.id}" ${rule.enabled?'checked':''} style="width:18px; height:18px;"></td>
             <td>${rule.type==='lowStock' ? '<span style="color:var(--text-dim);">حسب حد إعادة الطلب لكل صنف</span>' :
-                 rule.type==='budgetOverrun' ? `<input type="number" data-rulepct="${rule.id}" value="${rule.thresholdPercent||90}" style="width:80px;"> %` :
+                 (rule.type==='budgetOverrun' || rule.type==='phaseOverrun') ? `<input type="number" data-rulepct="${rule.id}" value="${rule.thresholdPercent||(rule.type==='phaseOverrun'?100:90)}" style="width:80px;"> %${rule.type==='phaseOverrun'?' <span style="color:var(--text-dim); font-size:11.5px;">من قيمة البند (100 = لما يعدّيها)</span>':''}` :
                  rule.type==='custom' ? `<span style="color:var(--text-dim); font-size:12px;">${describeCustomRule(rule)}</span>` :
                  `<input type="number" data-ruledays="${rule.id}" value="${rule.thresholdDays||0}" style="width:70px;"> يوم تأخير`}
             </td>
@@ -9390,6 +9419,7 @@ function saveAlertRule(){
   }
 
   if(type==='budgetOverrun'){ rule.thresholdPercent = rule.thresholdPercent || 90; }
+  else if(type==='phaseOverrun'){ rule.thresholdPercent = rule.thresholdPercent || 100; }
   else if(type==='custom'){
     rule.source = document.getElementById('rule-source').value;
     rule.field = document.getElementById('rule-field').value;
@@ -11105,6 +11135,73 @@ function evTime(x){
   return isNaN(d) ? '' : d.toLocaleTimeString('ar-EG', {hour:'2-digit', minute:'2-digit'});
 }
 
+/* ================= طي حركات الشهور السابقة =================
+   أي جدول حركات (يوميات، سلف، قيود، فواتير...) بيعرض الشهر الحالي مفتوح،
+   وكل شهر سابق بيظهر سطر واحد مطوي (اسم الشهر + عدد الحركات + الإجمالي) — تدوس عليه يفتح. */
+const _mfOpen = {};
+function _mfId(s){ return String(s).replace(/[^A-Za-z0-9_-]/g, '_'); }
+// بترجع صفوف جاهزة توضع جوه <tbody>...</tbody> (بتقفل وتفتح tbody لكل شهر مطوي)
+// o: {cols, row:(item, index)=>html, date:item=>'YYYY-MM-DD', sum:(items)=>html, noFold}
+function monthFoldRows(groupKey, items, o){
+  o = o || {};
+  const dateOf = o.date || (x=>x && x.date);
+  if(o.noFold) return items.map((it, i)=>o.row(it, i)).join('');
+  const cur = todayMonth();
+  const groups = [], byM = {};
+  items.forEach((it, i)=>{
+    const m = monthKey(dateOf(it)||'');
+    const k = (m && m < cur) ? m : '__cur';
+    if(!byM[k]){ byM[k] = {m:k, list:[]}; groups.push(byM[k]); }
+    byM[k].list.push({it, i});
+  });
+  return groups.map(g=>{
+    const rows = g.list.map(x=>o.row(x.it, x.i)).join('');
+    if(g.m==='__cur') return rows;
+    const id = _mfId(groupKey+'_'+g.m);
+    const open = !!_mfOpen[id];
+    const sum = o.sum ? o.sum(g.list.map(x=>x.it)) : '';
+    return `</tbody><tbody class="mf-head"><tr onclick="toggleMonthFold('${id}')" style="cursor:pointer; background:var(--surface-2);" title="اضغط للعرض / الإخفاء">
+        <td colspan="${o.cols||8}" style="font-weight:700; color:var(--accent);"><span data-mfa="${id}">${open?'▾':'◂'}</span> ${monthLabel(g.m)} <span style="color:var(--text-dim); font-weight:400; font-size:12px;">— ${g.list.length} حركة${sum?' · '+sum:''} · ${open?'اضغط للإخفاء':'اضغط للعرض'}</span></td>
+      </tr></tbody><tbody data-mf="${id}" style="${open?'':'display:none;'}">${rows}</tbody><tbody>`;
+  }).join('');
+}
+function toggleMonthFold(id){
+  _mfOpen[id] = !_mfOpen[id];
+  const open = _mfOpen[id];
+  document.querySelectorAll('tbody[data-mf="'+id+'"]').forEach(b=>{ b.style.display = open ? '' : 'none'; });
+  document.querySelectorAll('[data-mfa="'+id+'"]').forEach(a=>{
+    a.textContent = open ? '▾' : '◂';
+    const hint = a.parentNode.querySelector('span:last-child');
+    if(hint) hint.textContent = hint.textContent.replace(open?'اضغط للعرض':'اضغط للإخفاء', open?'اضغط للإخفاء':'اضغط للعرض');
+  });
+}
+function mfMoneySum(list, f){ return 'الإجمالي ' + fmtMoney(list.reduce((s,x)=>s+(Number(f(x))||0),0)); }
+
+/* ================= حجم الخط (تكبير / تصغير الشاشة) ================= */
+const FONT_SCALES = [0.9, 1, 1.1, 1.2, 1.3, 1.45, 1.6];
+function getFontScale(){
+  let v = 1;
+  try{ v = Number(localStorage.getItem('erpFontScale')) || 1; }catch(e){}
+  return FONT_SCALES.includes(v) ? v : 1;
+}
+function applyFontScale(s){
+  document.documentElement.style.setProperty('--fz', String(s));
+  if(document.body) document.body.style.zoom = s===1 ? '' : String(s);
+  document.querySelectorAll('.fz-label').forEach(el=>{ el.textContent = Math.round(s*100)+'%'; });
+}
+function changeFontScale(dir){
+  const cur = getFontScale();
+  let i = FONT_SCALES.indexOf(cur);
+  i = dir===0 ? FONT_SCALES.indexOf(1) : Math.max(0, Math.min(FONT_SCALES.length-1, i+dir));
+  const s = FONT_SCALES[i];
+  try{ localStorage.setItem('erpFontScale', String(s)); }catch(e){}
+  applyFontScale(s);
+}
+(function initFontScale(){
+  const go = ()=>applyFontScale(getFontScale());
+  if(document.body) go(); else document.addEventListener('DOMContentLoaded', go);
+})();
+
 /* ================= مشتريات الموردين على المشاريع ================= */
 function projectSupplierInvoices(projectName){
   const out = [];
@@ -11127,7 +11224,7 @@ function renderProjectSupplierSection(p){
     ${list.length ? `
     <div class="table-wrap" style="margin-bottom:10px;"><div class="table-scroll"><table>
       <thead><tr><th>التاريخ</th><th>المورد</th><th>رقم الفاتورة</th><th>قيمة الفاتورة</th><th>المسدد</th><th>المستحق للمورد</th><th></th></tr></thead>
-      <tbody>${list.map(({s, inv})=>{ const pd = supplierInvoicePaidTotal(inv); const rem = supplierInvoiceRemaining(inv); return `<tr>
+      <tbody>${monthFoldRows('psup_'+p._id, list, {cols:7, date:x=>x.inv.date, sum:l=>mfMoneySum(l, x=>x.inv.amount)+' · متبقي '+fmtMoney(l.reduce((s,x)=>s+supplierInvoiceRemaining(x.inv),0)), row:({s, inv})=>{ const pd = supplierInvoicePaidTotal(inv); const rem = supplierInvoiceRemaining(inv); return `<tr>
         <td>${inv.date||'—'}</td>
         <td style="font-weight:700; cursor:pointer;" onclick="goTo('suppliers'); openSupplierDetail('${s._id}')">${s.name}${phaseBadge(inv.project, inv.phase)}</td>
         <td style="cursor:pointer; color:var(--accent); text-decoration:underline;" onclick="openSupplierInvoiceView('${s._id}','${inv.id}')">${inv.number||'عرض'}${inv.note?`<div style="color:var(--text-dim); font-size:11.5px;">${inv.note}</div>`:''}</td>
@@ -11135,7 +11232,7 @@ function renderProjectSupplierSection(p){
         <td style="color:var(--good);">${fmtMoney(pd)}</td>
         <td style="font-weight:700; color:${rem>0?'var(--bad)':'var(--good)'};">${fmtMoney(rem)}</td>
         <td class="row-actions">${(canAdd && rem>0) ? `<button class="btn small" onclick="openSupplierPaymentForm('${s._id}','${inv.id}')">+ سداد</button>` : ''}</td>
-      </tr>`; }).join('')}
+      </tr>`; }})}
         <tr style="background:var(--surface-2); font-weight:900;"><td colspan="3">الإجمالي</td><td>${fmtMoney(total)}</td><td>${fmtMoney(paid)}</td><td>${fmtMoney(remaining)}</td><td></td></tr>
       </tbody>
     </table></div></div>` : `<div class="table-wrap" style="margin-bottom:10px;"><div class="empty-state">لا توجد فواتير موردين مسجلة على المشروع ده</div></div>`}
@@ -11736,7 +11833,7 @@ function renderProjectLaborSection(p){
   const canAdd = canRecordAttendance();
   const showMoney = !isAttendanceOnlyUser();
   const months = Array.from(new Set(all.map(x=>monthKey(x.a.date)).concat([todayMonth()]))).sort().reverse();
-  const m = (projectLaborMonth && (projectLaborMonth==='all' || months.includes(projectLaborMonth))) ? projectLaborMonth : todayMonth();
+  const m = (projectLaborMonth && (projectLaborMonth==='all' || months.includes(projectLaborMonth))) ? projectLaborMonth : 'all';
   const list = m==='all' ? all : all.filter(x=>monthKey(x.a.date)===m);
   const units = list.reduce((s,x)=>s+attendanceUnits(x.a),0);
   const cost = list.reduce((s,x)=>s+attendanceCost(x.h, x.a),0);
@@ -11763,7 +11860,7 @@ function renderProjectLaborSection(p){
     ${list.length ? `
     <div class="table-wrap" style="margin-bottom:10px;"><div class="table-scroll"><table>
       <thead><tr><th>التاريخ</th><th>العامل</th><th>أيام</th>${showMoney?'<th>أجر اليوم</th><th>التكلفة</th><th>الصرف</th>':''}<th>ملاحظة</th><th></th></tr></thead>
-      <tbody>${list.map(({h, a})=>{ const st = attendancePaidStatus(h, a); return `<tr>
+      <tbody>${monthFoldRows('plab_'+p._id+'_'+m, list, {cols: showMoney?8:5, date:x=>x.a.date, sum:l=> showMoney ? mfMoneySum(l, x=>attendanceCost(x.h, x.a)) : fmtUnits(l.reduce((s,x)=>s+attendanceUnits(x.a),0))+' يوم', row:({h, a})=>{ const st = attendancePaidStatus(h, a); return `<tr>
         <td>${a.date}</td>
         <td style="font-weight:700; cursor:pointer;" onclick="goTo('hr'); openEmployeeDetail('${h._id}')">${h.name}<div style="font-size:11.5px; color:var(--text-dim); font-weight:400;">${h.role||''}</div></td>
         <td>${fmtUnits(attendanceUnits(a))}${a.status==='نصف يوم'?' (نص يوم)':''}</td>
@@ -11771,7 +11868,7 @@ function renderProjectLaborSection(p){
         <td>${st==='paid'?'<span class="badge b-good">اتصرف</span>':'<span class="badge b-warn">مستحق</span>'}</td>`:''}
         <td>${a.note||'—'}</td>
         <td class="row-actions">${(isAdmin() && !a.settled) ? `<button class="btn secondary small" onclick="openAttendanceForm('${h._id}','${a.id}')">تعديل</button><button class="btn danger small" onclick="deleteAttendance('${h._id}','${a.id}')">حذف</button>` : ''}</td>
-      </tr>`; }).join('')}
+      </tr>`; }})}
       ${showMoney ? `<tr style="background:var(--surface-2); font-weight:900;"><td colspan="2">الإجمالي</td><td>${fmtUnits(units)}</td><td></td><td>${fmtMoney(cost)}</td><td></td><td></td><td></td></tr>` : ''}
       </tbody>
     </table></div></div>` : `<div class="table-wrap" style="margin-bottom:10px;"><div class="empty-state">مفيش يوميات مسجلة على المشروع ${m==='all'?'':'في '+monthLabel(m)}</div></div>`}
@@ -12224,7 +12321,7 @@ function renderSupplierDetail(id){
   const t = supplierTotals(s);
   const al = supplierAllocation(s);
   const invoices = (s.invoices||[]).slice().sort((a,b)=>(b.date||'').localeCompare(a.date||'') || (b._n||0)-(a._n||0));
-  const invRows = invoices.length ? invoices.map(inv=>{
+  const invRows = invoices.length ? monthFoldRows('supinv_'+s._id, invoices, {cols:9, sum:l=>mfMoneySum(l, i=>i.amount)+' · متبقي '+fmtMoney(l.reduce((t,i)=>t+Math.max(0, round2((Number(i.amount)||0)-supplierInvoicePaidTotal(i))),0)), row:inv=>{
     const paid = supplierInvoicePaidTotal(inv);
     const remaining = Math.max(0, round2((Number(inv.amount)||0) - paid));
     return `<tr style="cursor:pointer;" onclick="openSupplierInvoiceView('${s._id}','${inv.id}')" title="اضغط لعرض الفاتورة كاملة">
@@ -12241,14 +12338,14 @@ function renderSupplierDetail(id){
         <button class="btn danger small" onclick="deleteSupplierInvoice('${s._id}','${inv.id}')">حذف</button>` : ''}
       </td>
     </tr>`;
-  }).join('') : `<tr><td colspan="9" style="text-align:center;">لا توجد فواتير مسجلة بعد</td></tr>`;
+  }}) : `<tr><td colspan="9" style="text-align:center;">لا توجد فواتير مسجلة بعد</td></tr>`;
   const credits = al.credits.filter(c=>c.pay).slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
-  const payRows = credits.map(c=>`<tr>
+  const payRows = monthFoldRows('suppay_'+s._id, credits, {cols:5, sum:l=>mfMoneySum(l, c=>c.amount), row:c=>`<tr>
       <td>${c.date}</td><td style="font-weight:700;">${fmtMoney(c.amount)}</td>
       <td style="font-size:12.5px;">${(c.uses||[]).map(u=>u.label+': '+fmtMoney(u.amount)+(u.full?' ✓':' (جزء)')).join('<br>') || '—'}${c.left>0.004?`<div style="color:var(--warn);">رصيد مقدم متبقي: ${fmtMoney(c.left)}</div>`:''}</td>
       <td>${c.pay.note||'—'}${typeof paySourceBadge==='function' ? paySourceBadge(c.pay) : ''}</td>
       <td class="row-actions">${canModify ? `<button class="btn danger small" onclick="deleteSupplierAccountPayment('${s._id}','${c.pay.id}')">حذف</button>` : ''}</td>
-    </tr>`).join('');
+    </tr>`});
   return `
     <button class="btn secondary small" onclick="backToSuppliersList()" style="margin-bottom:16px;">→ رجوع لكل الموردين</button>
     <div class="page-head">
@@ -12636,7 +12733,6 @@ function renderProjectCasualSection(p){
   const t = casualTotals(rows);
   const workers = casualByWorker(p);
   const canAdd = canEdit('projects');
-  const shown = casualShowAll ? rows : rows.slice(0, 15);
   return `
     <div class="section-title" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
       <span>🧑‍🔧 عمالة مؤقتة على المشروع <span style="font-size:12px; color:var(--text-dim); font-weight:400;">(مش موظفين — مش بتظهر في الموارد البشرية)</span></span>
@@ -12666,15 +12762,14 @@ function renderProjectCasualSection(p){
     <div style="font-weight:700; margin:12px 0 6px; font-size:13.5px;">سجل اليوميات</div>
     <div class="table-wrap" style="margin-bottom:6px;"><div class="table-scroll"><table>
       <thead><tr><th>التاريخ</th><th>العامل</th><th>أيام</th><th>اليومية</th><th>المبلغ</th><th>الصرف</th><th>ملاحظة</th><th></th></tr></thead>
-      <tbody>${shown.map(r=>`<tr>
+      <tbody>${monthFoldRows('cas_'+p._id, rows, {cols:8, sum:l=>mfMoneySum(l, x=>x.amount), row:r=>`<tr>
         <td>${r.date}</td><td>${r.name}${r.trade?`<div style="font-size:11.5px; color:var(--text-dim);">${r.trade}</div>`:''}</td>
         <td>${fmtUnits(Number(r.units)||0)}</td><td>${fmtMoney(r.rate)}</td><td style="font-weight:700;">${fmtMoney(r.amount)}</td>
         <td>${r.paid ? `<span class="badge b-good">اتصرف ${r.paidDate||''}</span>${typeof paySourceBadge==='function'?paySourceBadge(r):''}` : '<span class="badge b-warn">مستحق</span>'}</td>
         <td>${r.note||'—'}</td>
         <td class="row-actions">${canAdd ? `<button class="btn secondary small" onclick="openCasualEditForm('${p._id}','${r.id}')">تعديل</button>` : ''}${isAdmin() ? `<button class="btn danger small" onclick="deleteCasualRow('${p._id}','${r.id}')">حذف</button>` : ''}</td>
-      </tr>`).join('')}</tbody>
+      </tr>`})}</tbody>
     </table></div></div>
-    ${rows.length>15 ? `<button class="btn secondary small" onclick="casualShowAll=!casualShowAll; renderPage();" style="margin-bottom:10px;">${casualShowAll?'عرض آخر 15 بس':'عرض الكل ('+rows.length+')'}</button>` : ''}
     ` : `<div class="table-wrap" style="margin-bottom:10px;"><div class="empty-state">مفيش عمالة مؤقتة مسجلة على المشروع ده</div></div>`}
     <div style="font-size:12px; color:var(--text-dim); margin-bottom:24px;">تكلفة العمالة المؤقتة بتتحسب على المشروع بتاريخها (تحت "أجور العمالة") حتى لو لسه متصرفتش، واللي متصرفش بيظهر في المركز المالي ضمن "مستحق للعمالة".</div>
   `;
@@ -13081,19 +13176,19 @@ function renderExtraDetail(id){
     </div>
     <div class="table-wrap" style="margin-bottom:24px;"><div class="table-scroll"><table>
       <thead><tr><th>#</th><th>التاريخ</th><th>البيان</th><th>الكمية</th><th>الوحدة</th><th>سعر الوحدة</th><th>الإجمالي</th><th>الحالة</th><th>ملاحظة</th><th></th></tr></thead>
-      <tbody>${items.length ? items.map((i, k)=>`<tr>
+      <tbody>${items.length ? monthFoldRows('xw_'+g._id, items, {cols:10, noFold:!!filtered, sum:l=>mfMoneySum(l, i=>i.status==='مرفوض'?0:i.amount), row:(i, k)=>`<tr>
         <td>${k+1}</td><td>${i.date||'—'}</td><td style="font-weight:700;">${i.description}</td><td>${i.qty}</td><td>${i.unit||'—'}</td>
         <td>${fmtMoney(i.unitPrice)}</td><td style="font-weight:700;">${fmtMoney(i.amount)}</td>
         <td><span class="badge ${badge(i.status)}">${i.status}</span></td><td>${i.note||'—'}</td>
         <td class="row-actions">${editable ? `<button class="btn secondary small" onclick="openExtraItemForm('${g._id}','${i.id}')">تعديل</button>` : ''}${admin ? `<button class="btn danger small" onclick="deleteExtraItem('${g._id}','${i.id}')">حذف</button>` : ''}</td>
-      </tr>`).join('') + `<tr style="background:var(--surface-2); font-weight:900;"><td colspan="6">${filtered?'إجمالي المعروض':'الإجمالي'} (معتمد ${fmtMoney(tF.approved)}${tF.pending?' + تحت المراجعة '+fmtMoney(tF.pending):''})</td><td>${fmtMoney(tF.approved+tF.pending)}</td><td colspan="3"></td></tr>`
+      </tr>`}) + `<tr style="background:var(--surface-2); font-weight:900;"><td colspan="6">${filtered?'إجمالي المعروض':'الإجمالي'} (معتمد ${fmtMoney(tF.approved)}${tF.pending?' + تحت المراجعة '+fmtMoney(tF.pending):''})</td><td>${fmtMoney(tF.approved+tF.pending)}</td><td colspan="3"></td></tr>`
         : `<tr><td colspan="10" style="text-align:center;">${filtered?'مفيش بنود بالفلتر ده':'لسه مفيش بنود — دوس "+ بند"'}</td></tr>`}</tbody>
     </table></div></div>
     <div class="section-title">💵 التحصيلات</div>
     <div class="table-wrap" style="margin-bottom:24px;"><div class="table-scroll"><table>
       <thead><tr><th>التاريخ</th><th>المبلغ</th><th>ملاحظة</th><th></th></tr></thead>
-      <tbody>${pays.length ? pays.map(p=>`<tr><td>${p.date}</td><td style="font-weight:700; color:var(--good);">${fmtMoney(p.amount)}</td><td>${p.note||'—'}</td>
-        <td class="row-actions">${admin ? `<button class="btn danger small" onclick="deleteExtraPay('${g._id}','${p.id}')">حذف</button>` : ''}</td></tr>`).join('') : '<tr><td colspan="4" style="text-align:center;">لسه مفيش تحصيلات</td></tr>'}</tbody>
+      <tbody>${pays.length ? monthFoldRows('xwp_'+g._id, pays, {cols:4, sum:l=>mfMoneySum(l, p=>p.amount), row:p=>`<tr><td>${p.date}</td><td style="font-weight:700; color:var(--good);">${fmtMoney(p.amount)}</td><td>${p.note||'—'}</td>
+        <td class="row-actions">${admin ? `<button class="btn danger small" onclick="deleteExtraPay('${g._id}','${p.id}')">حذف</button>` : ''}</td></tr>`}) : '<tr><td colspan="4" style="text-align:center;">لسه مفيش تحصيلات</td></tr>'}</tbody>
     </table></div></div>
     <div style="font-size:12px; color:var(--text-dim);">البنود "المعتمدة" بس هي اللي بتتحسب مستحق على العميل. التحصيل بيتسجل إيراد "أعمال إضافية" على المشروع بتاريخه${onSystem?' وبيظهر في حسابات المشروع':''}.</div>
   `;
