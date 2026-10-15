@@ -223,6 +223,23 @@ tbody tr:hover{background:var(--surface-2);}
 #printModalBody table{width:100%; border-collapse:collapse; font-size:13px; margin-top:10px;}
 #printModalBody th,#printModalBody td{border:1px solid #999; padding:7px; text-align:right;}
 #printModalBody th{background:#eee; color:#000;}
+.gs-input{background:var(--surface); border:1px solid var(--border); color:var(--text); padding:6px 10px; border-radius:6px; font-family:inherit; font-size:13px; width:240px; outline:none;}
+.gs-input:focus{border-color:var(--accent);}
+.gs-big{width:100%; padding:13px 16px; font-size:15px; border-radius:10px; margin-bottom:20px;}
+.gs-panel{position:fixed; z-index:70; display:none; background:var(--surface); border:1px solid var(--border); border-radius:10px; box-shadow:0 12px 32px rgba(0,0,0,.35); overflow-y:auto; padding-bottom:6px;}
+.gs-group{padding:9px 14px 4px; font-size:11.5px; color:var(--accent); font-weight:700; border-top:1px solid var(--border);}
+.gs-group:first-child{border-top:none;}
+.gs-group span{color:var(--text-dim); font-weight:400;}
+.gs-item{display:flex; gap:10px; padding:7px 14px; cursor:pointer; align-items:flex-start;}
+.gs-item.sel, .gs-item:hover{background:var(--surface-2);}
+.gs-ic{width:22px; text-align:center; flex-shrink:0;}
+.gs-tx{display:flex; flex-direction:column; min-width:0;}
+.gs-tx b{font-size:13.5px; font-weight:700; overflow:hidden; text-overflow:ellipsis;}
+.gs-tx small{color:var(--text-dim); font-size:11.5px; margin-top:2px;}
+.gs-empty{padding:16px; color:var(--text-dim); text-align:center;}
+tr.gs-flash > td{animation:gsFlashAnim 2.6s ease;}
+@keyframes gsFlashAnim{0%,45%{background:var(--accent-dim); color:#1D2125;} 100%{background:transparent;}}
+@media(max-width:560px){ #gsTopWrap{order:-1; width:100%;} #gsTopWrap .gs-input{width:100%;} }
 @media print{ body{zoom:1 !important;} }
 .fz-ctl{display:inline-flex; gap:3px; align-items:center;}
 .fz-ctl .btn{padding:4px 8px; min-width:30px;}
@@ -315,6 +332,7 @@ tbody tr:hover{background:var(--surface-2);}
     <div class="user-bar">
       <span class="live-clock" id="liveClock" title="التاريخ والوقت الحالي بتوقيت جهازك"></span>
       <span style="display:flex; align-items:center; gap:12px;">
+        <span id="gsTopWrap"></span>
         <span class="fz-ctl" title="حجم الخط">
           <button class="btn secondary small" onclick="changeFontScale(-1)" title="تصغير الخط">A−</button>
           <button class="btn secondary small fz-label" onclick="changeFontScale(0)" title="رجوع للحجم الافتراضي">100%</button>
@@ -874,7 +892,7 @@ tbody tr:hover{background:var(--surface-2);}
       <button class="modal-close" onclick="closeConfirmModal()">×</button>
     </div>
     <div class="modal-body">
-      <p id="confirm-message" style="margin:0; line-height:1.6;"></p>
+      <p id="confirm-message" style="margin:0; line-height:1.6; white-space:pre-line;"></p>
     </div>
     <div class="modal-foot">
       <button class="btn secondary" id="confirm-cancel-btn" onclick="closeConfirmModal()">إلغاء</button>
@@ -2126,7 +2144,7 @@ function normalizeData(){
   if(!Array.isArray(DATA.revenueAccounts)) DATA.revenueAccounts = DEFAULT_REVENUE_ACCOUNTS.slice();
   if(!DATA.revenueAccounts.includes('إيرادات أعمال إضافية')) DATA.revenueAccounts.push('إيرادات أعمال إضافية');
   if(!Array.isArray(DATA.expenseAccounts)) DATA.expenseAccounts = DEFAULT_EXPENSE_ACCOUNTS.slice();
-  ['أجور ومرتبات','سلف الموظفين','مشتريات من الموردين','مصروفات مقاولي الباطن','أجور العمالة'].forEach(acc=>{ if(!DATA.expenseAccounts.includes(acc)) DATA.expenseAccounts.push(acc); });
+  ['أجور ومرتبات','سلف الموظفين','مشتريات من الموردين','مصروفات مقاولي الباطن','أجور العمالة','مصاريف تحويل أموال'].forEach(acc=>{ if(!DATA.expenseAccounts.includes(acc)) DATA.expenseAccounts.push(acc); });
   if(!Array.isArray(DATA.collections)) DATA.collections = [];
   if(DATA.capital===undefined || DATA.capital===null) DATA.capital = '0';
   if(!DATA.overheadAllocationBasis) DATA.overheadAllocationBasis = 'equal';
@@ -2167,6 +2185,7 @@ function normalizeData(){
     if(!Array.isArray(p.adjustments)) p.adjustments = [];
     if(!Array.isArray(p.casualLabor)) p.casualLabor = [];
     if(!Array.isArray(p.casualAdvances)) p.casualAdvances = [];
+    if(!Array.isArray(p.casualArchived)) p.casualArchived = [];
     if(p.actualDeliveryDate===undefined) p.actualDeliveryDate = '';
     if(p.retentionCollectedDate===undefined) p.retentionCollectedDate = null;
     if(p.retentionCollectedAmount===undefined) p.retentionCollectedAmount = 0;
@@ -2898,6 +2917,7 @@ function printProjectStatement(id){
 }
 
 function renderPage(){
+  { const tw = document.getElementById('gsTopWrap'); if(tw){ if(!tw.firstChild && typeof gsBoxHtml==='function') tw.innerHTML = gsBoxHtml('gsTop'); tw.style.display = currentPage==='dashboard' ? 'none' : ''; } }
   if(currentPage==='dashboard'){ pagesEl.innerHTML = renderDashboard(); }
   else if(currentPage==='materials'){ pagesEl.innerHTML = renderMaterialsPage(); }
   else if(currentPage==='subs' && selectedSubId){ pagesEl.innerHTML = renderSubDetail(selectedSubId); attachSubDetailEvents(); }
@@ -3069,6 +3089,7 @@ function renderDashboard(){
         ${(currentUser && currentUser.role==='مدير') ? `<button class="btn secondary small" onclick="downloadBackup()">⬇ تنزيل نسخة احتياطية</button><button class="btn secondary small" onclick="pickBackupFile()">⬆ استيراد بيانات</button><button class="btn secondary small" id="resetDataBtn" onclick="requestFactoryReset()">مسح كل البيانات (إعادة تعيين)</button>` : ''}
       </div>
     </div>
+    ${typeof gsBoxHtml==='function' ? gsBoxHtml('gsDash', true) : ''}
 
     ${dueReminders.length ? `
     <div class="section-title" style="margin-top:0;">تذكيراتي</div>
@@ -3121,7 +3142,8 @@ function renderMiniTable(moduleKey, cols){
 
 function renderModulePage(moduleKey){
   const cfg = MODULES[moduleKey];
-  const rows = DATA[moduleKey];
+  const archivedN = moduleKey==='hr' ? DATA.hr.filter(r=>r.archived).length : 0;
+  const rows = moduleKey==='hr' ? DATA.hr.filter(r=>!r.archived || hrShowArchived) : DATA[moduleKey];
   const fieldsByKey = Object.fromEntries(cfg.fields.map(f=>[f.key,f]));
   const isProjects = moduleKey==='projects';
   const isHr = moduleKey==='hr';
@@ -3138,12 +3160,12 @@ function renderModulePage(moduleKey){
       </tr></thead>
       <tbody id="tbody-${moduleKey}">
         ${rows.map(r=>`
-          <tr data-id="${r._id}" ${isProjects?`data-openproject="${r._id}" style="cursor:pointer;"`:''} ${isHr?`data-openemployee="${r._id}" style="cursor:pointer;"`:''} ${isFinance?`data-openinvoice="${r._id}" style="cursor:pointer;"`:''}>
+          <tr data-id="${r._id}" ${isProjects?`data-openproject="${r._id}" style="cursor:pointer;"`:''} ${isHr?`data-openemployee="${r._id}" style="cursor:pointer;${r.archived?' opacity:.7;':''}"`:''} ${isFinance?`data-openinvoice="${r._id}" style="cursor:pointer;"`:''}>
             ${cfg.columns.map(c=>`<td>${cellValue(moduleKey, fieldsByKey[c], r[c])}</td>`).join('')}
             <td class="row-actions">
               ${(moduleKey==='hr' && !isAttendanceOnlyUser()) ? `<button class="btn secondary small" onclick="event.stopPropagation(); printEmployeeStatement('${r._id}')">🖨 كشف حساب</button>` : ''}
-              ${canModify ? `<button class="btn secondary small" data-edit="${r._id}">تعديل</button>
-              <button class="btn danger small" data-del="${r._id}">حذف</button>` : ''}
+              ${(isHr && r.archived) ? (canModify ? `<span class="badge b-neutral">🗄 مؤرشف</span> <button class="btn small" onclick="event.stopPropagation(); restoreEmployee('${r._id}')">↩ استرجاع</button><button class="btn danger small" onclick="event.stopPropagation(); purgeEmployee('${r._id}')">حذف نهائي</button>` : '<span class="badge b-neutral">🗄 مؤرشف</span>') : canModify ? `<button class="btn secondary small" data-edit="${r._id}">تعديل</button>
+              <button class="btn danger small" data-del="${r._id}">${isHr?'حذف / أرشفة':'حذف'}</button>` : ''}
             </td>
           </tr>`).join('')}
       </tbody>
@@ -3173,6 +3195,7 @@ function renderModulePage(moduleKey){
     </div>
     <div class="toolbar">
       <input class="search-input" id="search-${moduleKey}" placeholder="بحث في ${cfg.label}...">
+      ${archivedN ? `<button class="btn secondary small" onclick="hrShowArchived=!hrShowArchived; renderPage();">🗄 ${hrShowArchived?'إخفاء المؤرشفين':'عرض المؤرشفين ('+archivedN+')'}</button>` : ''}
     </div>
     ${tableBody}
   `;
@@ -3293,6 +3316,7 @@ function saveRecord(){
 }
 function deleteRecord(moduleKey, id){
   if(!isAdmin()) return;
+  if(moduleKey==='hr' && typeof deleteEmployeeSafely==='function') return deleteEmployeeSafely(id);
   openConfirmModal('هل أنت متأكد من الحذف؟', ()=>{
     const rec = DATA[moduleKey].find(r=>r._id===id);
     const cfg = MODULES[moduleKey];
@@ -7122,6 +7146,7 @@ function renderEmployeeDetail(id){
 
   return `
     <button class="btn secondary small" onclick="backToHrList()" style="margin-bottom:16px;">→ رجوع لكل الموارد البشرية</button>
+    ${h.archived ? archivedBanner('الموظف ده مؤرشف'+(h.archivedAt?' من '+h.archivedAt:'')+' — كل حركاته محفوظة ومحسوبة، بس مش بيظهر في القوايم واختيارات التسجيل.', "restoreEmployee('"+h._id+"')", "purgeEmployee('"+h._id+"')") : ''}
     <div class="page-head">
       <div>
         <div class="page-title">${h.name}</div>
@@ -10351,7 +10376,8 @@ function cashboxAutoEntries(upsert){
     if(e.type!=='مصروف' || !(Number(e.amount)>0) || !e.date || e.linkedSettlement) return;
     upsert('cashbox:'+b._id+':'+e.id, { phase: e.phase||'',
       date:e.date, type:'مصروف', account:e.account||'مصروفات أخرى', amount:Number(e.amount)||0, project:e.project||'',
-      description:'مصروف من عهدة '+b.name+(b.custodian?(' ('+b.custodian+')'):'')+(e.description?(' — '+e.description):'')+(e.ref?(' — إيصال '+e.ref):'')+(e.project?'':' (مصروف عام — بدون مشروع محدد)'),
+      description: e.isFee ? ('مصاريف تحويل أموال من '+b.name+(e.description?(' — '+e.description.replace(/^مصاريف تحويل( — )?/, '')):'')+' (مصروفات إدارية وعمومية)')
+        : 'مصروف من عهدة '+b.name+(b.custodian?(' ('+b.custodian+')'):'')+(e.description?(' — '+e.description):'')+(e.ref?(' — إيصال '+e.ref):'')+(e.project?'':' (مصروف عام — بدون مشروع محدد)'),
     });
   }));
 }
@@ -10594,9 +10620,30 @@ function openCashEntryForm(boxId, type, editId){
       <div class="field"><label>رقم الإيصال / الفاتورة (اختياري)</label><input id="ce-ref" type="text" value="${e?(e.ref||''):''}"></div>
     `}
     <div class="field"><label>البيان</label><input id="ce-desc" type="text" value="${e?(e.description||''):''}" placeholder="${isIn?'مثال: تغذية أول الشهر':'مثال: نقل مواد / وجبات عمال / أدوات'}"></div>
+    ${(!isIn && !(e && (e.feeOf || e.isFee))) ? `<div class="field"><label>مصاريف التحويل (اختياري)</label><input id="ce-fee" type="number" min="0" step="any" value="${e ? (cashFeeOf(b, e.id) ? cashFeeOf(b, e.id).amount : '') : ''}" placeholder="مثال: 15">
+      <div style="font-size:11.5px; color:var(--text-dim); margin-top:4px;">بتتخصم من العهدة مع المبلغ، وبتتسجل لوحدها في "${CASH_FEE_ACCOUNT}" (مصروفات إدارية وعمومية) — مش على الحساب ولا المشروع ولا الشخص اللي اتصرف له.</div></div>` : ''}
     <div style="display:flex; gap:8px; justify-content:flex-end;"><button class="btn secondary" onclick="cbClose('cashEntryOverlay')">إلغاء</button><button class="btn" id="ce-save" onclick="saveCashEntry()">حفظ</button></div>
   `);
   if(!isIn && !e) updateCashEmpFields();
+}
+/* ---------- مصاريف التحويل: حركة منفصلة في العهدة على حساب "مصاريف تحويل أموال" (إدارية وعمومية، من غير مشروع) ---------- */
+const CASH_FEE_ACCOUNT = 'مصاريف تحويل أموال';
+function cashFeeOf(b, entryId){ return (b.entries||[]).find(x=>x.feeOf===entryId) || null; }
+function readCashFee(){
+  const el = document.getElementById('ce-fee');
+  if(!el) return 0;
+  const v = Number(el.value)||0;
+  return v>0 ? round2(v) : 0;
+}
+// mainId: رقم حركة الصرف في العهدة (لو موجودة) عشان التعديل والحذف يمشوا مع بعض
+function addCashFee(b, date, fee, label, mainId){
+  if(!(fee>0)) return null;
+  const n = (b.entries.length ? Math.max(...b.entries.map(x=>x._n||0)) : 0) + 1;
+  const rec = {id:'CE-'+b._id+'-'+n, _n:n, type:'مصروف', date, amount:fee, account:CASH_FEE_ACCOUNT, project:'', phase:'',
+    description:'مصاريف تحويل'+(label?' — '+label:''), isFee:true, by: currentUser ? currentUser.name : '', byId: myUserId()};
+  if(mainId) rec.feeOf = mainId;
+  b.entries.push(rec);
+  return rec;
 }
 /* ---------- صرف سلفة / مرتب لموظف من العهدة: بيتسجل في حساب الموظف نفسه تلقائي ---------- */
 const CASH_EMP_ACCOUNTS = {'سلف الموظفين':'advance', 'أجور ومرتبات':'salary', 'مصروفات مقاولي الباطن':'sub', 'أجور العمالة':'casual'};
@@ -10685,6 +10732,7 @@ function saveCashCasualPayment(b, date, description){
   const mode = document.getElementById('ce-cas-mode').value;
   if(!p){ alert('اختار المشروع'); return false; }
   if(!name){ alert('اكتب اسم العامل'); return false; }
+  if(typeof casualUnarchive==='function') casualUnarchive(p, name);
   const by = currentUser ? currentUser.name : '', byId = myUserId();
   const list = casualList(p);
   if(mode==='new'){
@@ -10913,10 +10961,12 @@ function saveCashEntry(){
   if(date < b.openingDate){ alert('التاريخ قبل تاريخ بداية العهدة ('+b.openingDate+')'); return; }
   if(isCashboxMonthClosed(b, cbMonth(date))){ alert('شهر '+cbMonthLabel(cbMonth(date))+' مقفول — مينفعش تسجل أو تعدّل حركات فيه. المدير يقدر يلغي الإقفال لو محتاج.'); return; }
   const isIn = cashEntryState.type==='تغذية';
+  const fee = isIn ? 0 : readCashFee();
   const empMode = (!isIn && !cashEntryState.editId) ? cashEmpMode() : '';
   if(empMode==='casual'){
     const c = saveCashCasualPayment(b, date, description);
     if(!c) return;
+    addCashFee(b, date, fee, 'صرف لـ'+c.name+' — '+c.project);
     generateAutoEntries();
     saveData();
     cbClose('cashEntryOverlay');
@@ -10928,6 +10978,7 @@ function saveCashEntry(){
   if(empMode==='sub'){
     const s = saveCashSubPayment(b, date, amount, description);
     if(!s) return;
+    addCashFee(b, date, fee, 'دفعة لـ'+s.name);
     generateAutoEntries();
     saveData();
     cbClose('cashEntryOverlay');
@@ -10939,6 +10990,7 @@ function saveCashEntry(){
   if(empMode){
     const h = saveCashEmpPayment(b, empMode, date, amount, description);
     if(!h) return;
+    addCashFee(b, date, fee, (empMode==='advance'?'سلفة ':'مرتب ')+h.name);
     generateAutoEntries();
     saveData();
     cbClose('cashEntryOverlay');
@@ -10959,15 +11011,26 @@ function saveCashEntry(){
     data.phase = readPhase('ce');
     data.ref = document.getElementById('ce-ref').value.trim();
   }
+  let mainId;
   if(cashEntryState.editId){
     const e = b.entries.find(x=>x.id===cashEntryState.editId);
     if(isCashboxMonthClosed(b, cbMonth(e.date))){ alert('الحركة دي في شهر مقفول'); return; }
+    if(e.feeOf || e.isFee){ data.account = CASH_FEE_ACCOUNT; data.project = ''; data.phase = ''; }
     Object.assign(e, data);
+    mainId = e.id;
+    if(!isIn && !e.isFee){
+      const old = cashFeeOf(b, e.id);
+      if(old && fee>0) Object.assign(old, {amount:fee, date, description:'مصاريف تحويل'+(description?' — '+description:'')});
+      else if(old && !fee) b.entries = b.entries.filter(x=>x!==old);
+      else if(!old && fee>0) addCashFee(b, date, fee, description, e.id);
+    }
   }else{
     const n = (b.entries.length ? Math.max(...b.entries.map(x=>x._n||0)) : 0) + 1;
-    b.entries.push(Object.assign({id:'CE-'+b._id+'-'+n, _n:n}, data));
+    mainId = 'CE-'+b._id+'-'+n;
+    b.entries.push(Object.assign({id:mainId, _n:n}, data));
+    if(!isIn) addCashFee(b, date, fee, description, mainId);
   }
-  logAudit(cashEntryState.editId?'تعديل':'إضافة', isIn?'تغذية عهدة':'مصروف عهدة', b.name, fmtMoney(amount)+(description?' — '+description:''));
+  logAudit(cashEntryState.editId?'تعديل':'إضافة', isIn?'تغذية عهدة':'مصروف عهدة', b.name, fmtMoney(amount)+(description?' — '+description:'')+(fee?' + مصاريف تحويل '+fmtMoney(fee):''));
   generateAutoEntries();
   saveData();
   cbClose('cashEntryOverlay');
@@ -10980,8 +11043,9 @@ function deleteCashEntry(boxId, entryId){
   if(!e || !canModifyCashEntry(b, e)) return;
   if(isCashboxMonthClosed(b, cbMonth(e.date))){ alert('الحركة دي في شهر مقفول'); return; }
   if(e.fromBox){ const src = DATA.cashboxes.find(x=>x._id===e.fromBox); if(src && isCashboxMonthClosed(src, cbMonth(e.date))){ alert('الشهر ده مقفول في '+src.name+' (اللي اتحولت منها الفلوس)'); return; } }
-  if(!confirm('حذف الحركة دي؟')) return;
-  b.entries = b.entries.filter(x=>x.id!==entryId);
+  const feeRec = cashFeeOf(b, entryId);
+  if(!confirm('حذف الحركة دي؟'+(feeRec?'\n(ومعاها مصاريف التحويل '+fmtMoney(feeRec.amount)+')':''))) return;
+  b.entries = b.entries.filter(x=>x.id!==entryId && !(feeRec && x===feeRec));
   logAudit('حذف', 'حركة عهدة', b.name, fmtMoney(e.amount));
   generateAutoEntries();
   saveData();
@@ -11230,6 +11294,371 @@ function changeFontScale(dir){
   const go = ()=>applyFontScale(getFontScale());
   if(document.body) go(); else document.addEventListener('DOMContentLoaded', go);
 })();
+
+/* ================= البحث الشامل =================
+   خانة واحدة (فوق في كل الشاشات + كبيرة في لوحة التحكم) بتدوّر في كل حاجة:
+   الشاشات والتقارير، المشاريع وبنودها، المقاولين، الموردين وفواتيرهم وأصنافهم، الموظفين وسلفهم،
+   العمالة المؤقتة، الفواتير، العقود، عروض الأسعار، الأصول، المخزون، الخزن والعهد وحركاتها، القيود، الأعمال الإضافية...
+   تدوس على النتيجة تروح لها على طول، والسطر نفسه بيتعلّم ويتفتح لو كان في شهر مطوي.
+   البحث بيحترم صلاحيات المستخدم: مش بيظهر غير اللي مسموح له يشوفه. */
+function gsNorm(s){
+  return String(s===undefined||s===null?'':s)
+    .replace(/[ً-ْـ]/g, '')
+    .replace(/[أإآٱ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي').replace(/ؤ/g, 'و').replace(/ئ/g, 'ي')
+    .replace(/[٠-٩]/g, d=>String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
+    .replace(/[۰-۹]/g, d=>String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)))
+    .replace(/[٬،,’']/g, '')
+    .toLowerCase();
+}
+function gsVals(o){
+  if(!o || typeof o!=='object') return '';
+  const out = [];
+  for(const k in o){
+    if(k==='_id' || k==='id' || k==='rev' || k==='createdAt' || k==='byId' || k.charAt(0)==='_') continue;
+    const v = o[k];
+    if(typeof v==='string' || typeof v==='number') out.push(v);
+  }
+  return out.join(' ');
+}
+const GS_PAGE_WORDS = {
+  dashboard:'لوحه التحكم الرئيسيه الصفحه الرئيسيه',
+  projects:'المشاريع مشروع',
+  extraworks:'الاعمال الاضافيه اعمال زياده',
+  subs:'مقاولو الباطن مقاولين الباطن مقاول',
+  suppliers:'الموردين الموردون مورد مشتريات',
+  materials:'المخزون المخازن المواد الخامات المشتريات',
+  hr:'الموارد البشريه الموظفين العمال المرتبات الرواتب الحضور السلف',
+  finance:'الفواتير المستخلصات التحصيل العملاء',
+  accounting:'المحاسبه التقارير الماليه القيود الحسابات',
+  cashbox:'الخزينه الخزنه العهد العهده عهدتي',
+  quotations:'عروض الاسعار عرض سعر',
+  contracts:'العقود عقد',
+  assets:'الاصول المعدات العربيات الماكينات',
+  users:'المستخدمين الصلاحيات',
+  alerts:'تنبيهات واتساب',
+  auditlog:'سجل التدقيق المراجعه التعديلات',
+  desktop:'النسخ الاحتياطي الترخيص',
+};
+const GS_REPORTS = [
+  {tab:'ledger', t:'قيود الإيرادات والمصروفات', w:'دفتر اليوميه القيود'},
+  {tab:'general', t:'المصاريف الثابتة والعامة', w:'مصاريف عامه ايجار'},
+  {tab:'income', t:'قائمة الدخل والأرباح والخسائر', w:'تقرير الارباح الخسائر قائمه الدخل صافي الربح'},
+  {tab:'trial', t:'ميزان المراجعة', w:'تقرير ميزان مراجعه'},
+  {tab:'balance', t:'المركز المالي', w:'تقرير الميزانيه العموميه المركز المالي'},
+];
+function gsGo(page, fn, hl){
+  return ()=>{
+    if(page) goTo(page);
+    if(fn) fn();
+    if(hl && hl.length) gsFlash(hl);
+    else window.scrollTo(0, 0);
+  };
+}
+function gsBuildIndex(){
+  const R = [];
+  const add = (g, icon, t, s, h, go)=>R.push({g, icon, t:String(t||'—'), s:s||'', h:gsNorm(t+' '+(s||'')+' '+(h||'')), go});
+  const v = k=>canView(k);
+  const admin = currentUser && currentUser.role==='مدير';
+  // الشاشات
+  const pages = [['dashboard','لوحة التحكم']].concat([
+    ['projects','المشاريع'],['extraworks','الأعمال الإضافية'],['subs','مقاولو الباطن'],['suppliers','الموردون'],['materials','المخزون والمشتريات'],
+    ['hr','الموارد البشرية'],['finance','الفواتير والتحصيل'],['accounting','المحاسبة والتقارير المالية'],['quotations','عروض الأسعار'],['contracts','العقود'],['assets','الأصول والمعدات'],
+  ].filter(x=>v(x[0])));
+  if(typeof hasCashboxAccess==='function' && hasCashboxAccess()) pages.push(['cashbox', admin ? 'الخزينة والعهد' : 'عهدتي']);
+  if(admin){ pages.push(['users','المستخدمون والصلاحيات'], ['auditlog','سجل التدقيق']); if(!window.DESKTOP_EDITION) pages.push(['alerts','تنبيهات واتساب']); if(window.DESKTOP_EDITION) pages.push(['desktop','النسخ الاحتياطي والترخيص']); }
+  pages.forEach(([k, l])=>add('الشاشات', '🧭', l, 'فتح الشاشة', GS_PAGE_WORDS[k]||'', gsGo(k)));
+  if(v('accounting')) GS_REPORTS.forEach(r=>add('التقارير', '📊', r.t, 'المحاسبة والتقارير المالية', r.w, gsGo('accounting', ()=>setAccountingTab(r.tab))));
+
+  // المشاريع وما بداخلها
+  if(v('projects')) (DATA.projects||[]).forEach(p=>{
+    const op = gsGo('projects', ()=>openProjectDetail(p._id));
+    add('المشاريع', '🏗', p.name, [p.client, p.location, p.status].filter(Boolean).join(' — '), gsVals(p), op);
+    add('التقارير', '🖨', 'كشف حساب المشروع — '+p.name, 'طباعة', 'تقرير كشف', ()=>{ op(); printProjectStatement(p._id); });
+    (p.phases||[]).forEach(ph=>add('بنود المشاريع', '📋', ph.name, 'بند في مشروع '+p.name+(Number(ph.plannedBudget)?' — '+fmtMoney(ph.plannedBudget):''), gsVals(ph), gsGo('projects', ()=>openProjectDetail(p._id), [ph.name])));
+    const seen = new Set();
+    (p.casualLabor||[]).forEach(r=>{
+      if(!seen.has(r.name)){ seen.add(r.name); add('العمالة المؤقتة', '🧑‍🔧', r.name, 'عامل مؤقت — '+p.name+(r.trade?' — '+r.trade:''), r.trade, gsGo('projects', ()=>openProjectDetail(p._id), [r.name])); }
+      if(r.note) add('العمالة المؤقتة', '🧑‍🔧', r.name+' — '+r.date, r.note+' — '+p.name, gsVals(r), gsGo('projects', ()=>openProjectDetail(p._id), [r.date, r.name]));
+    });
+    (p.casualAdvances||[]).forEach(a=>add('العمالة المؤقتة', '💵', 'سلفة '+a.name+' — '+fmtMoney(a.amount), a.date+' — '+p.name+(a.note?' — '+a.note:''), gsVals(a)+' سلفه', gsGo('projects', ()=>openProjectDetail(p._id), [a.date, a.name])));
+    (p.adjustments||[]).forEach(a=>add('المشاريع', '➖', (a.type||'خصم')+' — '+fmtMoney(a.amount), p.name+' — '+(a.date||'')+(a.note?' — '+a.note:''), gsVals(a), gsGo('projects', ()=>openProjectDetail(p._id), [a.date||''])));
+  });
+  if(v('projects') || v('finance')) (DATA.collections||[]).forEach(c=>{
+    const p = (DATA.projects||[]).find(x=>x.name===c.project);
+    if(p && v('projects')) add('التحصيلات', '💰', 'تحصيل '+fmtMoney(c.amount)+' — '+c.project, (c.date||'')+' — '+(c.method||'')+(c.note?' — '+c.note:''), gsVals(c), gsGo('projects', ()=>openProjectDetail(p._id), [c.date||'']));
+  });
+  // الأعمال الإضافية
+  if(v('extraworks')) (DATA.extraWorks||[]).forEach(g=>{
+    const op = gsGo('extraworks', ()=>openExtraDetail(g._id));
+    add('الأعمال الإضافية', '➕', 'أعمال إضافية — '+g.projectName, g.client||'', gsVals(g), op);
+    (g.items||[]).forEach(i=>add('الأعمال الإضافية', '➕', i.description, g.projectName+' — '+(i.date||'')+' — '+fmtMoney(i.amount)+' — '+(i.status||''), gsVals(i), gsGo('extraworks', ()=>openExtraDetail(g._id), [i.description])));
+  });
+  // مقاولو الباطن
+  if(v('subs')) (DATA.subs||[]).forEach(s=>{
+    add('مقاولو الباطن', '👷‍♂️', s.name, [s.specialty, s.phone].filter(Boolean).join(' — '), gsVals(s)+' '+(s.assignments||[]).map(a=>a.project).join(' '), gsGo('subs', ()=>openSubDetail(s._id)));
+    add('التقارير', '🖨', 'كشف حساب مقاول — '+s.name, 'طباعة', 'تقرير كشف', ()=>{ gsGo('subs', ()=>openSubDetail(s._id))(); printSubStatement(s._id); });
+    (s.assignments||[]).forEach(a=>(a.entries||[]).forEach(e=>{
+      if(!e.description && !e.workerName) return;
+      add('مقاولو الباطن', '🧾', (e.kind||'')+' — '+(e.description||e.workerName), s.name+' — '+a.project+' — '+(e.date||'')+' — '+fmtMoney(e.amount), gsVals(e), gsGo('subs', ()=>openSubDetail(s._id), [e.date||'', e.description||e.workerName]));
+    }));
+  });
+  // الموردين
+  if(v('suppliers')) (DATA.suppliers||[]).forEach(s=>{
+    add('الموردون', '🚚', s.name, [s.category, s.phone].filter(Boolean).join(' — '), gsVals(s), gsGo('suppliers', ()=>openSupplierDetail(s._id)));
+    add('التقارير', '🖨', 'كشف حساب مورد — '+s.name, 'طباعة', 'تقرير كشف', ()=>{ gsGo('suppliers', ()=>openSupplierDetail(s._id))(); printSupplierStatement(s._id); });
+    (s.invoices||[]).forEach(inv=>add('فواتير الموردين', '🧾', 'فاتورة '+(inv.number||'')+' — '+s.name, (inv.date||'')+' — '+fmtMoney(inv.amount)+(inv.project?' — '+inv.project:''), gsVals(inv)+' '+(inv.items||[]).map(it=>it.name).join(' '), ()=>{ gsGo('suppliers', ()=>openSupplierDetail(s._id))(); openSupplierInvoiceView(s._id, inv.id); }));
+    const items = new Set();
+    (s.items||[]).forEach(it=>items.add(it.name));
+    (s.invoices||[]).forEach(inv=>(inv.items||[]).forEach(it=>items.add(it.name)));
+    items.forEach(n=>{ if(n) add('أصناف الموردين', '📦', n, 'صنف عند '+s.name, '', gsGo('suppliers', ()=>openSupplierDetail(s._id), [n])); });
+    (s.payments||[]).forEach(p=>add('الموردون', '💵', 'دفعة '+fmtMoney(p.amount)+' — '+s.name, (p.date||'')+(p.note?' — '+p.note:''), gsVals(p), gsGo('suppliers', ()=>openSupplierDetail(s._id), [p.date||''])));
+  });
+  // المخزون
+  if(v('materials')) (DATA.materials||[]).forEach(m=>add('المخزون', '📦', m.name, [m.category, m.unit].filter(Boolean).join(' — '), gsVals(m), gsGo('materials', ()=>openMaterialDetail(m._id))));
+  // الموارد البشرية
+  if(v('hr')) (DATA.hr||[]).forEach(h=>{
+    add('الموظفين والعمال', '👤', h.name+(h.archived?' (مؤرشف)':''), [h.role, h.employeeType, h.project].filter(Boolean).join(' — '), gsVals(h), gsGo('hr', ()=>openEmployeeDetail(h._id)));
+    if(typeof isAttendanceOnlyUser==='function' && isAttendanceOnlyUser()) return;
+    add('التقارير', '🖨', 'كشف حساب موظف — '+h.name, 'طباعة', 'تقرير كشف', ()=>{ gsGo('hr', ()=>openEmployeeDetail(h._id))(); printEmployeeStatement(h._id); });
+    (h.payrollEntries||[]).forEach(e=>add('الموظفين والعمال', '💸', (e.type||'')+' — '+h.name+' — '+fmtMoney(e.amount), (e.date||'')+(e.note?' — '+e.note:''), gsVals(e), gsGo('hr', ()=>openEmployeeDetail(h._id), [e.date||'', e.type||''])));
+  });
+  // الفواتير
+  if(v('finance')) (DATA.finance||[]).forEach(f=>add('الفواتير', '🧾', 'فاتورة #'+(f._n||'')+' — '+(f.client||''), [f.project, f.issueDate, fmtMoney(f.amount), f.status].filter(Boolean).join(' — '), gsVals(f), gsGo('finance', ()=>openInvoiceDetail(f._id))));
+  // العقود
+  if(v('contracts')) (DATA.contracts||[]).forEach(c=>add('العقود', '📄', 'عقد '+(c.number||''), [typeof contractPartyName==='function'?contractPartyName(c):'', typeof contractProjectName==='function'?contractProjectName(c):''].filter(Boolean).join(' — '), gsVals(c)+' '+(c.items||[]).map(i=>i.description).join(' ')+' '+(typeof contractPartyName==='function'?contractPartyName(c):''), gsGo('contracts', ()=>openContractDetail(c._id))));
+  // عروض الأسعار
+  if(v('quotations')) (DATA.quotations||[]).forEach(q=>add('عروض الأسعار', '💬', 'عرض سعر '+(q.number||q._n||'')+(q.client?' — '+q.client:''), [q.status, q.date].filter(Boolean).join(' — '), gsVals(q)+' '+(q.items||[]).map(i=>i.description).join(' '), gsGo('quotations', ()=>openQuotationDetail(q._id))));
+  // الأصول
+  if(v('assets')) (DATA.assets||[]).forEach(a=>{
+    add('الأصول والمعدات', '🚜', a.name, [a.type, a.status].filter(Boolean).join(' — '), gsVals(a), gsGo('assets', ()=>openAssetDetail(a._id)));
+    (a.expenses||[]).forEach(e=>add('الأصول والمعدات', '🔧', (e.kind||'مصروف')+' — '+a.name+' — '+fmtMoney(e.amount), (e.date||'')+(e.note?' — '+e.note:''), gsVals(e), gsGo('assets', ()=>openAssetDetail(a._id), [e.date||''])));
+  });
+  // الخزن والعهد (اللي مسموح يشوفها بس)
+  if(typeof hasCashboxAccess==='function' && hasCashboxAccess()) (DATA.cashboxes||[]).forEach(b=>{
+    if(typeof canSeeCashbox==='function' && !canSeeCashbox(b)) return;
+    add('الخزن والعهد', '💼', b.name, [b.kind, b.custodian, b.project].filter(Boolean).join(' — '), gsVals(b), gsGo('cashbox', ()=>openCashboxDetail(b._id)));
+    (b.entries||[]).forEach(e=>add('حركات الخزن والعهد', e.type==='تغذية'?'⬆':'⬇', (e.description||e.account||e.type)+' — '+fmtMoney(e.amount), b.name+' — '+(e.date||'')+' — '+(e.type==='تغذية'?(e.source||'تغذية'):(e.account||'')), gsVals(e),
+      gsGo('cashbox', ()=>{ openCashboxDetail(b._id); cashboxMonthView = cbMonth(e.date); renderPage(); }, [e.date||'', e.description||''])));
+  });
+  // القيود والمصاريف العامة
+  if(v('accounting')){
+    (DATA.ledger||[]).forEach(e=>add('القيود', e.type==='إيراد'?'📈':'📉', (e.description||e.account)+' — '+fmtMoney(e.amount), [e.date, e.account, e.project].filter(Boolean).join(' — ')+(e.source?' (تلقائي)':''), gsVals(e), gsGo('accounting', ()=>setAccountingTab('ledger'), [e.date||'', e.description||''])));
+    (DATA.generalExpenses||[]).forEach(g=>add('المصاريف العامة', '🏢', (g.description||g.account)+' — '+fmtMoney(g.amount), [g.date, g.account].filter(Boolean).join(' — '), gsVals(g), gsGo('accounting', ()=>setAccountingTab('general'), [g.description||''])));
+  }
+  // التذكيرات
+  (DATA.reminders||[]).forEach(r=>add('التذكيرات', '🔔', r.title, (r.dueDate||'')+(r.note?' — '+r.note:''), gsVals(r), gsGo('dashboard')));
+  return R;
+}
+const GS_GROUP_ORDER = ['الشاشات','التقارير','المشاريع','بنود المشاريع','العمالة المؤقتة','الأعمال الإضافية','مقاولو الباطن','الموردون','فواتير الموردين','أصناف الموردين','الموظفين والعمال','الخزن والعهد','حركات الخزن والعهد','الفواتير','التحصيلات','العقود','عروض الأسعار','الأصول والمعدات','المخزون','القيود','المصاريف العامة','التذكيرات'];
+function gsSearch(q){
+  const terms = gsNorm(q).split(/\s+/).filter(Boolean);
+  if(!terms.length) return [];
+  const wantsReport = terms.some(t=>'كشف'.indexOf(t)===0 || 'تقرير'.indexOf(t)===0 || t.indexOf('كشف')===0 || t.indexOf('تقرير')===0 || t.indexOf('طباعه')===0);
+  const hits = [];
+  gsBuildIndex().forEach(r=>{
+    if(r.icon==='🖨' && !wantsReport) return;
+    if(!terms.every(t=>r.h.indexOf(t)>=0)) return;
+    const tn = gsNorm(r.t);
+    const score = (tn.indexOf(terms[0])===0 ? 0 : tn.indexOf(terms[0])>=0 ? 1 : 2);
+    hits.push(Object.assign({score}, r));
+  });
+  hits.sort((a,b)=>(GS_GROUP_ORDER.indexOf(a.g)-GS_GROUP_ORDER.indexOf(b.g)) || (a.score-b.score));
+  return hits;
+}
+/* ---------- الواجهة ---------- */
+let gsState = {inputId:null, results:[], sel:0, timer:null};
+const GS_PER_GROUP = 8;
+function gsPanel(){
+  let p = document.getElementById('gsPanel');
+  if(!p){ p = document.createElement('div'); p.id = 'gsPanel'; p.className = 'gs-panel'; document.body.appendChild(p); }
+  return p;
+}
+function gsOnInput(el){
+  clearTimeout(gsState.timer);
+  gsState.timer = setTimeout(()=>gsRun(el), 120);
+}
+function gsRun(el){
+  gsState.inputId = el.id;
+  const q = el.value.trim();
+  const p = gsPanel();
+  if(!q){ p.style.display = 'none'; return; }
+  const all = gsSearch(q);
+  // حد أقصى لكل مجموعة
+  const per = {}, shown = [];
+  all.forEach(r=>{ per[r.g] = (per[r.g]||0)+1; if(per[r.g]<=GS_PER_GROUP) shown.push(r); });
+  gsState.results = shown; gsState.sel = 0;
+  const esc = s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  let lastG = '', html = '';
+  shown.forEach((r, i)=>{
+    if(r.g!==lastG){ lastG = r.g; const more = per[r.g]-GS_PER_GROUP; html += `<div class="gs-group">${r.g}${more>0?` <span>(+${more} — كمّل كتابة عشان تضيّق)</span>`:''}</div>`; }
+    html += `<div class="gs-item${i===0?' sel':''}" data-i="${i}" onmousedown="event.preventDefault(); gsPick(${i})"><span class="gs-ic">${r.icon}</span><span class="gs-tx"><b>${esc(r.t)}</b>${r.s?`<small>${esc(r.s)}</small>`:''}</span></div>`;
+  });
+  p.innerHTML = html || `<div class="gs-empty">مفيش نتايج لـ "${esc(q)}"</div>`;
+  p.style.display = 'block';
+  gsPlace(el, p);
+}
+// مكان القائمة تحت الخانة (مع مراعاة تكبير الخط)
+function gsPlace(el, p){
+  const rc = el.getBoundingClientRect();
+  const z = Number(document.body.style.zoom) || 1;
+  const vw = window.innerWidth / z;
+  const w = Math.max(rc.width / z, Math.min(560, vw - 24));
+  p.style.width = w + 'px';
+  p.style.top = (rc.bottom / z + 4) + 'px';
+  let right = vw - rc.right / z;
+  if(right + w > vw - 8) right = Math.max(8, vw - w - 8);
+  p.style.right = right + 'px';
+  p.style.maxHeight = Math.max(200, (window.innerHeight / z) - rc.bottom / z - 20) + 'px';
+}
+function gsKey(e, el){
+  const p = document.getElementById('gsPanel');
+  const open = p && p.style.display==='block';
+  if(e.key==='Escape'){ if(p) p.style.display = 'none'; el.blur(); return; }
+  if(!open || !gsState.results.length) { if(e.key==='Enter') gsRun(el); return; }
+  if(e.key==='ArrowDown' || e.key==='ArrowUp'){
+    e.preventDefault();
+    gsState.sel = (gsState.sel + (e.key==='ArrowDown'?1:-1) + gsState.results.length) % gsState.results.length;
+    p.querySelectorAll('.gs-item').forEach(x=>x.classList.toggle('sel', Number(x.dataset.i)===gsState.sel));
+    const cur = p.querySelector('.gs-item.sel'); if(cur) cur.scrollIntoView({block:'nearest'});
+  }else if(e.key==='Enter'){ e.preventDefault(); gsPick(gsState.sel); }
+}
+function gsPick(i){
+  const r = gsState.results[i];
+  const p = document.getElementById('gsPanel'); if(p) p.style.display = 'none';
+  const el = document.getElementById(gsState.inputId); if(el){ el.value = ''; el.blur(); }
+  document.querySelectorAll('.gs-input').forEach(x=>{ x.value = ''; });
+  document.getElementById('sidebar') && document.getElementById('sidebar').classList.remove('open');
+  if(r && r.go) r.go();
+}
+function gsHide(){ setTimeout(()=>{ const p = document.getElementById('gsPanel'); if(p) p.style.display = 'none'; }, 150); }
+// بعد الانتقال: يدوّر على السطر المطلوب في الصفحة، يفتحه لو في شهر مطوي، ويعلّمه
+// (بيعيد المحاولة كام مرة لأن الصفحة ممكن تترسم تاني بعد المزامنة)
+function gsFlash(parts){
+  const need = parts.filter(Boolean).map(gsNorm);
+  if(!need.length) return;
+  const t0 = Date.now();
+  let scrolled = false;
+  const tick = ()=>{
+    const age = Date.now() - t0;
+    if(age > 2600){ document.querySelectorAll('tr.gs-flash').forEach(r=>r.classList.remove('gs-flash')); return; }
+    if(!document.querySelector('#pages tr.gs-flash')){
+      const rows = Array.from(document.querySelectorAll('#pages tr'));
+      const row = rows.find(r=>{ const t = gsNorm(r.textContent); return need.every(n=>t.indexOf(n)>=0); });
+      if(row){
+        const fold = row.closest('tbody[data-mf]');
+        if(fold && fold.style.display==='none' && typeof toggleMonthFold==='function') toggleMonthFold(fold.dataset.mf);
+        if(!scrolled){ row.scrollIntoView({block:'center'}); scrolled = true; }
+        row.classList.add('gs-flash');
+      }else if(!scrolled && age > 1200){ window.scrollTo(0, 0); scrolled = true; }
+    }
+    setTimeout(tick, 150);
+  };
+  setTimeout(tick, 60);
+}
+function gsBoxHtml(id, big){
+  return `<input id="${id}" class="gs-input${big?' gs-big':''}" type="search" autocomplete="off" placeholder="${big?'🔍 دوّر على أي حاجة: مشروع، عامل، مورد، فاتورة، صنف، مبلغ، تاريخ، شاشة أو تقرير...':'🔍 بحث شامل (Ctrl+K)'}" oninput="gsOnInput(this)" onkeydown="gsKey(event, this)" onfocus="if(this.value) gsRun(this)" onblur="gsHide()">`;
+}
+document.addEventListener('keydown', e=>{
+  const tag = (e.target && e.target.tagName)||'';
+  if(((e.ctrlKey || e.metaKey) && (e.key==='k' || e.key==='K' || e.key==='ك')) || (e.key==='/' && !/INPUT|TEXTAREA|SELECT/.test(tag))){
+    const el = ['gsDash','gsTop'].map(id=>document.getElementById(id)).find(x=>x && x.offsetParent!==null);
+    if(el){ e.preventDefault(); el.focus(); el.select(); }
+  }
+});
+window.addEventListener('resize', ()=>{ const p = document.getElementById('gsPanel'); if(p) p.style.display = 'none'; });
+
+/* ================= أرشفة بدل الحذف =================
+   الموظف/العامل اللي عليه حركات (حضور، يوميات، سلف، مرتبات، تصفيات) مبيتمسحش:
+   "حذف" بيأرشفه — يختفي من القوائم واختيارات التسجيل، وكل حركاته وتكاليفه على المشاريع
+   وأرصدة العهد وكشوف الحساب بتفضل زي ما هي. تقدر ترجعه في أي وقت من "المؤرشفين".
+   الحذف النهائي (للي اتسجل غلط) موجود للمدير بس من جوه الأرشيف وبتحذير واضح. */
+let hrShowArchived = false;
+function employeeMovesSummary(h){
+  const att = (h.attendance||[]).length, pe = (h.payrollEntries||[]).length;
+  const runs = (h.payrollRuns||[]).filter(r=>r.paid).length, st = (h.settlements||[]).length;
+  const parts = [];
+  if(att) parts.push(att+' يوم حضور/يومية');
+  if(pe) parts.push(pe+' سلفة/خصم/إضافة');
+  if(runs) parts.push(runs+' مرتب مصروف');
+  if(st) parts.push(st+' تصفية');
+  return {count: att+pe+runs+st, text: parts.join('، ')};
+}
+function archiveEmployee(h){
+  h.archived = true;
+  h.archivedAt = todayStr();
+  h.archivedBy = currentUser ? currentUser.name : '';
+  if(h.status!=='منتهي التعاقد'){ h.statusBeforeArchive = h.status||''; h.status = 'منتهي التعاقد'; }
+}
+function restoreEmployee(id){
+  if(!isAdmin()) return;
+  const h = (DATA.hr||[]).find(x=>x._id===id);
+  if(!h) return;
+  delete h.archived; delete h.archivedAt; delete h.archivedBy;
+  if(h.statusBeforeArchive!==undefined){ h.status = h.statusBeforeArchive || 'نشط'; delete h.statusBeforeArchive; }
+  logAudit('استرجاع', 'الموارد البشرية', h.name);
+  saveData();
+  renderPage();
+  showToast('رجع '+h.name+' للقائمة ✓', 'good');
+}
+// بيتنادى من deleteRecord('hr', ...)
+function deleteEmployeeSafely(id){
+  if(!isAdmin()) return;
+  const h = (DATA.hr||[]).find(x=>x._id===id);
+  if(!h) return;
+  const m = employeeMovesSummary(h);
+  if(!m.count){
+    openConfirmModal('حذف '+h.name+'؟ (مفيش عليه أي حركات)', ()=>{
+      DATA.hr = DATA.hr.filter(r=>r._id!==id);
+      logAudit('حذف', 'الموارد البشرية', h.name);
+      saveData();
+      renderPage();
+    });
+    return;
+  }
+  openConfirmModal('🗄 '+h.name+' عليه حركات متسجلة ('+m.text+').\n\nمش هيتمسح — هيتأرشف: يختفي من القوائم واختيارات التسجيل، وكل حركاته وتكلفته على المشاريع وأرصدة العهد وكشف حسابه بيفضلوا زي ما هم.\nتقدر ترجعه في أي وقت من "المؤرشفين".', ()=>{
+    archiveEmployee(h);
+    logAudit('أرشفة', 'الموارد البشرية', h.name, m.text);
+    if(selectedEmployeeId===id) selectedEmployeeId = null;
+    saveData();
+    renderPage();
+    showToast('اتأرشف '+h.name+' — بياناته محفوظة ✓', 'good');
+  });
+}
+function purgeEmployee(id){
+  if(!isAdmin()) return;
+  const h = (DATA.hr||[]).find(x=>x._id===id);
+  if(!h || !h.archived) return;
+  const m = employeeMovesSummary(h);
+  openConfirmModal('⚠ حذف نهائي لـ'+h.name+' بكل حركاته ('+(m.text||'مفيش حركات')+')؟\n\nده هيشيل تكلفة يومياته من المشاريع، والسلف والمرتبات اللي اتصرفت من العهد هترجع لأرصدتها، وكشف حسابه هيختفي.\nاستخدمه بس لو العامل ده اتسجل غلط من الأساس.', ()=>{
+    DATA.hr = DATA.hr.filter(r=>r._id!==id);
+    logAudit('حذف نهائي', 'الموارد البشرية', h.name, m.text);
+    if(selectedEmployeeId===id) selectedEmployeeId = null;
+    generateAutoEntries();
+    saveData();
+    renderPage();
+  });
+}
+function archivedBanner(text, restoreJs, purgeJs){
+  return `<div style="display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap; padding:10px 14px; border-radius:8px; margin-bottom:16px; font-size:13px; background:rgba(217,164,65,.12); border:1px solid var(--warn); color:var(--warn);">
+    <span>🗄 ${text}</span>
+    ${isAdmin() ? `<span style="display:flex; gap:6px;"><button class="btn small" onclick="${restoreJs}">↩ استرجاع</button>${purgeJs?`<button class="btn danger small" onclick="${purgeJs}">حذف نهائي</button>`:''}</span>` : ''}
+  </div>`;
+}
+
+/* ---------- العمالة المؤقتة: أرشفة العامل جوه المشروع ---------- */
+let casualShowArchived = {};
+function casualArchivedList(p){ if(!Array.isArray(p.casualArchived)) p.casualArchived = []; return p.casualArchived; }
+function isCasualArchived(p, name){ return (p.casualArchived||[]).includes(name); }
+function casualUnarchive(p, name){ if(p && Array.isArray(p.casualArchived)) p.casualArchived = p.casualArchived.filter(n=>n!==name); }
+function restoreCasualWorker(projectId, name){
+  if(!isAdmin()) return;
+  const p = DATA.projects.find(x=>x._id===projectId);
+  if(!p) return;
+  casualUnarchive(p, name);
+  logAudit('استرجاع', 'عمالة مؤقتة', p.name, name);
+  saveData();
+  renderPage();
+}
 
 /* ================= مشتريات الموردين على المشاريع ================= */
 function projectSupplierInvoices(projectName){
@@ -12819,7 +13248,10 @@ function renderProjectCasualSection(p){
   const t = casualTotals(rows);
   const at = casualAdvTotals(p);
   const net = round2(t.due - at.left);
-  const workers = casualByWorker(p);
+  const allWorkers = casualByWorker(p);
+  const workers = allWorkers.filter(w=>!isCasualArchived(p, w.name));
+  const archived = allWorkers.filter(w=>isCasualArchived(p, w.name));
+  const showArch = !!casualShowArchived[p._id];
   const canAdd = canEdit('projects');
   const advMap = casualAdvCoveredMap(p);
   return `
@@ -12832,7 +13264,7 @@ function renderProjectCasualSection(p){
     </div>
     ${(rows.length || advs.length) ? `
     <div class="kpi-grid" style="margin-bottom:10px;">
-      <div class="kpi"><div class="kpi-label">عدد العمال</div><div class="kpi-value">${workers.length}</div></div>
+      <div class="kpi"><div class="kpi-label">عدد العمال</div><div class="kpi-value">${workers.length}</div>${archived.length?`<div class="kpi-sub">+ ${archived.length} مؤرشف</div>`:''}</div>
       <div class="kpi"><div class="kpi-label">إجمالي الأيام</div><div class="kpi-value">${fmtUnits(t.units)}</div></div>
       <div class="kpi"><div class="kpi-label">إجمالي التكلفة</div><div class="kpi-value">${fmtMoney(t.amount)}</div></div>
       ${at.left>0 ? `<div class="kpi"><div class="kpi-label">سلف لسه متخصمتش</div><div class="kpi-value">${fmtMoney(at.left)}</div></div>` : ''}
@@ -12852,9 +13284,18 @@ function renderProjectCasualSection(p){
           <button class="btn secondary small" onclick="printCasualWorker('${p._id}', ${nm})">🖨 كشف</button>
           ${canAdd ? `<button class="btn secondary small" onclick="openCasualWorkerForm('${p._id}', ${nm})">تعديل</button>` : ''}
           ${isAdmin() ? `<button class="btn danger small" onclick="deleteCasualWorker('${p._id}', ${nm})">حذف</button>` : ''}
+        </td></tr>`; }).join('') || `<tr><td colspan="9" style="text-align:center; color:var(--text-dim);">كل العمال مؤرشفين</td></tr>`}
+      ${(showArch ? archived : []).map(w=>{ const nm = JSON.stringify(w.name).replace(/"/g,'&quot;'); return `<tr style="opacity:.75;">
+        <td style="font-weight:700;">${w.name} <span class="badge b-neutral">مؤرشف</span></td><td>${w.trade||'—'}</td><td>${fmtUnits(w.units)}</td>
+        <td>${fmtMoney(w.amount)}</td><td style="color:var(--good);">${fmtMoney(w.paid)}</td><td>${fmtMoney(w.due)}</td>
+        <td>${w.advLeft>0?fmtMoney(w.advLeft):'—'}</td><td style="font-weight:700;">${fmtMoney(Math.abs(w.net))}${w.net<0?' عليه':''}</td>
+        <td class="row-actions">
+          <button class="btn secondary small" onclick="printCasualWorker('${p._id}', ${nm})">🖨 كشف</button>
+          ${isAdmin() ? `<button class="btn small" onclick="restoreCasualWorker('${p._id}', ${nm})">↩ استرجاع</button><button class="btn danger small" onclick="purgeCasualWorker('${p._id}', ${nm})">حذف نهائي</button>` : ''}
         </td></tr>`; }).join('')}
       </tbody>
     </table></div></div>
+    ${archived.length ? `<button class="btn secondary small" style="margin-bottom:10px;" onclick="casualShowArchived['${p._id}']=!casualShowArchived['${p._id}']; renderPage();">🗄 ${showArch?'إخفاء المؤرشفين':'عرض المؤرشفين ('+archived.length+')'}</button>` : ''}
     ${rows.length ? `
     <div style="font-weight:700; margin:12px 0 6px; font-size:13.5px;">سجل اليوميات</div>
     <div class="table-wrap" style="margin-bottom:6px;"><div class="table-scroll"><table>
@@ -12944,6 +13385,7 @@ function saveCasualAdv(){
     list.push(rec);
   }
   Object.assign(rec, {name, date, amount, note});
+  casualUnarchive(p, name);
   if(typeof applyPaySource==='function') applyPaySource(rec, ps);
   logAudit(a?'تعديل':'إضافة', 'سلفة عمالة مؤقتة', p.name, name+' — '+fmtMoney(amount)+(ps.paidFrom && typeof paySourceLabel==='function'?' — '+paySourceLabel(rec):''));
   generateAutoEntries();
@@ -13047,6 +13489,7 @@ function saveCasualForm(){
     const rec = {id:'CL-'+n+'-'+Math.random().toString(36).slice(2,6), _n:n, date, name:x.name, trade:x.trade, units:x.units, rate:x.rate, amount:round2(x.units*x.rate), note, phase: readPhase('cl'), by: currentUser ? currentUser.name : ''};
     if(paidNow){ rec.paid = true; rec.paidDate = date; if(typeof applyPaySource==='function') applyPaySource(rec, ps); }
     list.push(rec);
+    casualUnarchive(p, x.name);
   });
   logAudit('إضافة', 'عمالة مؤقتة', p.name, date+' — '+rows.length+' عامل — '+fmtMoney(rows.reduce((t,x)=>t+x.units*x.rate,0)));
   generateAutoEntries();
@@ -13187,7 +13630,7 @@ function openCasualWorkerForm(projectId, name){
     <div class="field"><label>الشغلانة</label><input id="cw-trade" type="text" value="${q((rows.find(r=>r.trade)||{}).trade)}"></div>
     <div style="font-size:12px; color:var(--text-dim); margin-bottom:10px;">التعديل هيتطبق على كل يوميات العامل على المشروع ده (${rows.length} يومية). لو عايز تعدّل أيام أو يومية معيّنة، استخدم "تعديل" في سجل اليوميات.</div>
     <div style="display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap;">
-      ${isAdmin() ? `<button class="btn danger" onclick="cbClose('casualWorkerOverlay'); deleteCasualWorker('${projectId}', ${JSON.stringify(name).replace(/"/g,'&quot;')})">حذف العامل بكل يومياته</button>` : ''}
+      ${isAdmin() ? `<button class="btn danger" onclick="cbClose('casualWorkerOverlay'); deleteCasualWorker('${projectId}', ${JSON.stringify(name).replace(/"/g,'&quot;')})">🗄 أرشفة العامل</button>` : ''}
       <button class="btn secondary" onclick="cbClose('casualWorkerOverlay')">إلغاء</button><button class="btn" id="cw-save" onclick="saveCasualWorker()">حفظ</button></div>`);
 }
 function saveCasualWorker(){
@@ -13198,6 +13641,7 @@ function saveCasualWorker(){
   if(!name){ alert('اكتب اسم العامل'); return; }
   casualList(p).forEach(r=>{ if(r.name===casualWorkerState.name){ r.name = name; r.trade = trade; } });
   casualAdvList(p).forEach(a=>{ if(a.name===casualWorkerState.name) a.name = name; });
+  if(isCasualArchived(p, casualWorkerState.name)){ casualUnarchive(p, casualWorkerState.name); casualArchivedList(p).push(name); }
   logAudit('تعديل', 'عمالة مؤقتة', p.name, casualWorkerState.name+' ← '+name);
   generateAutoEntries();
   saveData();
@@ -13210,13 +13654,30 @@ function deleteCasualWorker(projectId, name){
   if(!p) return;
   const rows = casualList(p).filter(r=>r.name===name);
   const advs = casualAdvList(p).filter(a=>a.name===name);
+  const w = casualByWorker(p).find(x=>x.name===name);
+  openConfirmModal('🗄 '+name+' عليه '+rows.length+' يومية'+(advs.length?' و'+advs.length+' سلفة':'')+' على المشروع.\n\nمش هيتمسح — هيتأرشف: يختفي من جدول العمال، ويومياته وتكلفتها على المشروع والمصروف من العهد وكشف حسابه بيفضلوا زي ما هم.'+(w && Math.abs(w.net)>0.004 ? '\nملحوظة: لسه '+(w.net>0?'له':'عليه')+' '+fmtMoney(Math.abs(w.net))+'.' : '')+'\nتقدر ترجعه من "عرض المؤرشفين".', ()=>{
+    const list = casualArchivedList(p);
+    if(!list.includes(name)) list.push(name);
+    logAudit('أرشفة', 'عمالة مؤقتة', p.name, name);
+    saveData();
+    renderPage();
+    showToast('اتأرشف '+name+' — بياناته محفوظة ✓', 'good');
+  });
+}
+function purgeCasualWorker(projectId, name){
+  if(!isAdmin()) return;
+  const p = DATA.projects.find(x=>x._id===projectId);
+  if(!p) return;
+  const rows = casualList(p).filter(r=>r.name===name);
+  const advs = casualAdvList(p).filter(a=>a.name===name);
   for(const r of rows){ if(r.paid && typeof cashboxAllowsMove==='function' && !cashboxAllowsMove(r.paidFrom, r.paidDate, 'الحذف')) return; }
   for(const a of advs){ if(typeof cashboxAllowsMove==='function' && !cashboxAllowsMove(a.paidFrom, a.date, 'الحذف')) return; }
   const tot = rows.reduce((t,r)=>t+(Number(r.amount)||0),0);
-  openConfirmModal('حذف '+name+' بكل يومياته على المشروع ('+rows.length+' يومية — '+fmtMoney(tot)+')'+(advs.length?' و'+advs.length+' سلفة':'')+'؟\nاللي اتصرف منها من عهدة هيرجع لرصيدها.', ()=>{
+  openConfirmModal('⚠ حذف نهائي لـ'+name+' بكل يومياته على المشروع ('+rows.length+' يومية — '+fmtMoney(tot)+')'+(advs.length?' و'+advs.length+' سلفة':'')+'؟\nتكلفته هتتشال من المشروع، واللي اتصرف له من عهدة هيرجع لرصيدها. استخدمه بس لو اتسجل غلط.', ()=>{
     p.casualLabor = casualList(p).filter(r=>r.name!==name);
     p.casualAdvances = casualAdvList(p).filter(a=>a.name!==name);
-    logAudit('حذف', 'عمالة مؤقتة', p.name, name+' — '+rows.length+' يومية');
+    casualUnarchive(p, name);
+    logAudit('حذف نهائي', 'عمالة مؤقتة', p.name, name+' — '+rows.length+' يومية');
     generateAutoEntries();
     saveData();
     renderPage();
