@@ -240,6 +240,7 @@ tbody tr:hover{background:var(--surface-2);}
 tr.gs-flash > td{animation:gsFlashAnim 2.6s ease;}
 @keyframes gsFlashAnim{0%,45%{background:var(--accent-dim); color:#1D2125;} 100%{background:transparent;}}
 @media(max-width:560px){ #gsTopWrap{order:-1; width:100%;} #gsTopWrap .gs-input{width:100%;} }
+input[type="date"], input[type="month"], input[type="datetime-local"]{direction:ltr; text-align:right;}
 @media print{ body{zoom:1 !important;} }
 .fz-ctl{display:inline-flex; gap:3px; align-items:center;}
 .fz-ctl .btn{padding:4px 8px; min-width:30px;}
@@ -2354,6 +2355,7 @@ function buildNav(){
     items.push({key:'users', label:'المستخدمون والصلاحيات', icon:ICONS.users});
     if(!window.DESKTOP_EDITION) items.push({key:'alerts', label:'تنبيهات واتساب', icon:ICONS.alerts});
     items.push({key:'auditlog', label:'سجل التدقيق', icon:ICONS.auditlog});
+    if(!window.DESKTOP_EDITION) items.push({key:'gbackup', label:'النسخ الاحتياطي (جوجل درايف)', icon:ICONS.settings||ICONS.auditlog});
     if(window.DESKTOP_EDITION) items.push({key:'desktop', label:'النسخ الاحتياطي والترخيص', icon:ICONS.settings||ICONS.auditlog});
   }
   navList.innerHTML = items.map(it=>`
@@ -2365,7 +2367,7 @@ function buildNav(){
   });
 }
 function goTo(key){
-  if(key==='users' || key==='alerts' || key==='auditlog' || key==='desktop'){
+  if(key==='users' || key==='alerts' || key==='auditlog' || key==='desktop' || key==='gbackup'){
     if(!(currentUser && currentUser.role==='مدير')) return;
   }else if(key==='cashbox'){
     if(!(typeof hasCashboxAccess==='function' && hasCashboxAccess())) return;
@@ -2930,6 +2932,7 @@ function renderPage(){
   else if(currentPage==='alerts' && isAdmin()){ pagesEl.innerHTML = renderAlertsPage(); attachAlertsEvents(); }
   else if(currentPage==='alerts'){ currentPage = 'dashboard'; pagesEl.innerHTML = renderDashboard(); }
   else if(currentPage==='desktop' && isAdmin() && typeof renderDesktopPage==='function'){ pagesEl.innerHTML = renderDesktopPage(); }
+  else if(currentPage==='gbackup' && isAdmin() && typeof renderGBackupPage==='function'){ pagesEl.innerHTML = renderGBackupPage(); }
   else if(currentPage==='auditlog' && isAdmin()){ pagesEl.innerHTML = renderAuditLogPage(); attachAuditLogEvents(); }
   else if(currentPage==='auditlog'){ currentPage = 'dashboard'; pagesEl.innerHTML = renderDashboard(); }
   else if(currentPage==='projects' && selectedProjectId){ pagesEl.innerHTML = renderProjectDetail(selectedProjectId); attachProjectDetailEvents(); }
@@ -9727,6 +9730,7 @@ function showApp(){
   renderPage();
   startAlertsAutoSync();
   startLiveClock();
+  if(typeof gdriveAfterLogin==='function') gdriveAfterLogin();
 }
 function renderBootstrap(){
   document.getElementById('appRoot').style.display = 'none';
@@ -11338,6 +11342,7 @@ const GS_PAGE_WORDS = {
   alerts:'تنبيهات واتساب',
   auditlog:'سجل التدقيق المراجعه التعديلات',
   desktop:'النسخ الاحتياطي الترخيص',
+  gbackup:'النسخ الاحتياطي باك اب جوجل درايف drive backup',
 };
 const GS_REPORTS = [
   {tab:'ledger', t:'قيود الإيرادات والمصروفات', w:'دفتر اليوميه القيود'},
@@ -11365,7 +11370,7 @@ function gsBuildIndex(){
     ['hr','الموارد البشرية'],['finance','الفواتير والتحصيل'],['accounting','المحاسبة والتقارير المالية'],['quotations','عروض الأسعار'],['contracts','العقود'],['assets','الأصول والمعدات'],
   ].filter(x=>v(x[0])));
   if(typeof hasCashboxAccess==='function' && hasCashboxAccess()) pages.push(['cashbox', admin ? 'الخزينة والعهد' : 'عهدتي']);
-  if(admin){ pages.push(['users','المستخدمون والصلاحيات'], ['auditlog','سجل التدقيق']); if(!window.DESKTOP_EDITION) pages.push(['alerts','تنبيهات واتساب']); if(window.DESKTOP_EDITION) pages.push(['desktop','النسخ الاحتياطي والترخيص']); }
+  if(admin){ pages.push(['users','المستخدمون والصلاحيات'], ['auditlog','سجل التدقيق']); if(!window.DESKTOP_EDITION) pages.push(['alerts','تنبيهات واتساب'], ['gbackup','النسخ الاحتياطي على جوجل درايف']); if(window.DESKTOP_EDITION) pages.push(['desktop','النسخ الاحتياطي والترخيص']); }
   pages.forEach(([k, l])=>add('الشاشات', '🧭', l, 'فتح الشاشة', GS_PAGE_WORDS[k]||'', gsGo(k)));
   if(v('accounting')) GS_REPORTS.forEach(r=>add('التقارير', '📊', r.t, 'المحاسبة والتقارير المالية', r.w, gsGo('accounting', ()=>setAccountingTab(r.tab))));
 
@@ -13708,7 +13713,24 @@ function printCasualWorker(projectId, name){
    كل مشروع = سجل واحد فيه البنود (وصف/كمية/وحدة/سعر/حالة) والتحصيلات.
    البنود المعتمدة = مستحق على العميل، والتحصيل بيتسجل إيراد على المشروع بتاريخه. */
 let selectedExtraId = null;
-let extraFilter = {from:'', to:'', status:''};
+let extraFilter = {from:'', to:'', status:'', desc:'', unit:'', q:''};
+function extraFilterReset(){ extraFilter = {from:'', to:'', status:'', desc:'', unit:'', q:''}; }
+function extraIsFiltered(){ return !!(extraFilter.from || extraFilter.to || extraFilter.status || extraFilter.desc || extraFilter.unit || extraFilter.q); }
+function extraFilterLabel(){
+  return [ (extraFilter.from||extraFilter.to) ? 'الفترة: '+(extraFilter.from||'البداية')+' إلى '+(extraFilter.to||'الآن') : '',
+    extraFilter.desc ? 'البيان: '+extraFilter.desc : '', extraFilter.unit ? 'الوحدة: '+extraFilter.unit : '',
+    extraFilter.status ? 'الحالة: '+extraFilter.status : '', extraFilter.q ? 'بحث: '+extraFilter.q : '' ].filter(Boolean).join(' — ');
+}
+// ملخص حسب البيان: عدد المرات وإجمالي الكمية والمبلغ (لكل بيان + وحدة)
+function extraSummaryByDesc(items){
+  const m = new Map();
+  items.forEach(i=>{
+    const k = (i.description||'').trim()+'||'+(i.unit||'');
+    if(!m.has(k)) m.set(k, {description:(i.description||'').trim(), unit:i.unit||'', count:0, qty:0, amount:0, approved:0});
+    const x = m.get(k); x.count++; x.qty = round2(x.qty+(Number(i.qty)||0)); x.amount = round2(x.amount+(i.status==='مرفوض'?0:(Number(i.amount)||0))); if(i.status==='معتمد') x.approved = round2(x.approved+(Number(i.amount)||0));
+  });
+  return Array.from(m.values()).sort((a,b)=>b.amount-a.amount);
+}
 const EXTRA_STATUSES = ['معتمد', 'تحت المراجعة', 'مرفوض'];
 function ensureExtraShape(g){ if(!Array.isArray(g.items)) g.items = []; if(!Array.isArray(g.payments)) g.payments = []; }
 function extraTotals(g, items){
@@ -13764,7 +13786,7 @@ function renderExtraWorksPage(){
     </table></div></div>` : `<div class="table-wrap"><div class="empty-state">لسه مفيش أعمال إضافية مسجلة${editable?`<br><button class="btn small" style="margin-top:12px" onclick="openExtraGroupForm()">+ أول مشروع</button>`:''}</div></div>`}
   `;
 }
-function openExtraDetail(id){ selectedExtraId = id; extraFilter = {from:'', to:'', status:''}; if(currentPage!=='extraworks'){ goTo('extraworks'); selectedExtraId = id; } renderPage(); }
+function openExtraDetail(id){ selectedExtraId = id; extraFilterReset(); if(currentPage!=='extraworks'){ goTo('extraworks'); selectedExtraId = id; } renderPage(); }
 function backToExtraList(){ selectedExtraId = null; renderPage(); }
 
 /* ---------- مشروع جديد / تعديل ---------- */
@@ -13807,7 +13829,11 @@ function saveExtraGroup(){
 
 /* ---------- تفاصيل مشروع ---------- */
 function extraFilteredItems(g){
-  return (g.items||[]).filter(i=>(!extraFilter.from || (i.date||'')>=extraFilter.from) && (!extraFilter.to || (i.date||'')<=extraFilter.to) && (!extraFilter.status || i.status===extraFilter.status))
+  const nq = s=>typeof gsNorm==='function' ? gsNorm(s) : String(s||'').toLowerCase();
+  const terms = nq(extraFilter.q||'').split(/\s+/).filter(Boolean);
+  return (g.items||[]).filter(i=>(!extraFilter.from || (i.date||'')>=extraFilter.from) && (!extraFilter.to || (i.date||'')<=extraFilter.to) && (!extraFilter.status || i.status===extraFilter.status)
+      && (!extraFilter.desc || (i.description||'').trim()===extraFilter.desc) && (!extraFilter.unit || (i.unit||'')===extraFilter.unit)
+      && (!terms.length || (h=>terms.every(t=>h.indexOf(t)>=0))(nq([i.description, i.note, i.unit, i.status, i.date, i.qty, i.amount].join(' ')))))
     .sort((a,b)=>(a.date||'').localeCompare(b.date||'') || (a._n||0)-(b._n||0));
 }
 function setExtraFilter(k, v){ extraFilter[k] = v; renderPage(); }
@@ -13819,7 +13845,12 @@ function renderExtraDetail(id){
   const admin = isAdmin();
   const items = extraFilteredItems(g);
   const tAll = extraTotals(g), tF = extraTotals(g, items);
-  const filtered = extraFilter.from || extraFilter.to || extraFilter.status;
+  const filtered = extraIsFiltered();
+  const descs = Array.from(new Set((g.items||[]).map(i=>(i.description||'').trim()).filter(Boolean))).sort((a,b)=>a.localeCompare(b));
+  const units = Array.from(new Set((g.items||[]).map(i=>i.unit||'').filter(Boolean)));
+  const summary = extraSummaryByDesc(items);
+  const q = v=>String(v||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+  const qd = v=>JSON.stringify(String(v||'')).replace(/&/g,'&amp;').replace(/"/g,'&quot;');
   const onSystem = (DATA.projects||[]).find(p=>p.name===g.projectName);
   const badge = st => st==='معتمد' ? 'b-good' : st==='مرفوض' ? 'b-bad' : 'b-warn';
   const pays = (g.payments||[]).slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
@@ -13843,11 +13874,21 @@ function renderExtraDetail(id){
       <div class="kpi ${tAll.remaining>0?'alert':'ok'}"><div class="kpi-label">الباقي على العميل</div><div class="kpi-value">${fmtMoney(tAll.remaining)}</div></div>
     </div>
     <div class="toolbar" style="gap:8px; align-items:flex-end; flex-wrap:wrap;">
-      <div class="field" style="margin:0;"><label>من تاريخ</label><input type="date" value="${extraFilter.from}" onchange="setExtraFilter('from', this.value)"></div>
-      <div class="field" style="margin:0;"><label>لحد تاريخ</label><input type="date" value="${extraFilter.to}" onchange="setExtraFilter('to', this.value)"></div>
-      <div class="field" style="margin:0;"><label>الحالة</label><select onchange="setExtraFilter('status', this.value)"><option value="">الكل</option>${EXTRA_STATUSES.map(s=>`<option ${extraFilter.status===s?'selected':''}>${s}</option>`).join('')}</select></div>
-      ${filtered ? `<button class="btn secondary small" onclick="extraFilter={from:'',to:'',status:''}; renderPage();">مسح الفلتر</button>` : ''}
+      <div class="field" style="margin:0; flex:2; min-width:170px;"><label>البيان</label><select id="xf-desc" onchange="setExtraFilter('desc', this.value)"><option value="">كل البنود</option>${descs.map(d=>`<option value="${q(d)}" ${extraFilter.desc===d?'selected':''}>${q(d)}</option>`).join('')}</select></div>
+      ${units.length>1 ? `<div class="field" style="margin:0; min-width:110px;"><label>الوحدة</label><select id="xf-unit" onchange="setExtraFilter('unit', this.value)"><option value="">الكل</option>${units.map(u=>`<option value="${q(u)}" ${extraFilter.unit===u?'selected':''}>${q(u)}</option>`).join('')}</select></div>` : ''}
+      <div class="field" style="margin:0; min-width:110px;"><label>الحالة</label><select id="xf-status" onchange="setExtraFilter('status', this.value)"><option value="">الكل</option>${EXTRA_STATUSES.map(s=>`<option ${extraFilter.status===s?'selected':''}>${s}</option>`).join('')}</select></div>
+      <div class="field" style="margin:0; min-width:140px;"><label>من تاريخ</label><input id="xf-from" type="date" value="${extraFilter.from}" onchange="setExtraFilter('from', this.value)"></div>
+      <div class="field" style="margin:0; min-width:140px;"><label>لحد تاريخ</label><input id="xf-to" type="date" value="${extraFilter.to}" onchange="setExtraFilter('to', this.value)"></div>
+      <div class="field" style="margin:0; flex:2; min-width:160px;"><label>بحث في البنود والملاحظات</label><input id="xf-q" type="search" value="${q(extraFilter.q)}" placeholder="اكتب واضغط Enter" onchange="setExtraFilter('q', this.value.trim())"></div>
+      ${filtered ? `<button class="btn secondary small" onclick="extraFilterReset(); renderPage();">✕ مسح الفلتر</button>` : ''}
     </div>
+    ${filtered ? `<div style="font-size:12.5px; color:var(--accent); margin:-4px 0 10px;">🔎 ${q(extraFilterLabel())} — ${items.length} بند من ${(g.items||[]).length}</div>` : ''}
+    ${summary.length>1 || (summary.length===1 && extraFilter.desc) ? `
+    <div class="table-wrap" style="margin-bottom:14px;"><div class="table-scroll"><table>
+      <thead><tr><th>ملخص حسب البيان${filtered?' (حسب الفلتر)':''}</th><th>مرات</th><th>إجمالي الكمية</th><th>المبلغ</th><th>منه معتمد</th></tr></thead>
+      <tbody>${summary.map(x=>`<tr style="cursor:pointer;" onclick="setExtraFilter('desc', ${qd(x.description)})" title="اضغط تشوف بنود البيان ده بس">
+        <td style="font-weight:700; color:var(--accent);">${q(x.description)}</td><td>${x.count}</td><td>${fmtUnits(x.qty)} ${q(x.unit)}</td><td style="font-weight:700;">${fmtMoney(x.amount)}</td><td style="color:var(--good);">${fmtMoney(x.approved)}</td></tr>`).join('')}</tbody>
+    </table></div></div>` : ''}
     <div class="table-wrap" style="margin-bottom:24px;"><div class="table-scroll"><table>
       <thead><tr><th>#</th><th>التاريخ</th><th>البيان</th><th>الكمية</th><th>الوحدة</th><th>سعر الوحدة</th><th>الإجمالي</th><th>الحالة</th><th>ملاحظة</th><th></th></tr></thead>
       <tbody>${items.length ? monthFoldRows('xw_'+g._id, items, {cols:10, noFold:!!filtered, sum:l=>mfMoneySum(l, i=>i.status==='مرفوض'?0:i.amount), row:(i, k)=>`<tr>
@@ -13996,22 +14037,24 @@ function printExtraWorks(groupId){
   const items = extraFilteredItems(g);
   const t = extraTotals(g, items), tAll = extraTotals(g);
   const td = 'style="padding:6px; border:1px solid #ccc;"';
-  const range = (extraFilter.from||extraFilter.to) ? 'الفترة: '+(extraFilter.from||'البداية')+' إلى '+(extraFilter.to||'الآن') : '';
+  const range = extraFilterLabel();
+  const summary = extraSummaryByDesc(items);
   const rows = items.map((i,k)=>`<tr><td ${td}>${k+1}</td><td ${td}>${i.date}</td><td ${td}>${i.description}${i.note?`<div style="font-size:11px; color:#555;">${i.note}</div>`:''}</td><td ${td}>${i.qty}</td><td ${td}>${i.unit||''}</td><td ${td}>${fmtMoney(i.unitPrice)}</td><td ${td}><b>${fmtMoney(i.amount)}</b></td><td ${td}>${i.status}</td></tr>`).join('')
     + `<tr style="font-weight:900;"><td ${td} colspan="6">إجمالي البنود المعتمدة</td><td ${td}>${fmtMoney(t.approved)}</td><td ${td}></td></tr>`
     + (t.pending ? `<tr><td ${td} colspan="6">بنود تحت المراجعة (مش داخلة في المستحق)</td><td ${td}>${fmtMoney(t.pending)}</td><td ${td}></td></tr>` : '');
   const body = `
     <table style="width:100%; border-collapse:collapse; font-size:13px; margin-bottom:10px;"><tbody>
       <tr><td ${td}><b>المشروع</b></td><td ${td}>${g.projectName}</td><td ${td}><b>العميل</b></td><td ${td}>${g.client||'—'}</td></tr>
-      ${range||extraFilter.status ? `<tr><td ${td}><b>الفلتر</b></td><td ${td} colspan="3">${[range, extraFilter.status?'الحالة: '+extraFilter.status:''].filter(Boolean).join(' — ')}</td></tr>` : ''}
+      ${range ? `<tr><td ${td}><b>الفلتر</b></td><td ${td} colspan="3">${range}</td></tr>` : ''}
     </tbody></table>
     ${buildStatementTable(['#','التاريخ','البيان','الكمية','الوحدة','سعر الوحدة','الإجمالي','الحالة'], rows)}
-    ${!(range||extraFilter.status) ? `<table style="width:60%; border-collapse:collapse; font-size:13px; margin-top:12px;"><tbody>
+    ${summary.length>1 ? `<div style="font-weight:700; margin:12px 0 6px; color:#111;">ملخص حسب البيان</div>${buildStatementTable(['البيان','مرات','إجمالي الكمية','المبلغ'], summary.map(x=>`<tr><td ${td}>${x.description}</td><td ${td}>${x.count}</td><td ${td}>${fmtUnits(x.qty)} ${x.unit}</td><td ${td}><b>${fmtMoney(x.amount)}</b></td></tr>`).join(''))}` : ''}
+    ${!range ? `<table style="width:60%; border-collapse:collapse; font-size:13px; margin-top:12px;"><tbody>
       <tr><td ${td}>إجمالي المعتمد</td><td ${td}><b>${fmtMoney(tAll.approved)}</b></td></tr>
       <tr><td ${td}>المحصّل</td><td ${td}>${fmtMoney(tAll.collected)}</td></tr>
       <tr><td ${td}>الباقي على العميل</td><td ${td}><b>${fmtMoney(tAll.remaining)}</b></td></tr>
     </tbody></table>` : ''}
-    ${typeof tafqeetLine==='function' ? tafqeetLine(range||extraFilter.status ? t.approved : tAll.approved, 'إجمالي الأعمال الإضافية المعتمدة فقط وقدره') : ''}
+    ${typeof tafqeetLine==='function' ? tafqeetLine(range ? t.approved : tAll.approved, 'إجمالي الأعمال الإضافية المعتمدة فقط وقدره') : ''}
     <div style="display:flex; justify-content:space-between; margin-top:40px; font-size:13px; color:#111;"><div>مهندس الموقع: ....................</div><div>ممثل العميل: ....................</div><div>الاعتماد: ....................</div></div>`;
   openPrintDocument('حصر أعمال إضافية — '+g.projectName, g.client ? 'العميل: '+g.client : '', body);
 }
@@ -14035,7 +14078,261 @@ function renderProjectExtraSection(p){
       <div class="kpi ${t.remaining>0?'alert':'ok'}"><div class="kpi-label">الباقي على العميل</div><div class="kpi-value">${fmtMoney(t.remaining)}</div></div>
     </div>`;
 }
-function printExtraWorksQuick(groupId){ extraFilter = {from:'', to:'', status:''}; printExtraWorks(groupId); }
+function printExtraWorksQuick(groupId){ extraFilterReset(); printExtraWorks(groupId); }
+/* ================= نسخة احتياطية يومية على Google Drive (النسخة الأونلاين) =================
+   الشغل الفعلي على السيرفر (Edge Function: gdrive-backup + pg_cron) فبيحصل الساعة 1 بالليل
+   حتى لو مفيش حد فاتح السيستم. الشاشة دي للمدير: ربط حساب جوجل، متابعة آخر نسخة، ونسخة فورية. */
+const GB_FN = 'gdrive-backup';
+let gbState = {loading:false, status:null, error:'', busy:''};
+let gbPending = null; // كود راجع من جوجل بعد الموافقة
+(function gbCaptureReturn(){
+  try{
+    const u = new URL(location.href);
+    const code = u.searchParams.get('code'), state = u.searchParams.get('state'), err = u.searchParams.get('error');
+    let saved = null; try{ saved = localStorage.getItem('erpGdriveState'); }catch(e){}
+    if((code || err) && state && saved && state===saved){
+      gbPending = code ? {code} : {error: err};
+      try{ localStorage.removeItem('erpGdriveState'); }catch(e){}
+      history.replaceState(null, '', u.origin + u.pathname);
+    }
+  }catch(e){}
+})();
+function gbRedirectUri(){ return location.origin + location.pathname; }
+async function gbCall(action, extra){
+  if(typeof cloudSession==='undefined' || !cloudSession) throw new Error('لازم تكون داخل بحساب المدير');
+  if(cloudSession.expires_at - 60 < Date.now()/1000 && typeof cloudRefresh==='function') await cloudRefresh();
+  let res;
+  try{
+    res = await fetch(CLOUD.url + '/functions/v1/' + GB_FN, {method:'POST',
+      headers:{'apikey':CLOUD.key, 'Authorization':'Bearer '+cloudSession.access_token, 'Content-Type':'application/json'},
+      body: JSON.stringify(Object.assign({action}, extra||{}))});
+  }catch(e){ const er = new Error('تعذّر الوصول لخادم النسخ الاحتياطي — اتأكد إن دالة gdrive-backup اتعملها Deploy على Supabase'); er.notDeployed = true; throw er; }
+  const text = await res.text();
+  let j = null; try{ j = text ? JSON.parse(text) : null; }catch(e){}
+  if(res.status===404){ const er = new Error('دالة gdrive-backup لسه متعملهاش Deploy على Supabase'); er.notDeployed = true; throw er; }
+  if(!res.ok) throw new Error((j && j.error) || ('خطأ من الخادم ('+res.status+')'));
+  return j || {};
+}
+async function gbLoadStatus(){
+  gbState.loading = true; gbState.error = '';
+  try{ gbState.status = await gbCall('status'); gbState.notDeployed = false; }
+  catch(e){ gbState.error = e.message; gbState.notDeployed = !!e.notDeployed; gbState.status = null; }
+  gbState.loading = false;
+  if(currentPage==='gbackup') renderPage();
+}
+function gbConnect(){
+  const st = gbState.status;
+  if(!st || !st.client_id){ alert('لسه محطتش GOOGLE_CLIENT_ID في أسرار الدالة على Supabase — شوف خطوات الإعداد تحت'); return; }
+  const state = Math.random().toString(36).slice(2) + Date.now().toString(36);
+  try{ localStorage.setItem('erpGdriveState', state); }catch(e){}
+  const p = new URLSearchParams({client_id: st.client_id, redirect_uri: gbRedirectUri(), response_type:'code',
+    scope:'https://www.googleapis.com/auth/drive.file openid email', access_type:'offline', prompt:'consent', include_granted_scopes:'true', state});
+  location.href = 'https://accounts.google.com/o/oauth2/v2/auth?' + p.toString();
+}
+async function gbRunNow(){
+  if(gbState.busy) return;
+  gbState.busy = 'run'; renderPage();
+  try{
+    const r = await gbCall('run');
+    showToast('اترفعت النسخة على جوجل درايف ✓ ('+(r.records||0)+' سجل)', 'good');
+    if(typeof logAudit==='function'){ logAudit('نسخة احتياطية', 'جوجل درايف', r.file||''); saveData(); }
+  }catch(e){ alert('فشلت النسخة: '+e.message); }
+  gbState.busy = '';
+  await gbLoadStatus();
+}
+async function gbDisconnect(){
+  if(!confirm('فصل حساب جوجل درايف؟ النسخ اللي اترفعت قبل كده هتفضل في الدرايف، بس النسخ اليومية هتقف لحد ما تربط تاني.')) return;
+  try{ await gbCall('disconnect'); if(typeof logAudit==='function'){ logAudit('فصل', 'جوجل درايف', ''); saveData(); } }catch(e){ alert(e.message); }
+  await gbLoadStatus();
+}
+// بعد الدخول: لو راجعين من صفحة موافقة جوجل نكمّل الربط
+async function gdriveAfterLogin(){
+  if(!gbPending || window.DESKTOP_EDITION) return;
+  const pend = gbPending; gbPending = null;
+  if(!isAdmin()) return;
+  goTo('gbackup');
+  if(pend.error){ alert('اتلغى الربط من صفحة جوجل ('+pend.error+')'); return; }
+  gbState.busy = 'exchange'; renderPage();
+  try{
+    const r = await gbCall('exchange', {code: pend.code, redirect_uri: gbRedirectUri()});
+    showToast('اتربط جوجل درايف'+(r.email?' ('+r.email+')':'')+' ✓', 'good');
+    if(typeof logAudit==='function'){ logAudit('ربط', 'جوجل درايف', r.email||''); saveData(); }
+  }catch(e){ alert('فشل ربط جوجل درايف: '+e.message); }
+  gbState.busy = '';
+  await gbLoadStatus();
+}
+function gbFmtSize(n){ n = Number(n)||0; return n>1048576 ? (n/1048576).toFixed(1)+' ميجا' : Math.max(1, Math.round(n/1024))+' كيلو'; }
+function gbFmtTime(iso){ if(!iso) return '—'; const d = new Date(iso); return isNaN(d) ? iso : d.toLocaleString('ar-EG', {dateStyle:'medium', timeStyle:'short'}); }
+function gbCopy(text){ try{ navigator.clipboard.writeText(text); showToast('اتنسخ ✓', 'good'); }catch(e){ prompt('انسخ:', text); } }
+function renderGBackupPage(){
+  if(!isAdmin() || window.DESKTOP_EDITION){ currentPage = 'dashboard'; return renderDashboard(); }
+  if(!gbState.status && !gbState.loading && !gbState.error) setTimeout(gbLoadStatus, 0);
+  const st = gbState.status;
+  const uri = gbRedirectUri();
+  const q = s=>String(s||'').replace(/'/g, "\\'");
+  let card;
+  if(gbState.loading && !st) card = `<div class="empty-state">جاري التحميل...</div>`;
+  else if(gbState.busy==='exchange') card = `<div class="empty-state">جاري ربط حساب جوجل درايف...</div>`;
+  else if(!st) card = `<div style="padding:16px; color:var(--bad);">⚠ ${gbState.error||'تعذّر الوصول للخادم'}</div><div style="padding:0 16px 16px; font-size:13px; color:var(--text-dim);">لو دي أول مرة: نفّذ خطوات الإعداد اللي تحت (مرة واحدة بس)، وبعدها اضغط "تحديث".</div>`;
+  else if(!st.configured) card = `<div style="padding:16px; color:var(--warn);">⚠ الدالة شغالة بس لسه محطتش بيانات Google (GOOGLE_CLIENT_ID و GOOGLE_CLIENT_SECRET) في أسرارها — خطوة 3 تحت.</div>`;
+  else if(!st.connected) card = `<div style="padding:18px;">
+      <div style="font-size:14px; margin-bottom:12px;">مفيش حساب جوجل درايف مربوط لسه. اضغط ربط واختار الحساب اللي عايز النسخ تتحفظ فيه.</div>
+      <button class="btn" onclick="gbConnect()">🔗 ربط حساب Google Drive</button>
+      ${!st.cron_secret ? `<div style="margin-top:10px; font-size:12.5px; color:var(--warn);">⚠ لسه محطتش BACKUP_CRON_SECRET في أسرار الدالة — من غيرها النسخ التلقائية مش هتشتغل (خطوة 3).</div>` : ''}
+    </div>`;
+  else {
+    const ok = st.last_status==='ok', err = st.last_status==='error';
+    card = `<div class="kpi-grid" style="padding:14px;">
+        <div class="kpi ok"><div class="kpi-label">الحساب المربوط</div><div class="kpi-value" style="font-size:15px; direction:ltr;">${st.email||'—'}</div><div class="kpi-sub">فولدر: ${st.folder_name}</div></div>
+        <div class="kpi ${err?'alert':ok?'ok':''}"><div class="kpi-label">آخر نسخة</div><div class="kpi-value" style="font-size:15px;">${st.last_run_at ? gbFmtTime(st.last_run_at) : 'لسه متاخدتش'}</div><div class="kpi-sub">${err ? '❌ فشلت: '+(st.last_error||'') : ok ? '✓ '+(st.last_file||'')+' — '+gbFmtSize(st.last_size) : 'أول نسخة هتتاخد الساعة 1 بالليل'}</div></div>
+        <div class="kpi"><div class="kpi-label">النسخ المحفوظة في الدرايف</div><div class="kpi-value">${st.files_count||0}</div><div class="kpi-sub">بنحتفظ بآخر ${st.keep} نسخة والأقدم بتتمسح</div></div>
+        <div class="kpi"><div class="kpi-label">المعاد</div><div class="kpi-value" style="font-size:15px;">كل يوم 1:00 ص</div><div class="kpi-sub">بتوقيت القاهرة — حتى لو السيستم مقفول</div></div>
+      </div>
+      ${!st.cron_secret ? `<div style="margin:0 14px 10px; font-size:12.5px; color:var(--warn);">⚠ لسه محطتش BACKUP_CRON_SECRET في أسرار الدالة — النسخ التلقائية مش هتشتغل (النسخة اليدوية شغالة).</div>` : ''}
+      <div style="display:flex; gap:8px; flex-wrap:wrap; padding:0 14px 16px;">
+        <button class="btn" onclick="gbRunNow()" ${gbState.busy?'disabled':''}>${gbState.busy==='run'?'جاري رفع النسخة...':'📤 خد نسخة دلوقتي'}</button>
+        <button class="btn secondary" onclick="gbConnect()">🔄 ربط حساب تاني</button>
+        <button class="btn danger" onclick="gbDisconnect()">فصل الحساب</button>
+      </div>`;
+  }
+  const step = (n, t, b)=>`<div style="display:flex; gap:10px; margin-bottom:14px;"><div style="flex-shrink:0; width:26px; height:26px; border-radius:50%; background:var(--accent); color:#1D2125; font-weight:900; display:flex; align-items:center; justify-content:center;">${n}</div><div style="font-size:13px; line-height:1.8;"><b>${t}</b><div>${b}</div></div></div>`;
+  const code = s=>`<code style="direction:ltr; display:inline-block; background:var(--bg); border:1px solid var(--border); border-radius:4px; padding:1px 6px; font-size:12px;">${s}</code>`;
+  const showGuide = !st || !st.configured || !st.connected;
+  return `
+    <div class="page-head">
+      <div>
+        <div class="page-title">النسخ الاحتياطي على Google Drive</div>
+        <div class="page-desc">نسخة كاملة من كل بيانات السيستم بتترفع تلقائي كل يوم الساعة 1 بالليل على جوجل درايف — وتقدر ترجّع أي نسخة من "⬆ استيراد بيانات" في لوحة التحكم.</div>
+      </div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;"><button class="btn secondary small" onclick="gbState.status=null; gbLoadStatus();">🔄 تحديث</button></div>
+    </div>
+    <div class="table-wrap" style="margin-bottom:22px;">${card}</div>
+    <details ${showGuide?'open':''} class="table-wrap" style="padding:14px 16px;">
+      <summary style="cursor:pointer; font-weight:800; margin-bottom:12px;">⚙ خطوات الإعداد (مرة واحدة بس)</summary>
+      ${step(1, 'مشروع Google Cloud', `ادخل ${code('console.cloud.google.com')} بنفس حساب الجيميل → اعمل مشروع جديد (مثلاً ERP Backup) → من "APIs & Services → Library" فعّل <b>Google Drive API</b>.`)}
+      ${step(2, 'شاشة الموافقة وبيانات الدخول', `من "OAuth consent screen" اختار <b>External</b> واكتب اسم التطبيق وإيميلك، وبعد ما تخلص دوس <b>Publish app</b> (عشان الربط ميقفش بعد 7 أيام).<br>
+        بعدها من "Credentials → Create credentials → OAuth client ID" اختار <b>Web application</b>، وفي "Authorized redirect URIs" حط اللينك ده بالظبط:<br>
+        ${code(uri)} <button class="btn secondary small" onclick="gbCopy('${q(uri)}')">نسخ</button><br>
+        هتاخد <b>Client ID</b> و <b>Client secret</b>.`)}
+      ${step(3, 'الدالة على Supabase', `في Supabase → Edge Functions → Deploy a new function → سمّيها ${code('gdrive-backup')} والصق كود ملف ${code('index.ts')} اللي معاك → Deploy.<br>
+        من إعدادات الدالة اقفل <b>Verify JWT</b>.<br>
+        ومن Edge Functions → Secrets ضيف: ${code('GOOGLE_CLIENT_ID')} و ${code('GOOGLE_CLIENT_SECRET')} (من خطوة 2) و ${code('BACKUP_CRON_SECRET')} (الكلمة اللي في ملف gdrive-backup.sql).`)}
+      ${step(4, 'الجدولة', `في Supabase → SQL Editor شغّل ملف ${code('gdrive-backup.sql')} مرة واحدة.`)}
+      ${step(5, 'الربط', `ارجع هنا اضغط "🔄 تحديث" وبعدها <b>🔗 ربط حساب Google Drive</b> واختار الحساب ووافق. وبعدها اضغط "📤 خد نسخة دلوقتي" تجرّب.`)}
+      <div style="font-size:12px; color:var(--text-dim);">السيستم بياخد صلاحية على الملفات اللي هو بيعملها بس في الدرايف (فولدر النسخ) — مش بيشوف أي ملفات تانية عندك.</div>
+    </details>
+  `;
+}
+
+/* ================= زرار "رجوع" بتاع الموبايل/المتصفح =================
+   كل انتقال جوه السيستم (شاشة، مشروع، موظف، مورد، عهدة، تبويب...) بيتسجل خطوة في تاريخ المتصفح،
+   فزرار الرجوع بيرجع خطوة لورا جوه السيستم بدل ما يقفل الموقع:
+   - لو فيه نافذة مفتوحة (إضافة/تعديل/كشف/تأكيد) → الرجوع يقفلها بس.
+   - لو القائمة الجانبية مفتوحة على الموبايل → تتقفل.
+   - غير كده → يرجع للشاشة اللي قبلها.
+   - في أول خطوة (لوحة التحكم): أول ضغطة بتطلع "اضغط رجوع مرة كمان للخروج"، والتانية بتخرج. */
+const NAV_KEYS = ['currentPage','selectedProjectId','selectedSubId','selectedSupplierId','selectedEmployeeId','selectedInvoiceId','selectedContractId','selectedQuotationId','selectedMaterialId','selectedAssetId','selectedCashboxId','selectedExtraId','accountingTab','cashboxMonthView'];
+function navSnapshot(){
+  const s = {};
+  try{ s.currentPage = currentPage; }catch(e){}
+  try{ s.selectedProjectId = selectedProjectId; }catch(e){}
+  try{ s.selectedSubId = selectedSubId; }catch(e){}
+  try{ s.selectedSupplierId = selectedSupplierId; }catch(e){}
+  try{ s.selectedEmployeeId = selectedEmployeeId; }catch(e){}
+  try{ s.selectedInvoiceId = selectedInvoiceId; }catch(e){}
+  try{ s.selectedContractId = selectedContractId; }catch(e){}
+  try{ s.selectedQuotationId = selectedQuotationId; }catch(e){}
+  try{ s.selectedMaterialId = selectedMaterialId; }catch(e){}
+  try{ s.selectedAssetId = selectedAssetId; }catch(e){}
+  try{ s.selectedCashboxId = selectedCashboxId; }catch(e){}
+  try{ s.selectedExtraId = selectedExtraId; }catch(e){}
+  try{ s.accountingTab = currentPage==='accounting' ? accountingTab : null; }catch(e){}
+  try{ s.cashboxMonthView = currentPage==='cashbox' ? cashboxMonthView : null; }catch(e){}
+  return s;
+}
+function navKey(s){ return NAV_KEYS.map(k=>s[k]===undefined||s[k]===null ? '' : String(s[k])).join('|'); }
+function navRestore(s){
+  try{ currentPage = s.currentPage || 'dashboard'; }catch(e){}
+  try{ selectedProjectId = s.selectedProjectId||null; }catch(e){}
+  try{ selectedSubId = s.selectedSubId||null; }catch(e){}
+  try{ selectedSupplierId = s.selectedSupplierId||null; }catch(e){}
+  try{ selectedEmployeeId = s.selectedEmployeeId||null; }catch(e){}
+  try{ selectedInvoiceId = s.selectedInvoiceId||null; }catch(e){}
+  try{ selectedContractId = s.selectedContractId||null; }catch(e){}
+  try{ selectedQuotationId = s.selectedQuotationId||null; }catch(e){}
+  try{ selectedMaterialId = s.selectedMaterialId||null; }catch(e){}
+  try{ selectedAssetId = s.selectedAssetId||null; }catch(e){}
+  try{ selectedCashboxId = s.selectedCashboxId||null; }catch(e){}
+  try{ selectedExtraId = s.selectedExtraId||null; }catch(e){}
+  try{ if(s.accountingTab) accountingTab = s.accountingTab; }catch(e){}
+  try{ cashboxMonthView = s.cashboxMonthView||null; }catch(e){}
+}
+let navReady = false, navRestoring = false, navExitAt = 0, navScroll = {};
+function navAppVisible(){ const r = document.getElementById('appRoot'); return !!(r && r.style.display!=='none'); }
+// بيتنادى بعد كل رسم للصفحة: لو الشاشة اتغيرت يسجل خطوة جديدة
+function navAfterRender(){
+  if(!navAppVisible() || navRestoring) return;
+  const snap = navSnapshot(), key = navKey(snap);
+  const st = history.state;
+  if(!navReady){
+    navReady = true;
+    // خطوة "حارس" قبل أول شاشة عشان أول رجوع ميقفلش الموقع
+    history.replaceState({erpGuard:true}, '');
+    history.pushState({erpNav:snap, key}, '');
+    return;
+  }
+  if(st && st.erpNav && st.key===key) return;
+  if(st && st.erpNav) navScroll[st.key] = window.scrollY;
+  history.pushState({erpNav:snap, key}, '');
+}
+function navOpenOverlays(){ return Array.from(document.querySelectorAll('.overlay.open')); }
+function navCloseTopOverlay(){
+  const list = navOpenOverlays();
+  if(!list.length) return false;
+  // الأعلى = آخر واحد في الصفحة أو الأعلى z-index
+  const top = list.sort((a,b)=>(Number(getComputedStyle(a).zIndex)||0)-(Number(getComputedStyle(b).zIndex)||0)).pop();
+  if(top.id==='overlay' && typeof closeModal==='function') closeModal();
+  else if(top.id==='confirmOverlay' && typeof closeConfirmModal==='function') closeConfirmModal();
+  else if(top.id==='printOverlay' && typeof closePrintModal==='function') closePrintModal();
+  else top.classList.remove('open');
+  return true;
+}
+window.addEventListener('popstate', ev=>{
+  if(!navReady || !navAppVisible()) return;
+  const st = ev.state;
+  const cur = navSnapshot(), curKey = navKey(cur);
+  // 1) نافذة مفتوحة → اقفلها بس وفضّل في نفس الشاشة
+  // 2) قايمة الموبايل مفتوحة → اقفلها
+  const sb = document.getElementById('sidebar');
+  const gp = document.getElementById('gsPanel');
+  if(navCloseTopOverlay() || (sb && sb.classList.contains('open') && (sb.classList.remove('open'), true)) || (gp && gp.style.display==='block' && ((gp.style.display='none'), true))){
+    if(!(st && st.erpNav && st.key===curKey)) history.pushState({erpNav:cur, key:curKey}, '');
+    return;
+  }
+  if(st && st.erpNav){
+    navRestoring = true;
+    try{ navRestore(st.erpNav); renderPage(); if(typeof buildNav==='function') buildNav(); }
+    finally{ navRestoring = false; }
+    const y = navScroll[st.key];
+    window.scrollTo(0, y||0);
+    return;
+  }
+  if(st && st.erpGuard){
+    const now = Date.now();
+    if(now - navExitAt < 2500){ history.back(); return; }
+    navExitAt = now;
+    if(typeof showToast==='function') showToast('اضغط رجوع مرة كمان للخروج من السيستم');
+    history.pushState({erpNav:cur, key:curKey}, '');
+  }
+});
+// ربط تلقائي: بعد أي renderPage
+(function(){
+  const orig = window.renderPage;
+  if(typeof orig!=='function' || orig.__nav) return;
+  const wrapped = function(){ const r = orig.apply(this, arguments); try{ navAfterRender(); }catch(e){} return r; };
+  wrapped.__nav = true;
+  renderPage = wrapped;
+})();
 </script>
 </body>
 </html>
