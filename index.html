@@ -239,8 +239,19 @@ tbody tr:hover{background:var(--surface-2);}
 .gs-empty{padding:16px; color:var(--text-dim); text-align:center;}
 tr.gs-flash > td{animation:gsFlashAnim 2.6s ease;}
 @keyframes gsFlashAnim{0%,45%{background:var(--accent-dim); color:#1D2125;} 100%{background:transparent;}}
-@media(max-width:560px){ #gsTopWrap{order:-1; width:100%;} #gsTopWrap .gs-input{width:100%;} }
+@media(max-width:560px){ .user-bar > span:last-child{flex-wrap:wrap; justify-content:flex-end;} #gsTopWrap{order:-1; flex-basis:100%;} #gsTopWrap .gs-input{width:100%;} }
 input[type="date"], input[type="month"], input[type="datetime-local"]{direction:ltr; text-align:right;}
+.tf-bar{display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:0 0 6px;}
+.tf-body{flex-wrap:wrap; gap:6px; align-items:center; width:100%; padding:8px; background:var(--surface-2); border-radius:8px;}
+.tf-body input, .tf-body select{background:var(--surface); border:1px solid var(--border); color:var(--text); padding:6px 8px; border-radius:6px; font-family:inherit; font-size:12.5px; max-width:100%;}
+.tf-body .tf-q{flex:1; min-width:150px;}
+.tf-body select{max-width:200px;}
+.tf-d{font-size:12px; color:var(--text-dim); display:inline-flex; gap:4px; align-items:center;}
+.tf-toggle{padding:3px 10px !important; font-size:12px !important;}
+.tf-toggle.on, .tf-on .tf-toggle{border-color:var(--accent) !important; color:var(--accent) !important;}
+.tf-info{font-size:12px; color:var(--accent); font-weight:700;}
+.tf-foot{display:none; gap:16px; flex-wrap:wrap; font-size:12.5px; padding:8px 12px; background:var(--surface-2); border-top:1px solid var(--border);}
+@media print{ .tf-bar, .tf-foot{display:none !important;} }
 @media print{ body{zoom:1 !important;} }
 .fz-ctl{display:inline-flex; gap:3px; align-items:center;}
 .fz-ctl .btn{padding:4px 8px; min-width:30px;}
@@ -13889,7 +13900,7 @@ function renderExtraDetail(id){
       <tbody>${summary.map(x=>`<tr style="cursor:pointer;" onclick="setExtraFilter('desc', ${qd(x.description)})" title="اضغط تشوف بنود البيان ده بس">
         <td style="font-weight:700; color:var(--accent);">${q(x.description)}</td><td>${x.count}</td><td>${fmtUnits(x.qty)} ${q(x.unit)}</td><td style="font-weight:700;">${fmtMoney(x.amount)}</td><td style="color:var(--good);">${fmtMoney(x.approved)}</td></tr>`).join('')}</tbody>
     </table></div></div>` : ''}
-    <div class="table-wrap" style="margin-bottom:24px;"><div class="table-scroll"><table>
+    <div class="table-wrap" data-nofilter style="margin-bottom:24px;"><div class="table-scroll"><table>
       <thead><tr><th>#</th><th>التاريخ</th><th>البيان</th><th>الكمية</th><th>الوحدة</th><th>سعر الوحدة</th><th>الإجمالي</th><th>الحالة</th><th>ملاحظة</th><th></th></tr></thead>
       <tbody>${items.length ? monthFoldRows('xw_'+g._id, items, {cols:10, noFold:!!filtered, sum:l=>mfMoneySum(l, i=>i.status==='مرفوض'?0:i.amount), row:(i, k)=>`<tr>
         <td>${k+1}</td><td>${i.date||'—'}</td><td style="font-weight:700;">${i.description}</td><td>${i.qty}</td><td>${i.unit||'—'}</td>
@@ -14224,6 +14235,130 @@ function renderGBackupPage(){
   `;
 }
 
+/* ================= فلترة عامة لكل الجداول =================
+   أي جدول في أي شاشة (فيه 4 صفوف أو أكتر) بيظهر فوقه زرار "🔎 فلترة":
+   بحث بأي كلمة، من تاريخ / لحد تاريخ (لو الجدول فيه عمود تاريخ)، واختيار من الأعمدة المتكررة
+   (العامل، البيان، الحساب، المشروع، الحالة، النوع...). وتحت الجدول: عدد الصفوف المعروضة وإجمالي أعمدة المبالغ.
+   الفلترة بتحصل على الشاشة نفسها (من غير ما البيانات تتغير)، وبتفضل محفوظة لو الصفحة اتحدثت. */
+let tfState = {};
+const TF_MIN_ROWS = 4;
+function tfNorm(s){ return typeof gsNorm==='function' ? gsNorm(s) : String(s||'').toLowerCase(); }
+function tfCellFirst(td){ return ((td && td.innerText) || '').split('\n')[0].trim(); }
+function tfMoney(txt){
+  const line = String(txt||'').split('\n').find(l=>l.indexOf('جنيه')>=0);
+  if(!line) return null;
+  const n = tfNorm(line).replace(/٫/g, '.');
+  const m = n.match(/(-\s*)?(\d+(?:\.\d+)?)/);
+  if(!m) return null;
+  return (m[1] ? -1 : 1) * parseFloat(m[2]);
+}
+function tfIsSpecial(tr){
+  if(tr.closest('.mf-head')) return true;
+  const c = tr.cells[0];
+  if(!c) return true;
+  if(c.colSpan>=2) return true;
+  const t = (c.innerText||'').trim();
+  return /^(الإجمالي|إجمالي|الاجمالي)/.test(t) || /^رصيد أول/.test(((tr.cells[1]||{}).innerText||'').trim());
+}
+function tfDataRows(table){ return Array.from(table.tBodies).flatMap(b=>Array.from(b.rows)).filter(tr=>!tfIsSpecial(tr)); }
+function tfAttachAll(){
+  const pages = document.getElementById('pages');
+  if(!pages) return;
+  const base = (typeof navKey==='function' && typeof navSnapshot==='function') ? navKey(navSnapshot()) : String(currentPage);
+  Array.from(pages.querySelectorAll('table')).forEach((t, i)=>{
+    if(t.dataset.tf || !t.tHead || t.closest('[data-nofilter]') || t.closest('.tf-skip')) return;
+    try{ tfAttach(t, base+'#'+i+'#'+Array.from(t.tHead.rows[0].cells).map(c=>c.innerText.trim()).join('|')); }catch(e){}
+  });
+}
+function tfAttach(table, key){
+  const rows = tfDataRows(table);
+  if(rows.length < TF_MIN_ROWS) return;
+  table.dataset.tf = '1';
+  const heads = Array.from(table.tHead.rows[0].cells).map(c=>c.innerText.trim());
+  const dateCol = heads.findIndex(h=>/التاريخ|تاريخ/.test(h));
+  // أعمدة المبالغ والأعمدة اللي ينفع نختار منها
+  const money = [], cats = [];
+  heads.forEach((h, ci)=>{
+    if(!h || ci===dateCol) return;
+    const cells = rows.map(r=>r.cells[ci]).filter(Boolean);
+    if(!cells.length) return;
+    const withMoney = cells.filter(c=>(c.innerText||'').indexOf('جنيه')>=0).length;
+    if(withMoney >= cells.length*0.6){ if(!/رصيد/.test(h)) money.push(ci); return; }
+    const vals = cells.map(tfCellFirst).filter(v=>v && v!=='—');
+    if(vals.length < 2) return;
+    if(vals.every(v=>/^[\d٠-٩.,٬\s%\-]+$/.test(v))) return; // أرقام
+    const distinct = new Set(vals);
+    if(distinct.size>=2 && distinct.size<=40 && distinct.size < vals.length) cats.push({ci, h, n:distinct.size, rep: vals.length/distinct.size});
+  });
+  const IMPORTANT = /الحساب|العامل|البيان|المشروع|الموظف|المورد|المقاول|الحالة|النوع|الصنف|الشغلانة|العميل|الطريقة|الوحدة|الأصناف/;
+  cats.forEach(c=>{ c.score = c.rep * (IMPORTANT.test(c.h) ? 4 : 1); });
+  cats.sort((a,b)=>b.score-a.score);
+  const useCats = cats.slice(0, 4).sort((a,b)=>a.ci-b.ci);
+  const st = tfState[key] || (tfState[key] = {q:'', from:'', to:'', sel:{}, open:false});
+  const wrap = table.closest('.table-wrap') || table;
+  const bar = document.createElement('div');
+  bar.className = 'tf-bar';
+  const esc = s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
+  const opts = ci=>Array.from(new Set(rows.map(r=>tfCellFirst(r.cells[ci])).filter(v=>v && v!=='—'))).sort((a,b)=>a.localeCompare(b));
+  bar.innerHTML = `<button type="button" class="btn secondary small tf-toggle">🔎 فلترة</button><span class="tf-info"></span>
+    <div class="tf-body" style="display:none;">
+      <input type="search" class="tf-q" placeholder="بحث في الجدول..." value="${esc(st.q)}">
+      ${useCats.map(c=>`<select class="tf-sel" data-ci="${c.ci}"><option value="">${esc(c.h)}: الكل</option>${opts(c.ci).map(v=>`<option value="${esc(v)}" ${st.sel[c.ci]===v?'selected':''}>${esc(v)}</option>`).join('')}</select>`).join('')}
+      ${dateCol>=0 ? `<label class="tf-d">من <input type="date" class="tf-from" value="${st.from}"></label><label class="tf-d">لحد <input type="date" class="tf-to" value="${st.to}"></label>` : ''}
+      <button type="button" class="btn secondary small tf-clear">✕ مسح</button>
+    </div>`;
+  wrap.parentNode.insertBefore(bar, wrap);
+  const foot = document.createElement('div');
+  foot.className = 'tf-foot';
+  if(wrap!==table) wrap.appendChild(foot); else wrap.parentNode.insertBefore(foot, wrap.nextSibling);
+  const body = bar.querySelector('.tf-body');
+  const setOpen = o=>{ st.open = o; body.style.display = o ? 'flex' : 'none'; bar.querySelector('.tf-toggle').classList.toggle('on', o); };
+  setOpen(st.open || tfActive(st));
+  bar.querySelector('.tf-toggle').addEventListener('click', ()=>setOpen(!st.open));
+  let timer = null;
+  bar.querySelector('.tf-q').addEventListener('input', e=>{ clearTimeout(timer); timer = setTimeout(()=>{ st.q = e.target.value; tfApply(table, st, dateCol, money, heads, bar, foot); }, 150); });
+  bar.querySelectorAll('.tf-sel').forEach(s=>s.addEventListener('change', ()=>{ if(s.value) st.sel[s.dataset.ci] = s.value; else delete st.sel[s.dataset.ci]; tfApply(table, st, dateCol, money, heads, bar, foot); }));
+  const f = bar.querySelector('.tf-from'), t = bar.querySelector('.tf-to');
+  if(f) f.addEventListener('change', ()=>{ st.from = f.value; tfApply(table, st, dateCol, money, heads, bar, foot); });
+  if(t) t.addEventListener('change', ()=>{ st.to = t.value; tfApply(table, st, dateCol, money, heads, bar, foot); });
+  bar.querySelector('.tf-clear').addEventListener('click', ()=>{
+    st.q = ''; st.from = ''; st.to = ''; st.sel = {};
+    bar.querySelectorAll('.tf-q, .tf-from, .tf-to').forEach(x=>x.value = ''); bar.querySelectorAll('.tf-sel').forEach(x=>x.value = '');
+    tfApply(table, st, dateCol, money, heads, bar, foot);
+  });
+  tfApply(table, st, dateCol, money, heads, bar, foot);
+}
+function tfActive(st){ return !!(st.q || st.from || st.to || Object.keys(st.sel).length); }
+function tfApply(table, st, dateCol, money, heads, bar, foot){
+  const active = tfActive(st);
+  const terms = tfNorm(st.q).split(/\s+/).filter(Boolean);
+  const all = Array.from(table.tBodies).flatMap(b=>Array.from(b.rows));
+  let shown = 0, total = 0;
+  const sums = money.map(()=>0);
+  all.forEach(tr=>{
+    if(tfIsSpecial(tr)){ tr.style.display = (active && !tr.closest('.mf-head')) ? 'none' : ''; return; }
+    total++;
+    let ok = true;
+    if(terms.length){ const h = tfNorm(tr.innerText); ok = terms.every(x=>h.indexOf(x)>=0); }
+    if(ok && dateCol>=0 && (st.from || st.to)){
+      const m = ((tr.cells[dateCol]||{}).innerText||'').match(/\d{4}-\d{2}-\d{2}/);
+      const d = m ? m[0] : '';
+      if(!d || (st.from && d<st.from) || (st.to && d>st.to)) ok = false;
+    }
+    if(ok) for(const ci in st.sel){ if(tfCellFirst(tr.cells[ci])!==st.sel[ci]){ ok = false; break; } }
+    tr.style.display = ok ? '' : 'none';
+    if(ok){ shown++; money.forEach((ci, k)=>{ const v = tfMoney((tr.cells[ci]||{}).innerText||''); if(v!==null) sums[k] += v; }); }
+  });
+  // الشهور المطوية: وقت الفلترة بنفتح كله ونخفي عناوين الشهور، وبعد المسح نرجّعها زي ما كانت
+  table.querySelectorAll('tbody.mf-head').forEach(b=>{ b.style.display = active ? 'none' : ''; });
+  table.querySelectorAll('tbody[data-mf]').forEach(b=>{ b.style.display = active ? '' : ((typeof _mfOpen!=='undefined' && _mfOpen[b.dataset.mf]) ? '' : 'none'); });
+  const info = bar.querySelector('.tf-info');
+  info.textContent = active ? `${shown} من ${total}` : '';
+  bar.classList.toggle('tf-on', active);
+  foot.innerHTML = active ? `<span>المعروض: <b>${shown}</b> من ${total}</span>${money.map((ci, k)=>`<span>${heads[ci]}: <b>${fmtMoney(Math.round(sums[k]*100)/100)}</b></span>`).join('')}` : '';
+  foot.style.display = active ? 'flex' : 'none';
+}
+
 /* ================= زرار "رجوع" بتاع الموبايل/المتصفح =================
    كل انتقال جوه السيستم (شاشة، مشروع، موظف، مورد، عهدة، تبويب...) بيتسجل خطوة في تاريخ المتصفح،
    فزرار الرجوع بيرجع خطوة لورا جوه السيستم بدل ما يقفل الموقع:
@@ -14329,7 +14464,7 @@ window.addEventListener('popstate', ev=>{
 (function(){
   const orig = window.renderPage;
   if(typeof orig!=='function' || orig.__nav) return;
-  const wrapped = function(){ const r = orig.apply(this, arguments); try{ navAfterRender(); }catch(e){} return r; };
+  const wrapped = function(){ const r = orig.apply(this, arguments); try{ navAfterRender(); }catch(e){} try{ if(typeof tfAttachAll==='function') tfAttachAll(); }catch(e){} return r; };
   wrapped.__nav = true;
   renderPage = wrapped;
 })();
