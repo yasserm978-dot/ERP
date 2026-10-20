@@ -1519,7 +1519,7 @@ const q = v=>encodeURIComponent(v);
 
 /* ---------- تحميل ومزامنة البيانات ---------- */
 const SYNC_COLLECTIONS = ['projects','hr','finance','contracts','assets','subs','ledger','generalExpenses','collections','purchases','materials','quotations','boq','reminders','auditLog','suppliers','cashboxes','extraWorks'];
-const SYNC_SETTINGS = ['revenueAccounts','expenseAccounts','capital','overheadAllocationBasis','projectStatuses','procedureTypes','contractTypes','materialCategories','alertRules','alertLog','contractCalcMethods','assetTypes','assetExpenseKinds','companyInfo'];
+const SYNC_SETTINGS = ['revenueAccounts','expenseAccounts','capital','overheadAllocationBasis','projectStatuses','procedureTypes','contractTypes','materialCategories','alertRules','alertLog','contractCalcMethods','assetTypes','assetExpenseKinds','companyInfo','securitySettings'];
 // إعدادات حساسة (زي رمز واتساب) — بتتخزن في جدول المدير بس يقدر يقراه
 const ADMIN_SETTINGS = ['whatsappSettings','userPins'];
 function settingsTable(key){ return ADMIN_SETTINGS.includes(key) ? 'erp_admin_settings' : 'erp_settings'; }
@@ -1907,6 +1907,16 @@ async function bootApp(){
   renderLoading('جارِ الاتصال بالسيرفر…');
   cloudLoadSession();
   try{
+    // خروج تلقائي: لو آخر استخدام أقدم من المدة المسموحة، منفتحش الجلسة القديمة (الكود هنا لأنه بيشتغل قبل ما باقي الموديولات تتحمل)
+    const _idleStale = (()=>{ try{ const c = localStorage.getItem('erpIdleMinutes'); const m = c===null ? 5 : Number(c); const last = Number(localStorage.getItem('erpLastActivity'))||0; return m>0 && last>0 && (Date.now()-last) > m*60000; }catch(e){ return false; } })();
+    if(cloudSession && cloudSession.user_id && _idleStale){
+      try{ await cloudSignOut(); }catch(e){ cloudStoreSession(null); }
+      try{ localStorage.removeItem('erpLastActivity'); }catch(e){}
+      renderLogin();
+      const er = document.getElementById('loginError');
+      if(er){ er.textContent = '🔒 اتسجل خروجك تلقائي لعدم استخدام السيستم — ادخل تاني'; er.style.display = 'block'; }
+      return;
+    }
     if(cloudSession && cloudSession.user_id){
       try{ await startSession(); return; }
       catch(e){
@@ -9609,6 +9619,7 @@ function renderUsersPage(){
       </div>
       <button class="btn" onclick="openUserForm()">+ إضافة مستخدم</button>
     </div>
+    ${typeof idleSettingsHtml==='function' ? idleSettingsHtml() : ''}
     <div class="table-wrap"><div class="table-scroll"><table>
       <thead><tr><th>الاسم</th><th>اسم المستخدم</th><th>الدور</th><th>الصلاحيات</th><th></th></tr></thead>
       <tbody>
@@ -9741,6 +9752,7 @@ function showApp(){
   renderPage();
   startAlertsAutoSync();
   startLiveClock();
+  if(typeof idleStart==='function') idleStart();
   if(typeof gdriveAfterLogin==='function') gdriveAfterLogin();
 }
 function renderBootstrap(){
@@ -9768,6 +9780,7 @@ async function createAdminAccount(){
     renderLoading('جارِ إنشاء حساب المدير…');
     await rpc('bootstrap_first_admin', {p_username:username, p_password:password, p_name:name});
     await cloudSignIn(username, password);
+    try{ localStorage.setItem('erpLastActivity', String(Date.now())); }catch(e){}
     await startSession();
   }catch(e){
     alert(e.message);
@@ -9812,12 +9825,15 @@ async function attemptLogin(){
     return;
   }
   loginBusy = false;
+  try{ localStorage.setItem('erpLastActivity', String(Date.now())); }catch(e){}
   try{ await startSession(); }catch(e){ renderConnError(e); return; }
   if(currentUser && typeof logAudit==='function'){ logAudit('تسجيل دخول', 'مستخدم', currentUser.name); saveData(); }
 }
-async function logout(){
-  if((syncQueue.length || syncRunning) && !confirm('فيه تعديلات لسه بتتحفظ. لو خرجت دلوقتي ممكن تضيع. تخرج برضه؟')) return;
-  if(currentUser && typeof logAudit==='function'){
+async function logout(auto){
+  if(auto!==true && (syncQueue.length || syncRunning) && !confirm('فيه تعديلات لسه بتتحفظ. لو خرجت دلوقتي ممكن تضيع. تخرج برضه؟')) return;
+  if(typeof idleStop==='function') idleStop();
+  try{ localStorage.removeItem('erpLastActivity'); }catch(e){}
+  if(auto!==true && currentUser && typeof logAudit==='function'){
     logAudit('تسجيل خروج', 'مستخدم', currentUser.name); saveData();
     for(let i=0; i<40 && (syncQueue.length || syncRunning); i++) await new Promise(r=>setTimeout(r,100));
   }
@@ -14233,6 +14249,113 @@ function renderGBackupPage(){
       <div style="font-size:12px; color:var(--text-dim);">السيستم بياخد صلاحية على الملفات اللي هو بيعملها بس في الدرايف (فولدر النسخ) — مش بيشوف أي ملفات تانية عندك.</div>
     </details>
   `;
+}
+
+/* ================= خروج تلقائي لو السيستم ساب من غير استخدام =================
+   لو مفيش أي حركة (ماوس، كيبورد، لمس، سكرول) لمدة معيّنة (افتراضي 5 دقايق — المدير يغيّرها
+   من "المستخدمون والصلاحيات")، بيظهر تنبيه 30 ثانية وبعدها بيسجل خروج والمستخدم يدخل من جديد.
+   الحركة في أي تاب مفتوح للسيستم بتتحسب، ولو الموبايل/الجهاز نام وصحي بعد المدة بيخرج على طول. */
+const IDLE_WARN_SEC = 30;
+let idleTimer = null, idleLast = Date.now(), idleWarnShown = false, idleLoggingOut = false;
+function idleMinutes(){
+  let m;
+  try{ m = DATA && DATA.securitySettings && DATA.securitySettings.idleMinutes; }catch(e){}
+  if(m===undefined || m===null || m==='') { try{ const c = localStorage.getItem('erpIdleMinutes'); if(c!==null) m = Number(c); }catch(e){} }
+  m = (m===undefined || m===null || isNaN(Number(m))) ? 5 : Number(m);
+  return Math.max(0, m);
+}
+function idleCacheSetting(){ try{ localStorage.setItem('erpIdleMinutes', String(idleMinutes())); }catch(e){} }
+function idleReadLast(){ let v = idleLast; try{ const s = Number(localStorage.getItem('erpLastActivity')); if(s > v) v = s; }catch(e){} return v; }
+function idleTouch(){
+  const now = Date.now();
+  if(now - idleLast < 1000 && !idleWarnShown) return;
+  idleLast = now;
+  try{ localStorage.setItem('erpLastActivity', String(now)); }catch(e){}
+  if(idleWarnShown) idleHideWarn();
+}
+// الجلسة المحفوظة قديمة؟ (السيستم اتقفل أو الجهاز نام أكتر من المدة)
+function idleSessionStale(){
+  const m = idleMinutes();
+  if(!m) return false;
+  let s = 0; try{ s = Number(localStorage.getItem('erpLastActivity'))||0; }catch(e){}
+  return s>0 && (Date.now() - s) > m*60000;
+}
+function idleShowWarn(left){
+  let ov = document.getElementById('idleOverlay');
+  if(!ov){
+    ov = document.createElement('div'); ov.id = 'idleOverlay'; ov.className = 'overlay';
+    ov.style.zIndex = '90';
+    ov.innerHTML = `<div class="modal" style="max-width:380px; text-align:center;"><div class="modal-body" style="padding:24px;">
+      <div style="font-size:34px; margin-bottom:6px;">⏳</div>
+      <div style="font-weight:800; font-size:16px; margin-bottom:8px;">مفيش استخدام للسيستم من فترة</div>
+      <div style="font-size:13.5px; color:var(--text-dim); margin-bottom:16px;">هيتم تسجيل الخروج تلقائي خلال <b id="idleLeft" style="color:var(--bad); font-size:16px;"></b> ثانية</div>
+      <button class="btn" id="idleStayBtn" onclick="idleTouch()">✋ أنا موجود — كمّل</button>
+    </div></div>`;
+    document.body.appendChild(ov);
+  }
+  document.getElementById('idleLeft').textContent = Math.max(0, Math.ceil(left));
+  ov.classList.add('open');
+  idleWarnShown = true;
+}
+function idleHideWarn(){ const ov = document.getElementById('idleOverlay'); if(ov) ov.classList.remove('open'); idleWarnShown = false; }
+async function idleLogout(){
+  if(idleLoggingOut || !currentUser) return;
+  idleLoggingOut = true;
+  idleStop();
+  idleHideWarn();
+  document.querySelectorAll('.overlay.open').forEach(o=>o.classList.remove('open'));
+  try{
+    if(typeof logAudit==='function'){ logAudit('خروج تلقائي', 'مستخدم', currentUser.name, 'عدم استخدام '+idleMinutes()+' دقيقة'); saveData(); }
+    for(let i=0; i<40 && (syncQueue.length || syncRunning); i++) await new Promise(r=>setTimeout(r,100));
+    await logout(true);
+  }finally{ idleLoggingOut = false; }
+  const err = document.getElementById('loginError');
+  if(err){ err.textContent = '🔒 اتسجل خروجك تلقائي لعدم استخدام السيستم '+idleMinutes()+' دقايق — ادخل تاني'; err.style.display = 'block'; }
+}
+function idleCheck(){
+  if(!currentUser){ idleStop(); return; }
+  const m = idleMinutes();
+  if(!m){ if(idleWarnShown) idleHideWarn(); return; }
+  const idleFor = (Date.now() - idleReadLast()) / 1000;
+  const limit = m*60;
+  if(idleFor >= limit){ idleLogout(); return; }
+  if(idleFor >= limit - IDLE_WARN_SEC) idleShowWarn(limit - idleFor);
+  else if(idleWarnShown) idleHideWarn();
+}
+function idleStart(){
+  idleStop();
+  idleCacheSetting();
+  idleTouch();
+  idleTimer = setInterval(idleCheck, 1000);
+}
+function idleStop(){ if(idleTimer){ clearInterval(idleTimer); idleTimer = null; } }
+['mousemove','mousedown','keydown','touchstart','wheel','scroll','input','click'].forEach(ev=>
+  window.addEventListener(ev, ()=>{ if(currentUser && !idleLoggingOut) idleTouch(); }, {passive:true, capture:true}));
+document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible' && currentUser) idleCheck(); });
+window.addEventListener('focus', ()=>{ if(currentUser) idleCheck(); });
+window.addEventListener('storage', e=>{ if(e.key==='erpLastActivity' && idleWarnShown) idleHideWarn(); });
+
+/* ---------- إعداد المدة (للمدير) ---------- */
+function idleSettingsHtml(){
+  const m = idleMinutes();
+  const opts = [0, 2, 5, 10, 15, 30, 60, 120];
+  if(!opts.includes(m)) opts.push(m);
+  return `<div class="table-wrap" style="padding:12px 16px; margin-bottom:18px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+    <span style="font-weight:700;">🔒 خروج تلقائي لو مفيش استخدام لمدة:</span>
+    <select id="idleMinutesSel" onchange="saveIdleMinutes(this.value)" style="background:var(--surface); border:1px solid var(--border); color:var(--text); padding:6px 10px; border-radius:6px; font-family:inherit;">
+      ${opts.sort((a,b)=>a-b).map(o=>`<option value="${o}" ${o===m?'selected':''}>${o===0?'مقفول (من غير خروج تلقائي)':o<60?o+' دقايق':(o/60)+' ساعة'}</option>`).join('')}
+    </select>
+    <span style="font-size:12px; color:var(--text-dim);">بيتطبق على كل المستخدمين — قبل الخروج بـ30 ثانية بيظهر تنبيه "أنا موجود".</span>
+  </div>`;
+}
+function saveIdleMinutes(v){
+  if(!isAdmin()) return;
+  if(!DATA.securitySettings || typeof DATA.securitySettings!=='object') DATA.securitySettings = {};
+  DATA.securitySettings.idleMinutes = Math.max(0, Number(v)||0);
+  idleCacheSetting();
+  if(typeof logAudit==='function') logAudit('تعديل', 'إعدادات الأمان', 'خروج تلقائي بعد '+DATA.securitySettings.idleMinutes+' دقيقة');
+  saveData();
+  showToast('اتحفظ ✓', 'good');
 }
 
 /* ================= فلترة عامة لكل الجداول =================
