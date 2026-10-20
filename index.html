@@ -7336,6 +7336,7 @@ function renderInvoiceDetail(id){
       <div style="display:flex; gap:8px; flex-wrap:wrap;">
         <button class="btn secondary" onclick="printInvoiceDetail('${inv._id}')">🖨 طباعة الفاتورة</button>
         ${canModify ? `<button class="btn secondary" onclick="openForm('finance','${inv._id}')">✏ تعديل بيانات الفاتورة</button>` : ''}
+        ${editable ? `<button class="btn secondary" onclick="openInvoiceForSameClient('${inv._id}')">+ فاتورة جديدة لنفس العميل</button>` : ''}
         ${editable && remaining>0 ? `<button class="btn secondary" onclick="markInvoicePaidInFull('${inv._id}')">✓ تحديد كمدفوعة بالكامل</button>` : ''}
         ${editable && remaining>0 ? `<button class="btn" onclick="openInvoicePaymentForm('${inv._id}')">+ تسجيل دفعة</button>` : ''}
       </div>
@@ -7346,6 +7347,7 @@ function renderInvoiceDetail(id){
       <div class="kpi ${remaining>0?'alert':'ok'}"><div class="kpi-label">المتبقي</div><div class="kpi-value">${fmtMoney(remaining)}</div></div>
     </div>
     <div class="table-wrap" style="padding:16px; margin-bottom:24px;">${info}</div>
+    ${typeof renderClientInvoicesSection==='function' ? renderClientInvoicesSection(inv) : ''}
 
     <div class="section-title" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
       <span>💵 سجل الدفعات</span>
@@ -14356,6 +14358,83 @@ function saveIdleMinutes(v){
   if(typeof logAudit==='function') logAudit('تعديل', 'إعدادات الأمان', 'خروج تلقائي بعد '+DATA.securitySettings.idleMinutes+' دقيقة');
   saveData();
   showToast('اتحفظ ✓', 'good');
+}
+
+/* ================= فواتير العميل الواحد =================
+   من جوه أي فاتورة: "+ فاتورة جديدة لنفس العميل" (بتتفتح متملية بالعميل والمشروع)،
+   وجدول بكل فواتير العميل وإجمالياتها، وكشف حساب العميل للطباعة. */
+function clientKey(s){ return String(s||'').trim().replace(/\s+/g, ' ').toLowerCase(); }
+function clientInvoices(client){
+  const k = clientKey(client);
+  return (DATA.finance||[]).filter(f=>clientKey(f.client)===k).sort((a,b)=>(a.issueDate||'').localeCompare(b.issueDate||'') || (a._n||0)-(b._n||0));
+}
+function clientInvoiceTotals(list){
+  const amount = list.reduce((s,f)=>s+(Number(f.amount)||0),0);
+  const paid = list.reduce((s,f)=>s+invoicePaidTotal(f),0);
+  return {count:list.length, amount, paid, remaining: Math.max(0, list.reduce((s,f)=>s+invoiceRemaining(f),0))};
+}
+function openInvoiceForSameClient(id){
+  if(!canEdit('finance')) return;
+  const inv = DATA.finance.find(r=>r._id===id);
+  if(!inv) return;
+  openForm('finance');
+  const set = (k, v)=>{ const el = document.querySelector('#modalBody [data-field="'+k+'"]'); if(el && v!==undefined) el.value = v; };
+  set('client', inv.client||'');
+  set('project', inv.project||'');
+  set('issueDate', todayStr());
+  set('status', 'معلقة');
+  document.getElementById('modalTitle').textContent = 'فاتورة / التزام جديد — '+(inv.client||'');
+  const amt = document.querySelector('#modalBody [data-field="amount"]'); if(amt) setTimeout(()=>amt.focus(), 50);
+}
+function renderClientInvoicesSection(inv){
+  const list = clientInvoices(inv.client);
+  const t = clientInvoiceTotals(list);
+  const editable = canEdit('finance');
+  return `
+    <div class="section-title" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+      <span>📑 كل فواتير العميل "${inv.client||'—'}" (${t.count})</span>
+      <span style="display:flex; gap:8px; flex-wrap:wrap;">
+        ${editable ? `<button class="btn secondary small" onclick="openInvoiceForSameClient('${inv._id}')">+ فاتورة جديدة لنفس العميل</button>` : ''}
+        <button class="btn secondary small" onclick="printClientStatement('${inv._id}')">🖨 كشف حساب العميل</button>
+      </span>
+    </div>
+    <div class="table-wrap" style="margin-bottom:24px;"><div class="table-scroll"><table>
+      <thead><tr><th>رقم</th><th>المشروع</th><th>تاريخ الإصدار</th><th>الاستحقاق</th><th>القيمة</th><th>المحصّل</th><th>المتبقي</th><th>الحالة</th></tr></thead>
+      <tbody>${list.map(f=>{ const rem = invoiceRemaining(f); return `<tr style="cursor:pointer;${f._id===inv._id?' background:var(--surface-2);':''}" onclick="openInvoiceDetail('${f._id}')" title="اضغط لفتح الفاتورة">
+        <td style="font-weight:700; color:var(--accent);">#${f._n||''}${f._id===inv._id?' <span class="badge b-neutral">الحالية</span>':''}</td>
+        <td>${f.project||'—'}</td><td>${f.issueDate||'—'}</td><td>${f.dueDate||'—'}</td>
+        <td style="font-weight:700;">${fmtMoney(f.amount)}</td><td style="color:var(--good);">${fmtMoney(invoicePaidTotal(f))}</td>
+        <td style="font-weight:700; color:${rem>0?'var(--bad)':'var(--good)'};">${fmtMoney(rem)}</td><td>${badgeFor('finance', f.status)}</td></tr>`; }).join('')}
+        <tr style="background:var(--surface-2); font-weight:900;"><td colspan="4">الإجمالي على العميل</td><td>${fmtMoney(t.amount)}</td><td>${fmtMoney(t.paid)}</td><td>${fmtMoney(t.remaining)}</td><td></td></tr>
+      </tbody>
+    </table></div></div>`;
+}
+function printClientStatement(id){
+  const inv = DATA.finance.find(r=>r._id===id);
+  if(!inv) return;
+  const list = clientInvoices(inv.client);
+  list.forEach(f=>{ if(typeof syncInvoiceStatus==='function') syncInvoiceStatus(f); });
+  const t = clientInvoiceTotals(list);
+  const td = 'style="padding:6px; border:1px solid #ccc;"';
+  // حركة الحساب: كل فاتورة مدين، وكل دفعة دائن — برصيد متراكم
+  const moves = [];
+  list.forEach(f=>{
+    moves.push({date:f.issueDate||'', desc:'فاتورة #'+(f._n||'')+(f.project?' — '+f.project:''), debit:Number(f.amount)||0, credit:0, o:0});
+    (f.payments||[]).forEach(p=>moves.push({date:p.date||'', desc:'دفعة على فاتورة #'+(f._n||'')+(p.note?' — '+p.note:''), debit:0, credit:Number(p.amount)||0, o:1}));
+  });
+  moves.sort((a,b)=>(a.date||'').localeCompare(b.date||'') || a.o-b.o);
+  let run = 0;
+  const rows = moves.map(m=>{ run += m.debit - m.credit; return `<tr><td ${td}>${m.date||'—'}</td><td ${td}>${m.desc}</td><td ${td}>${m.debit?fmtMoney(m.debit):''}</td><td ${td}>${m.credit?fmtMoney(m.credit):''}</td><td ${td}><b>${fmtMoney(run)}</b></td></tr>`; }).join('');
+  const invRows = list.map(f=>`<tr><td ${td}>#${f._n||''}</td><td ${td}>${f.project||'—'}</td><td ${td}>${f.issueDate||'—'}</td><td ${td}>${fmtMoney(f.amount)}</td><td ${td}>${fmtMoney(invoicePaidTotal(f))}</td><td ${td}><b>${fmtMoney(invoiceRemaining(f))}</b></td><td ${td}>${f.status||''}</td></tr>`).join('');
+  const body = `
+    ${statCardsRow([statCard('عدد الفواتير', String(t.count), '#2c3e50'), statCard('إجمالي الفواتير', fmtMoney(t.amount), '#2c3e50'), statCard('المحصّل', fmtMoney(t.paid), '#27ae60'), statCard('المتبقي على العميل', fmtMoney(t.remaining), t.remaining>0?'#c0392b':'#27ae60')])}
+    <h3 style="margin:14px 0 4px; color:#111;">الفواتير</h3>
+    ${buildStatementTable(['رقم','المشروع','تاريخ الإصدار','القيمة','المحصّل','المتبقي','الحالة'], invRows)}
+    <h3 style="margin:14px 0 4px; color:#111;">حركة الحساب</h3>
+    ${buildStatementTable(['التاريخ','البيان','مدين (فواتير)','دائن (دفعات)','الرصيد'], rows)}
+    ${typeof tafqeetLine==='function' ? tafqeetLine(t.remaining, 'المتبقي على العميل فقط وقدره') : ''}
+    <div style="display:flex; justify-content:space-between; margin-top:36px; font-size:13px; color:#111;"><div>توقيع العميل: ....................</div><div>المحاسب: ....................</div></div>`;
+  openPrintDocument('كشف حساب عميل — '+(inv.client||''), 'حتى '+todayStr(), body);
 }
 
 /* ================= فلترة عامة لكل الجداول =================
