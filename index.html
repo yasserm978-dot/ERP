@@ -252,6 +252,19 @@ input[type="date"], input[type="month"], input[type="datetime-local"]{direction:
 .tf-info{font-size:12px; color:var(--accent); font-weight:700;}
 .tf-foot{display:none; gap:16px; flex-wrap:wrap; font-size:12.5px; padding:8px 12px; background:var(--surface-2); border-top:1px solid var(--border);}
 @media print{ .tf-bar, .tf-foot{display:none !important;} }
+.dday{font-size:11px; color:var(--text-dim); font-weight:400; white-space:nowrap;}
+tr.rv-mark > td{background:rgba(232,163,61,.16); border-top:2px solid var(--accent); border-bottom:2px solid var(--accent); font-size:13px; line-height:1.7;}
+.rv-sub{color:var(--text-dim); font-size:11.5px;}
+.rv-hint{font-size:11.5px; color:var(--accent); font-weight:600; margin-top:2px;}
+.rv-card{border:2px solid var(--accent); border-radius:10px; background:var(--surface); padding:12px 14px; margin-bottom:22px;}
+.rv-card-head{font-size:14px; margin-bottom:8px;}
+.rv-card-body{display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:10px;}
+.rv-card-body > div{display:flex; flex-direction:column; gap:2px; background:var(--surface-2); border-radius:8px; padding:8px 10px;}
+.rv-card-body span{font-size:11.5px; color:var(--text-dim);}
+.rv-card-body b{font-size:15px;}
+.rv-card-body .rv-old{outline:2px solid var(--accent);}
+.rv-note{font-size:12.5px; margin-top:8px;}
+.rv-actions{display:flex; gap:6px; margin-top:10px; flex-wrap:wrap;}
 @media print{ body{zoom:1 !important;} }
 .fz-ctl{display:inline-flex; gap:3px; align-items:center;}
 .fz-ctl .btn{padding:4px 8px; min-width:30px;}
@@ -2208,6 +2221,7 @@ function normalizeData(){
     if(!Array.isArray(p.casualLabor)) p.casualLabor = [];
     if(!Array.isArray(p.casualAdvances)) p.casualAdvances = [];
     if(!Array.isArray(p.casualArchived)) p.casualArchived = [];
+    if(!Array.isArray(p.casualReviews)) p.casualReviews = [];
     if(p.actualDeliveryDate===undefined) p.actualDeliveryDate = '';
     if(p.retentionCollectedDate===undefined) p.retentionCollectedDate = null;
     if(p.retentionCollectedAmount===undefined) p.retentionCollectedAmount = 0;
@@ -2685,14 +2699,14 @@ function printEmployeeStatement(id){
 
   const showProjCol = h.employeeType==='يومي';
   const attRows = attendance.length ? attendance.map(a=>`<tr>
-      <td>${a.date||'—'}</td><td>${a.status}${fmtDayUnits(a)}</td>${showProjCol?`<td>${a.project||(h.project?'(افتراضي: '+h.project+')':'غير محدد')}</td><td>${fmtUnits(attendanceUnits(a))}</td><td>${attendanceUnits(a)?fmtMoney(attendanceRate(h,a)):'—'}</td><td>${attendanceUnits(a)?fmtMoney(attendanceCost(h,a)):'—'}</td><td>${attendanceUnits(a)?(attendancePaidStatus(h,a)==='paid'?'اتصرف':'مستحق'):'—'}</td>`:''}<td>${a.note||'—'}</td>
+      <td>${dateDayInline(a.date)}</td><td>${a.status}${fmtDayUnits(a)}</td>${showProjCol?`<td>${a.project||(h.project?'(افتراضي: '+h.project+')':'غير محدد')}</td><td>${fmtUnits(attendanceUnits(a))}</td><td>${attendanceUnits(a)?fmtMoney(attendanceRate(h,a)):'—'}</td><td>${attendanceUnits(a)?fmtMoney(attendanceCost(h,a)):'—'}</td><td>${attendanceUnits(a)?(attendancePaidStatus(h,a)==='paid'?'اتصرف':'مستحق'):'—'}</td>`:''}<td>${a.note||'—'}</td>
     </tr>`).join('') : `<tr><td colspan="${showProjCol?8:3}" style="text-align:center;">لا يوجد حضور مسجل</td></tr>`;
   const projSummary = showProjCol ? employeeProjectSummary(h, attendance) : [];
   const projSummaryRows = projSummary.map(x=>`<tr><td>${x.project}</td><td>${fmtUnits(x.units)}</td><td>${fmtMoney(x.cost)}</td></tr>`).join('')
     + (projSummary.length ? `<tr style="font-weight:900;"><td>الإجمالي</td><td>${fmtUnits(projSummary.reduce((s,x)=>s+x.units,0))}</td><td>${fmtMoney(projSummary.reduce((s,x)=>s+x.cost,0))}</td></tr>` : '');
 
   const payRows = payrollEntries.length ? payrollEntries.map(e=>`<tr>
-      <td>${e.date||'—'}</td><td>${e.type}</td><td style="color:${PAYROLL_ADDITION_TYPES.includes(e.type)?'#4F9C74':'#c0392b'}; font-weight:700;">${PAYROLL_ADDITION_TYPES.includes(e.type)?'+ ':'- '}${fmtMoney(e.amount)}</td><td>${e.note||'—'}</td>
+      <td>${dateDayInline(e.date)}</td><td>${e.type}</td><td style="color:${PAYROLL_ADDITION_TYPES.includes(e.type)?'#4F9C74':'#c0392b'}; font-weight:700;">${PAYROLL_ADDITION_TYPES.includes(e.type)?'+ ':'- '}${fmtMoney(e.amount)}</td><td>${e.note||'—'}</td>
     </tr>`).join('') : `<tr><td colspan="4" style="text-align:center;">لا توجد بنود على الراتب</td></tr>`;
 
   const monthlyRows = months.map(m=>{
@@ -2708,7 +2722,8 @@ function printEmployeeStatement(id){
     + (projSummary.length ? `<h3 style="margin:20px 0 4px;">🏗 اليوميات حسب المشروع</h3>` + buildStatementTable(['المشروع','أيام','التكلفة'], projSummaryRows) : '')
     + `<h3 style="margin:20px 0 4px;">📅 ${showProjCol?'كشف اليوميات':'الحضور والانصراف'}</h3>` + buildStatementTable(showProjCol?['التاريخ','الحالة','المشروع','أيام','أجر اليوم','المبلغ','الصرف','ملاحظة']:['التاريخ','الحالة','ملاحظة'], attRows)
     + `<h3 style="margin:20px 0 4px;">💸 بنود الراتب (سلف / خصومات / إضافات)</h3>` + buildStatementTable(['التاريخ','النوع','المبلغ','ملاحظة'], payRows)
-    + `<h3 style="margin:20px 0 4px;">💰 الرواتب الشهرية</h3>` + buildStatementTable(['الشهر','الأساسي','الإضافات/الخصومات','الصافي','الحالة'], monthlyRows);
+    + `<h3 style="margin:20px 0 4px;">💰 الرواتب الشهرية</h3>` + buildStatementTable(['الشهر','الأساسي','الإضافات/الخصومات','الصافي','الحالة'], monthlyRows)
+    + ((h.accountReviews||[]).length ? `<h3 style="margin:20px 0 4px;">📌 مراجعات الحساب</h3>` + buildStatementTable(['التاريخ','كان له/عليه','استلم','الباقي المتفق عليه','ملاحظة'], (h.accountReviews||[]).slice().sort((a,b)=>(a.date||'').localeCompare(b.date||'')).map(r=>`<tr><td>${dateDayInline(r.date)}</td><td>${fmtMoney(Math.abs(r.balance))} ${r.balance>=0?'له':'عليه'}</td><td>${r.paid?fmtMoney(r.paid):'—'}</td><td><b>${fmtMoney(Math.abs(r.agreed))} ${r.agreed>=0?'له':'عليه'}</b></td><td>${r.note||'—'}</td></tr>`).join('')) : '');
 
   openPrintDocument('كشف حساب — '+h.name, 'موظف / عامل', body);
 }
@@ -3217,6 +3232,7 @@ function renderModulePage(moduleKey){
         ${editable ? `<button class="btn" onclick="openForm('${moduleKey}')">+ إضافة</button>` : ''}
       </div>
     </div>
+    ${(isFinance && typeof renderClientsSummary==='function') ? renderClientsSummary() : ''}
     <div class="toolbar">
       <input class="search-input" id="search-${moduleKey}" placeholder="بحث في ${cfg.label}...">
       ${archivedN ? `<button class="btn secondary small" onclick="hrShowArchived=!hrShowArchived; renderPage();">🗄 ${hrShowArchived?'إخفاء المؤرشفين':'عرض المؤرشفين ('+archivedN+')'}</button>` : ''}
@@ -6992,7 +7008,7 @@ function renderEmployeeMonthDetailBody(h, month){
   const entries = p.entries;
   const attColspan = h.employeeType==='يومي' ? 4 : 3;
   const attRows = attendance.length ? attendance.map(a=>`<tr>
-      <td>${a.date||'—'}</td>
+      <td>${dateDayInline(a.date)}</td>
       <td><span class="badge ${a.status==='حاضر'?'b-good':a.status==='غائب'?'b-bad':'b-warn'}">${a.status}</span>${fmtDayUnits(a)}</td>
       ${h.employeeType==='يومي'?`<td>${a.project||'—'}</td>`:''}
       <td>${a.note||'—'}</td>
@@ -7180,6 +7196,7 @@ function renderEmployeeDetail(id){
         ${canModify ? `<button class="btn secondary" onclick="openForm('hr','${h._id}')">تعديل بيانات الموظف</button>` : ''}
         ${attEdit && !window.DESKTOP_EDITION ? `<button class="btn secondary" id="syncAttendanceBtn" onclick="syncAttendance()">🔄 مزامنة الحضور</button>` : ''}
         ${!attOnly ? `<button class="btn secondary" onclick="printEmployeeStatement('${h._id}')">🖨 طباعة كشف حساب</button>` : ''}
+        ${(!attOnly && editable) ? `<button class="btn secondary" onclick="openAccountReviewForm('hr','${h._id}')">📌 مراجعة حساب</button>` : ''}
         ${(!attOnly && hrFullAccess() && editable) ? `<button class="btn" onclick="openSettlementForm('${h._id}')">💵 تصفية حساب</button>` : ''}
       </div>
     </div>
@@ -7193,6 +7210,7 @@ function renderEmployeeDetail(id){
       ${!attOnly ? `<div class="kpi ${totalRemainingAll>0?'alert':'ok'}"><div class="kpi-label">إجمالي المتبقي له من مرتبه</div><div class="kpi-value">${fmtMoney(totalRemainingAll)}</div></div>` : ''}
     </div>
 
+    ${(!attOnly && typeof hrReviewBlock==='function') ? hrReviewBlock(h) : ''}
     <div class="section-title" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
       <span>📅 الحضور والانصراف</span>
       ${attEdit ? `<span style="display:flex; gap:8px; flex-wrap:wrap;">
@@ -7204,8 +7222,8 @@ function renderEmployeeDetail(id){
     <div class="table-wrap" style="margin-bottom:28px;"><div class="table-scroll"><table>
       <thead><tr><th>التاريخ</th><th>الحالة</th>${h.employeeType==='يومي'?'<th>المشروع</th>':''}${(h.employeeType==='يومي' && !attOnly)?'<th>أجر اليوم</th><th>المبلغ</th>':''}<th>ملاحظة</th><th></th></tr></thead>
       <tbody>
-        ${monthFoldRows('att_'+h._id, attendance, {cols: 4+(h.employeeType==='يومي'?1:0)+((h.employeeType==='يومي' && !attOnly)?2:0), sum:l=>{ const u=l.reduce((s,a)=>s+attendanceUnits(a),0); return fmtUnits(u)+' يوم'+((h.employeeType==='يومي' && !attOnly)?' · '+mfMoneySum(l, a=>attendanceUnits(a)?attendanceCost(h,a):0):''); }, row:a=>`<tr>
-          <td>${a.date||'—'}</td>
+        ${monthFoldRows('att_'+h._id, rvMerge(attendance, h.accountReviews), rvWrap({cols: 4+(h.employeeType==='يومي'?1:0)+((h.employeeType==='يومي' && !attOnly)?2:0), sum:l=>{ const u=l.reduce((s,a)=>s+attendanceUnits(a),0); return fmtUnits(u)+' يوم'+((h.employeeType==='يومي' && !attOnly)?' · '+mfMoneySum(l, a=>attendanceUnits(a)?attendanceCost(h,a):0):''); }, row:a=>`<tr>
+          <td>${dateDay(a.date)}</td>
           <td><span class="badge ${a.status==='حاضر'?'b-good':a.status==='غائب'?'b-bad':'b-warn'}">${a.status}</span>${fmtDayUnits(a)}${a.settled?' <span class="badge b-good" title="اتصفّى في تصفية حساب">✓ مصفّى</span>':''}</td>
           ${h.employeeType==='يومي'?`<td>${a.project || '<span style="color:var(--text-dim)">'+(h.project?'(افتراضي: '+h.project+')':'غير محدد — يوزّع تلقائي')+'</span>'}</td>`:''}
           ${(h.employeeType==='يومي' && !attOnly)?`<td>${attendanceUnits(a)?fmtMoney(attendanceRate(h,a)):'—'}</td><td style="font-weight:700;">${attendanceUnits(a)?fmtMoney(attendanceCost(h,a)):'—'}</td>`:''}
@@ -7214,7 +7232,7 @@ function renderEmployeeDetail(id){
             ${(canModify && !a.settled) ? `<button class="btn secondary small" data-attedit="${h._id}|${a.id}">تعديل</button>
             <button class="btn danger small" data-attdel="${h._id}|${a.id}">حذف</button>` : ''}
           </td>
-        </tr>`})}
+        </tr>`}))}
       </tbody>
     </table></div></div>
     ` : `<div class="table-wrap" style="margin-bottom:28px;"><div class="empty-state">لا يوجد حضور مسجل بعد</div></div>`}
@@ -7228,8 +7246,8 @@ function renderEmployeeDetail(id){
     <div class="table-wrap" style="margin-bottom:28px;"><div class="table-scroll"><table>
       <thead><tr><th>التاريخ</th><th>الشهر</th><th>النوع</th><th>المبلغ</th><th>ملاحظة</th><th></th></tr></thead>
       <tbody>
-        ${monthFoldRows('pe_'+h._id, payrollEntries, {cols:6, sum:l=>{ const add=l.filter(e=>PAYROLL_ADDITION_TYPES.includes(e.type)).reduce((s,e)=>s+(Number(e.amount)||0),0), ded=l.filter(e=>!PAYROLL_ADDITION_TYPES.includes(e.type)).reduce((s,e)=>s+(Number(e.amount)||0),0); return (ded?'سلف وخصومات '+fmtMoney(ded):'')+(add&&ded?' · ':'')+(add?'إضافات '+fmtMoney(add):''); }, row:e=>`<tr>
-          <td>${e.date||'—'}</td>
+        ${monthFoldRows('pe_'+h._id, rvMerge(payrollEntries, h.accountReviews), rvWrap({cols:6, sum:l=>{ const add=l.filter(e=>PAYROLL_ADDITION_TYPES.includes(e.type)).reduce((s,e)=>s+(Number(e.amount)||0),0), ded=l.filter(e=>!PAYROLL_ADDITION_TYPES.includes(e.type)).reduce((s,e)=>s+(Number(e.amount)||0),0); return (ded?'سلف وخصومات '+fmtMoney(ded):'')+(add&&ded?' · ':'')+(add?'إضافات '+fmtMoney(add):''); }, row:e=>`<tr>
+          <td>${dateDay(e.date)}</td>
           <td>${monthLabel(monthKey(e.date))}</td>
           <td><span class="badge ${PAYROLL_ADDITION_TYPES.includes(e.type)?'b-good':'b-bad'}">${e.type}</span></td>
           <td style="font-weight:700; color:${PAYROLL_ADDITION_TYPES.includes(e.type)?'var(--good)':'var(--bad)'};">${PAYROLL_ADDITION_TYPES.includes(e.type)?'+ ':'- '}${fmtMoney(e.amount)}</td>
@@ -7238,7 +7256,7 @@ function renderEmployeeDetail(id){
             ${(canModify && !e.settled && !e.carryFrom) ? `<button class="btn secondary small" data-payedit="${h._id}|${e.id}">تعديل</button>
             <button class="btn danger small" data-paydel="${h._id}|${e.id}">حذف</button>` : ''}
           </td>
-        </tr>`})}
+        </tr>`}))}
       </tbody>
     </table></div></div>
     ` : `<div class="table-wrap" style="margin-bottom:28px;"><div class="empty-state">لا توجد سلف أو خصومات مسجلة</div></div>`}
@@ -7337,6 +7355,7 @@ function renderInvoiceDetail(id){
         <button class="btn secondary" onclick="printInvoiceDetail('${inv._id}')">🖨 طباعة الفاتورة</button>
         ${canModify ? `<button class="btn secondary" onclick="openForm('finance','${inv._id}')">✏ تعديل بيانات الفاتورة</button>` : ''}
         ${editable ? `<button class="btn secondary" onclick="openInvoiceForSameClient('${inv._id}')">+ فاتورة جديدة لنفس العميل</button>` : ''}
+        ${(editable && typeof clientInvoices==='function' && clientInvoices(inv.client).length>1 && clientInvoiceTotals(clientInvoices(inv.client)).remaining>0.004) ? `<button class="btn" onclick="openClientPayForm('${inv._id}')">💵 تحصيل من حساب العميل</button>` : ''}
         ${editable && remaining>0 ? `<button class="btn secondary" onclick="markInvoicePaidInFull('${inv._id}')">✓ تحديد كمدفوعة بالكامل</button>` : ''}
         ${editable && remaining>0 ? `<button class="btn" onclick="openInvoicePaymentForm('${inv._id}')">+ تسجيل دفعة</button>` : ''}
       </div>
@@ -12356,7 +12375,7 @@ function renderProjectLaborSection(p){
     <div class="table-wrap" style="margin-bottom:10px;"><div class="table-scroll"><table>
       <thead><tr><th>التاريخ</th><th>العامل</th><th>أيام</th>${showMoney?'<th>أجر اليوم</th><th>التكلفة</th><th>الصرف</th>':''}<th>ملاحظة</th><th></th></tr></thead>
       <tbody>${monthFoldRows('plab_'+p._id+'_'+m, list, {cols: showMoney?8:5, date:x=>x.a.date, sum:l=> showMoney ? mfMoneySum(l, x=>attendanceCost(x.h, x.a)) : fmtUnits(l.reduce((s,x)=>s+attendanceUnits(x.a),0))+' يوم', row:({h, a})=>{ const st = attendancePaidStatus(h, a); return `<tr>
-        <td>${a.date}</td>
+        <td>${dateDay(a.date)}</td>
         <td style="font-weight:700; cursor:pointer;" onclick="goTo('hr'); openEmployeeDetail('${h._id}')">${h.name}<div style="font-size:11.5px; color:var(--text-dim); font-weight:400;">${h.role||''}</div></td>
         <td>${fmtUnits(attendanceUnits(a))}${a.status==='نصف يوم'?' (نص يوم)':''}</td>
         ${showMoney?`<td>${fmtMoney(attendanceRate(h, a))}</td><td style="font-weight:700;">${fmtMoney(attendanceCost(h, a))}</td>
@@ -13307,7 +13326,7 @@ function renderProjectCasualSection(p){
     <div class="table-wrap" style="margin-bottom:10px;"><div class="table-scroll"><table>
       <thead><tr><th>العامل</th><th>الشغلانة</th><th>أيام</th><th>المستحق</th><th>اتصرف</th><th>لسه متصرفش</th><th>سلف عليه</th><th>الصافي له</th><th></th></tr></thead>
       <tbody>${workers.map(w=>{ const nm = JSON.stringify(w.name).replace(/"/g,'&quot;'); return `<tr>
-        <td style="font-weight:700;">${w.name}</td><td>${w.trade||'—'}</td><td>${fmtUnits(w.units)}</td>
+        <td style="font-weight:700;">${w.name}${(lr=>lr?`<div class="rv-hint" title="${lr.note||''}">📌 راجعته ${lr.date} (${dayName(lr.date)}): الباقي ${lr.agreed>=0?'له':'عليه'} ${fmtMoney(Math.abs(lr.agreed))}</div>`:'')(lastReview((p.casualReviews||[]).filter(r=>r.name===w.name)))}</td><td>${w.trade||'—'}</td><td>${fmtUnits(w.units)}</td>
         <td>${fmtMoney(w.amount)}</td><td style="color:var(--good);">${fmtMoney(w.paid)}</td>
         <td>${fmtMoney(w.due)}</td>
         <td style="color:${w.advLeft>0?'var(--warn)':'var(--text-dim)'};">${w.advLeft>0?fmtMoney(w.advLeft):'—'}</td>
@@ -13315,6 +13334,7 @@ function renderProjectCasualSection(p){
         <td class="row-actions">
           ${(canAdd && w.due>0) ? `<button class="btn small" onclick="openCasualPayForm('${p._id}', ${nm})">💵 صرف</button>` : ''}
           ${canAdd ? `<button class="btn secondary small" onclick="openCasualAdvForm('${p._id}', ${nm})">سلفة</button>` : ''}
+          ${canAdd ? `<button class="btn secondary small" onclick="openAccountReviewForm('casual','${p._id}', ${nm})" title="سجّل إنك راجعت حسابه النهارده">📌 مراجعة</button>` : ''}
           <button class="btn secondary small" onclick="printCasualWorker('${p._id}', ${nm})">🖨 كشف</button>
           ${canAdd ? `<button class="btn secondary small" onclick="openCasualWorkerForm('${p._id}', ${nm})">تعديل</button>` : ''}
           ${isAdmin() ? `<button class="btn danger small" onclick="deleteCasualWorker('${p._id}', ${nm})">حذف</button>` : ''}
@@ -13334,27 +13354,27 @@ function renderProjectCasualSection(p){
     <div style="font-weight:700; margin:12px 0 6px; font-size:13.5px;">سجل اليوميات</div>
     <div class="table-wrap" style="margin-bottom:6px;"><div class="table-scroll"><table>
       <thead><tr><th>التاريخ</th><th>العامل</th><th>أيام</th><th>اليومية</th><th>المبلغ</th><th>الصرف</th><th>ملاحظة</th><th></th></tr></thead>
-      <tbody>${monthFoldRows('cas_'+p._id, rows, {cols:8, sum:l=>mfMoneySum(l, x=>x.amount), row:r=>`<tr>
-        <td>${r.date}</td><td>${r.name}${r.trade?`<div style="font-size:11.5px; color:var(--text-dim);">${r.trade}</div>`:''}</td>
+      <tbody>${monthFoldRows('cas_'+p._id, rvMerge(rows, p.casualReviews), rvWrap({cols:8, sum:l=>mfMoneySum(l, x=>x.amount), row:r=>`<tr>
+        <td>${dateDay(r.date)}</td><td>${r.name}${r.trade?`<div style="font-size:11.5px; color:var(--text-dim);">${r.trade}</div>`:''}</td>
         <td>${fmtUnits(Number(r.units)||0)}</td><td>${fmtMoney(r.rate)}</td><td style="font-weight:700;">${fmtMoney(r.amount)}</td>
         <td>${casualPaidBadge(r)}</td>
         <td>${r.note||'—'}</td>
         <td class="row-actions">${canAdd ? `<button class="btn secondary small" onclick="openCasualEditForm('${p._id}','${r.id}')">تعديل</button>` : ''}${isAdmin() ? `<button class="btn danger small" onclick="deleteCasualRow('${p._id}','${r.id}')">حذف</button>` : ''}</td>
-      </tr>`})}</tbody>
+      </tr>`}, true))}</tbody>
     </table></div></div>` : ''}
     ${advs.length ? `
     <div style="font-weight:700; margin:12px 0 6px; font-size:13.5px;">سجل السلف</div>
     <div class="table-wrap" style="margin-bottom:6px;"><div class="table-scroll"><table>
       <thead><tr><th>التاريخ</th><th>العامل</th><th>السلفة</th><th>اتخصم منها</th><th>الباقي عليه</th><th>ملاحظة</th><th></th></tr></thead>
-      <tbody>${monthFoldRows('casadv_'+p._id, advs, {cols:7, sum:l=>mfMoneySum(l, a=>a.amount), row:a=>{ const left = casualAdvLeft(p, a, advMap); const ded = round2((Number(a.amount)||0)-left); return `<tr>
-        <td>${a.date}${evTime(a)?`<div style="font-size:11px; color:var(--text-dim);">${evTime(a)}</div>`:''}</td>
+      <tbody>${monthFoldRows('casadv_'+p._id, rvMerge(advs, p.casualReviews), rvWrap({cols:7, sum:l=>mfMoneySum(l, a=>a.amount), row:a=>{ const left = casualAdvLeft(p, a, advMap); const ded = round2((Number(a.amount)||0)-left); return `<tr>
+        <td>${dateDay(a.date)}${evTime(a)?`<div style="font-size:11px; color:var(--text-dim);">${evTime(a)}</div>`:''}</td>
         <td style="font-weight:700;">${a.name}</td>
         <td style="font-weight:700;">${fmtMoney(a.amount)}${typeof paySourceBadge==='function'?paySourceBadge(a):''}</td>
         <td style="color:var(--good);">${ded>0?fmtMoney(ded):'—'}</td>
         <td>${left>0?`<span class="badge b-warn">${fmtMoney(left)}</span>`:'<span class="badge b-good">اتخصمت بالكامل</span>'}</td>
         <td>${a.note||'—'}</td>
         <td class="row-actions">${(canAdd && ded<=0.004) ? `<button class="btn secondary small" onclick="openCasualAdvForm('${p._id}', null, '${a.id}')">تعديل</button>` : ''}${(isAdmin() && ded<=0.004) ? `<button class="btn danger small" onclick="deleteCasualAdv('${p._id}','${a.id}')">حذف</button>` : ''}</td>
-      </tr>`; }})}</tbody>
+      </tr>`; }}, true))}</tbody>
     </table></div></div>` : ''}
     ` : `<div class="table-wrap" style="margin-bottom:10px;"><div class="empty-state">مفيش عمالة مؤقتة مسجلة على المشروع ده</div></div>`}
     <div style="font-size:12px; color:var(--text-dim); margin-bottom:24px;">تكلفة العمالة المؤقتة بتتحسب على المشروع بتاريخها (تحت "أجور العمالة") حتى لو لسه متصرفتش، واللي متصرفش بيظهر في المركز المالي ضمن "مستحق للعمالة". السلفة مش مصروف زيادة — بتتخصم من يوميات العامل لما يتصرف له.</div>
@@ -13675,6 +13695,7 @@ function saveCasualWorker(){
   if(!name){ alert('اكتب اسم العامل'); return; }
   casualList(p).forEach(r=>{ if(r.name===casualWorkerState.name){ r.name = name; r.trade = trade; } });
   casualAdvList(p).forEach(a=>{ if(a.name===casualWorkerState.name) a.name = name; });
+  (p.casualReviews||[]).forEach(r=>{ if(r.name===casualWorkerState.name) r.name = name; });
   if(isCasualArchived(p, casualWorkerState.name)){ casualUnarchive(p, casualWorkerState.name); casualArchivedList(p).push(name); }
   logAudit('تعديل', 'عمالة مؤقتة', p.name, casualWorkerState.name+' ← '+name);
   generateAutoEntries();
@@ -13730,8 +13751,9 @@ function printCasualWorker(projectId, name){
       <tr><td ${td}><b>العامل</b></td><td ${td}>${name}</td><td ${td}><b>المشروع</b></td><td ${td}>${p.name}</td></tr>
       <tr><td ${td}><b>الشغلانة</b></td><td ${td}>${(rows.find(r=>r.trade)||{}).trade||'—'}</td><td ${td}><b>إجمالي الأيام</b></td><td ${td}>${fmtUnits(t.units)}</td></tr>
     </tbody></table>
-    ${buildStatementTable(['التاريخ','أيام','اليومية','المبلغ','الصرف'], rows.map(r=>{ const cov = casualRowAdvCovered(r); return `<tr><td ${td}>${r.date}</td><td ${td}>${fmtUnits(Number(r.units)||0)}</td><td ${td}>${fmtMoney(r.rate)}</td><td ${td}>${fmtMoney(r.amount)}</td><td ${td}>${r.paid?'اتصرف '+(r.paidDate||'')+(cov>0.004?' (منها '+fmtMoney(cov)+' خصم سلف)':''):'مستحق'}</td></tr>`; }).join(''))}
-    ${advs.length ? `<div style="font-weight:700; margin:12px 0 6px; color:#111;">السلف</div>${buildStatementTable(['التاريخ','السلفة','اتخصم منها','الباقي عليه','ملاحظة'], advs.map(a=>{ const left = casualAdvLeft(p, a, map); return `<tr><td ${td}>${a.date}</td><td ${td}>${fmtMoney(a.amount)}</td><td ${td}>${fmtMoney(round2((Number(a.amount)||0)-left))}</td><td ${td}>${fmtMoney(left)}</td><td ${td}>${a.note||''}</td></tr>`; }).join(''))}` : ''}
+    ${buildStatementTable(['التاريخ','أيام','اليومية','المبلغ','الصرف'], rows.map(r=>{ const cov = casualRowAdvCovered(r); return `<tr><td ${td}>${dateDayInline(r.date)}</td><td ${td}>${fmtUnits(Number(r.units)||0)}</td><td ${td}>${fmtMoney(r.rate)}</td><td ${td}>${fmtMoney(r.amount)}</td><td ${td}>${r.paid?'اتصرف '+(r.paidDate||'')+(cov>0.004?' (منها '+fmtMoney(cov)+' خصم سلف)':''):'مستحق'}</td></tr>`; }).join(''))}
+    ${advs.length ? `<div style="font-weight:700; margin:12px 0 6px; color:#111;">السلف</div>${buildStatementTable(['التاريخ','السلفة','اتخصم منها','الباقي عليه','ملاحظة'], advs.map(a=>{ const left = casualAdvLeft(p, a, map); return `<tr><td ${td}>${dateDayInline(a.date)}</td><td ${td}>${fmtMoney(a.amount)}</td><td ${td}>${fmtMoney(round2((Number(a.amount)||0)-left))}</td><td ${td}>${fmtMoney(left)}</td><td ${td}>${a.note||''}</td></tr>`; }).join(''))}` : ''}
+    ${(p.casualReviews||[]).some(r=>r.name===name) ? `<div style="font-weight:700; margin:12px 0 6px; color:#111;">📌 مراجعات الحساب</div>${buildStatementTable(['التاريخ','كان له/عليه','استلم','الباقي المتفق عليه','ملاحظة'], (p.casualReviews||[]).filter(r=>r.name===name).sort((a,b)=>(a.date||'').localeCompare(b.date||'')).map(r=>`<tr><td ${td}>${dateDayInline(r.date)}</td><td ${td}>${fmtMoney(Math.abs(r.balance))} ${r.balance>=0?'له':'عليه'}</td><td ${td}>${r.paid?fmtMoney(r.paid):'—'}</td><td ${td}><b>${fmtMoney(Math.abs(r.agreed))} ${r.agreed>=0?'له':'عليه'}</b></td><td ${td}>${r.note||''}</td></tr>`).join(''))}` : ''}
     <div style="display:flex; gap:20px; flex-wrap:wrap; margin-top:12px; font-size:14px; color:#111;"><div>الإجمالي: <b>${fmtMoney(t.amount)}</b></div><div>اتصرف: <b>${fmtMoney(t.paid)}</b></div><div>لسه متصرفش: <b>${fmtMoney(t.due)}</b></div>${at.amount?`<div>سلف لسه متخصمتش: <b>${fmtMoney(at.left)}</b></div>`:''}<div>الصافي ${netW<0?'عليه':'له'}: <b>${fmtMoney(Math.abs(netW))}</b></div></div>
     <div style="display:flex; justify-content:space-between; margin-top:36px; font-size:13px; color:#111;"><div>توقيع المستلم: ....................</div><div>مهندس الموقع: ....................</div></div>`;
   openPrintDocument('كشف يوميات عامل — '+name, 'عمالة مؤقتة — '+p.name, body);
@@ -14394,10 +14416,16 @@ function renderClientInvoicesSection(inv){
     <div class="section-title" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
       <span>📑 كل فواتير العميل "${inv.client||'—'}" (${t.count})</span>
       <span style="display:flex; gap:8px; flex-wrap:wrap;">
+        ${(editable && t.remaining>0.004) ? `<button class="btn small" onclick="openClientPayForm('${inv._id}')">💵 تحصيل من حساب العميل</button>` : ''}
         ${editable ? `<button class="btn secondary small" onclick="openInvoiceForSameClient('${inv._id}')">+ فاتورة جديدة لنفس العميل</button>` : ''}
         <button class="btn secondary small" onclick="printClientStatement('${inv._id}')">🖨 كشف حساب العميل</button>
       </span>
     </div>
+    ${t.count>1 ? `<div class="kpi-grid" style="margin-bottom:10px;">
+      <div class="kpi"><div class="kpi-label">إجمالي فواتير العميل (${t.count})</div><div class="kpi-value">${fmtMoney(t.amount)}</div></div>
+      <div class="kpi ok"><div class="kpi-label">المحصّل من العميل</div><div class="kpi-value">${fmtMoney(t.paid)}</div></div>
+      <div class="kpi ${t.remaining>0?'alert':'ok'}"><div class="kpi-label">المتبقي على العميل</div><div class="kpi-value">${fmtMoney(t.remaining)}</div></div>
+    </div>` : ''}
     <div class="table-wrap" style="margin-bottom:24px;"><div class="table-scroll"><table>
       <thead><tr><th>رقم</th><th>المشروع</th><th>تاريخ الإصدار</th><th>الاستحقاق</th><th>القيمة</th><th>المحصّل</th><th>المتبقي</th><th>الحالة</th></tr></thead>
       <tbody>${list.map(f=>{ const rem = invoiceRemaining(f); return `<tr style="cursor:pointer;${f._id===inv._id?' background:var(--surface-2);':''}" onclick="openInvoiceDetail('${f._id}')" title="اضغط لفتح الفاتورة">
@@ -14435,6 +14463,300 @@ function printClientStatement(id){
     ${typeof tafqeetLine==='function' ? tafqeetLine(t.remaining, 'المتبقي على العميل فقط وقدره') : ''}
     <div style="display:flex; justify-content:space-between; margin-top:36px; font-size:13px; color:#111;"><div>توقيع العميل: ....................</div><div>المحاسب: ....................</div></div>`;
   openPrintDocument('كشف حساب عميل — '+(inv.client||''), 'حتى '+todayStr(), body);
+}
+/* ---------- تحصيل دفعة على حساب العميل: بتتوزع على فواتيره الأقدم أولًا ---------- */
+let clientPayState = {client:'', backTo:null};
+function clientPayAllocation(client, amount){
+  let left = Math.round((Number(amount)||0)*100)/100;
+  const out = [];
+  clientInvoices(client).forEach(f=>{
+    const rem = invoiceRemaining(f);
+    if(left<=0.004 || rem<=0.004) return;
+    const take = Math.round(Math.min(left, rem)*100)/100;
+    out.push({inv:f, amount:take, full: take>=rem-0.004});
+    left = Math.round((left-take)*100)/100;
+  });
+  return {list:out, extra:left};
+}
+function openClientPayForm(invId){
+  if(!canEdit('finance')) return;
+  const inv = DATA.finance.find(r=>r._id===invId);
+  if(!inv) return;
+  const t = clientInvoiceTotals(clientInvoices(inv.client));
+  if(t.remaining<=0.004){ alert('مفيش مبالغ متبقية على العميل ده — كل فواتيره متسددة'); return; }
+  clientPayState = {client: inv.client, backTo: invId};
+  cbOverlay('clientPayOverlay', '💵 تحصيل من حساب العميل — '+(inv.client||''), `
+    <div class="kpi-grid" style="margin-bottom:12px;">
+      <div class="kpi"><div class="kpi-label">إجمالي الفواتير (${t.count})</div><div class="kpi-value" style="font-size:17px;">${fmtMoney(t.amount)}</div></div>
+      <div class="kpi ok"><div class="kpi-label">المحصّل</div><div class="kpi-value" style="font-size:17px;">${fmtMoney(t.paid)}</div></div>
+      <div class="kpi alert"><div class="kpi-label">المتبقي على العميل</div><div class="kpi-value" style="font-size:17px;">${fmtMoney(t.remaining)}</div></div>
+    </div>
+    <div class="field"><label>التاريخ</label><input id="cpay-date" type="date" value="${todayStr()}"></div>
+    <div class="field"><label>المبلغ المحصّل</label><input id="cpay-amount" type="number" min="0" step="any" value="${Math.round(t.remaining*100)/100}" oninput="clientPayPreview()"></div>
+    <div class="field"><label>ملاحظة (اختياري)</label><input id="cpay-note" type="text" placeholder="مثال: شيك رقم ... / تحويل بنكي"></div>
+    <div style="font-size:12.5px; color:var(--text-dim); margin:-4px 0 6px;">الدفعة بتتوزع تلقائي على الفواتير — الأقدم أولًا:</div>
+    <div id="cpay-preview"></div>
+    <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:10px;"><button class="btn secondary" onclick="cbClose('clientPayOverlay')">إلغاء</button><button class="btn" id="cpay-save" onclick="saveClientPay()">✓ تسجيل الدفعة</button></div>
+  `);
+  clientPayPreview();
+}
+function clientPayPreview(){
+  const el = document.getElementById('cpay-preview');
+  if(!el) return;
+  const amount = Number(document.getElementById('cpay-amount').value)||0;
+  const al = clientPayAllocation(clientPayState.client, amount);
+  el.innerHTML = `<div class="table-wrap"><div class="table-scroll"><table>
+    <thead><tr><th>الفاتورة</th><th>المتبقي عليها</th><th>هيتسدد منها</th><th></th></tr></thead>
+    <tbody>${al.list.map(x=>`<tr><td>#${x.inv._n||''} — ${x.inv.issueDate||''}${x.inv.project?' — '+x.inv.project:''}</td><td>${fmtMoney(invoiceRemaining(x.inv))}</td><td style="font-weight:700;">${fmtMoney(x.amount)}</td><td>${x.full?'<span class="badge b-good">تتقفل</span>':'<span class="badge b-warn">جزء</span>'}</td></tr>`).join('') || '<tr><td colspan="4" style="text-align:center;">اكتب المبلغ</td></tr>'}</tbody>
+  </table></div></div>
+  ${al.extra>0.004 ? `<div style="color:var(--bad); font-size:12.5px; margin-top:6px;">⚠ المبلغ أكبر من المتبقي على العميل بـ ${fmtMoney(al.extra)} — قلّل المبلغ أو سجّل فاتورة بالفرق.</div>` : ''}`;
+}
+function saveClientPay(){
+  if(!canEdit('finance')) return;
+  const date = document.getElementById('cpay-date').value;
+  const amount = Math.round((Number(document.getElementById('cpay-amount').value)||0)*100)/100;
+  const note = document.getElementById('cpay-note').value.trim();
+  if(!date){ alert('اختار التاريخ'); return; }
+  if(!(amount>0)){ alert('اكتب المبلغ'); return; }
+  const al = clientPayAllocation(clientPayState.client, amount);
+  if(al.extra>0.004){ alert('المبلغ أكبر من المتبقي على العميل بـ '+fmtMoney(al.extra)); return; }
+  const group = 'CPAY-'+Date.now().toString(36);
+  al.list.forEach(x=>{
+    const f = x.inv;
+    if(!Array.isArray(f.payments)) f.payments = [];
+    const n = (f.payments.length ? Math.max(...f.payments.map(p=>p._n||0)) : 0)+1;
+    f.payments.push({id:f._id+'-PMT'+n+'-'+Math.random().toString(36).slice(2,5), _n:n, date, amount:x.amount,
+      note:(note?note+' — ':'')+(al.list.length>1 ? 'من دفعة على الحساب '+fmtMoney(amount) : 'دفعة على الحساب'), group});
+    if(typeof syncInvoiceStatus==='function') syncInvoiceStatus(f);
+  });
+  logAudit('تحصيل', 'حساب عميل', clientPayState.client, fmtMoney(amount)+' على '+al.list.length+' فاتورة');
+  generateAutoEntries();
+  saveData();
+  cbClose('clientPayOverlay');
+  renderPage();
+  showToast('اتسجل تحصيل '+fmtMoney(amount)+' — اتوزع على '+al.list.length+' فاتورة ✓', 'good');
+}
+/* ---------- ملخص حسابات العملاء في شاشة الفواتير ---------- */
+function renderClientsSummary(){
+  const m = new Map();
+  (DATA.finance||[]).forEach(f=>{ const k = clientKey(f.client); if(!k) return; if(!m.has(k)) m.set(k, {name:(f.client||'').trim(), list:[]}); m.get(k).list.push(f); });
+  const rows = Array.from(m.values()).map(c=>Object.assign(c, clientInvoiceTotals(c.list))).sort((a,b)=>b.remaining-a.remaining);
+  if(!rows.length) return '';
+  const all = rows.reduce((s,c)=>({amount:s.amount+c.amount, paid:s.paid+c.paid, remaining:s.remaining+c.remaining}), {amount:0, paid:0, remaining:0});
+  const editable = canEdit('finance');
+  return `<div class="section-title" style="margin-top:4px;">👥 حسابات العملاء</div>
+    <div class="table-wrap" style="margin-bottom:20px;"><div class="table-scroll"><table>
+      <thead><tr><th>العميل</th><th>عدد الفواتير</th><th>إجمالي الفواتير</th><th>المحصّل</th><th>المتبقي</th><th></th></tr></thead>
+      <tbody>${rows.map(c=>{ const first = c.list[0]._id; return `<tr>
+        <td style="font-weight:700; cursor:pointer; color:var(--accent);" onclick="openInvoiceDetail('${first}')">${c.name}</td><td>${c.count}</td>
+        <td>${fmtMoney(c.amount)}</td><td style="color:var(--good);">${fmtMoney(c.paid)}</td>
+        <td style="font-weight:700; color:${c.remaining>0?'var(--bad)':'var(--good)'};">${fmtMoney(c.remaining)}</td>
+        <td class="row-actions">${(editable && c.remaining>0.004) ? `<button class="btn small" onclick="openClientPayForm('${first}')">💵 تحصيل</button>` : ''}<button class="btn secondary small" onclick="printClientStatement('${first}')">🖨 كشف</button></td></tr>`; }).join('')}
+        <tr style="background:var(--surface-2); font-weight:900;"><td colspan="2">الإجمالي</td><td>${fmtMoney(all.amount)}</td><td>${fmtMoney(all.paid)}</td><td>${fmtMoney(all.remaining)}</td><td></td></tr>
+      </tbody>
+    </table></div></div>`;
+}
+
+/* ================= مراجعة حساب العامل (وقفة حساب) =================
+   لما تقعد مع العامل وتراجع حسابه في يوم معيّن: السيستم بيسجل "وقفة" فيها رصيده وقتها،
+   واللي اتصرف له في القعدة دي، والباقي اللي اتفقتوا عليه (رصيد قديم).
+   الوقفة بتظهر كسطر ملوّن واضح في يوميات العامل وسلفه، وفوق صفحته "آخر مراجعة" ومن بعدها إيه اللي جد،
+   ولها إيصال مطبوع بخط كبير ومكان لبصمة/توقيع العامل — مناسب للعمال اللي مش بيقروا.
+   الموظف/عامل اليومية: h.accountReviews = [{id,_n,date,balance,paid,agreed,note,paidFrom,entryId,by,createdAt}]
+   العامل المؤقت في المشروع: p.casualReviews = [{id,_n,name,date,balance,paid,agreed,note,paidFrom,advId,by,createdAt}] */
+function dayName(d){
+  if(!d || !/^\d{4}-\d{2}-\d{2}/.test(d)) return '';
+  const x = new Date(d.slice(0,10)+'T12:00:00');
+  return isNaN(x) ? '' : x.toLocaleDateString('ar-EG', {weekday:'long'});
+}
+// التاريخ ومعاه اسم اليوم تحته (للجداول)
+function dateDay(d){ const n = dayName(d); return (d||'—') + (n ? `<div class="dday">${n}</div>` : ''); }
+// للطباعة: في نفس السطر
+function dateDayInline(d){ const n = dayName(d); return (d||'—') + (n ? ' ('+n+')' : ''); }
+
+/* ---------- رصيد العامل ---------- */
+function employeeOwed(h){
+  const months = getEmployeeMonths(h);
+  // صافي كل الشهور اللي لسه ما اتصرفتش (بالسالب لو السلف أكبر — يبقى عليه)
+  return Math.round(months.reduce((s,m)=>{ const pm = computeMonthlyPayroll(h, m); return s + (pm.paid || pm.settledAll ? 0 : (Number(pm.net)||0)); }, 0)*100)/100;
+}
+function casualWorkerNet(p, name){ const w = casualByWorker(p).find(x=>x.name===name); return w ? w.net : 0; }
+function lastReview(list){ return (list||[]).slice().sort((a,b)=>(b.date||'').localeCompare(a.date||'') || (b._n||0)-(a._n||0))[0] || null; }
+
+/* ---------- السطر الملوّن في الجداول ---------- */
+function reviewMarkRow(rv, cols, withName){
+  const s = rv.agreed>=0 ? 'له' : 'عليه';
+  return `<tr class="rv-mark"><td colspan="${cols}">📌 <b>مراجعة حساب${withName&&rv.name?' — '+rv.name:''}</b> يوم ${rv.date} (${dayName(rv.date)}): كان ${rv.balance>=0?'له':'عليه'} ${fmtMoney(Math.abs(rv.balance))}${rv.paid?` — استلم ${fmtMoney(rv.paid)}`:''} — <b>الباقي ${s} ${fmtMoney(Math.abs(rv.agreed))}</b>${rv.note?` — ${rv.note}`:''} <span class="rv-sub">(الحساب الجديد بيبدأ من بعد اليوم ده)</span></td></tr>`;
+}
+// بيدمج سطور الوقفات مع قائمة (مرتبة من الأحدث للأقدم) — الوقفة بتيجي فوق حركات نفس يومها
+function rvMerge(list, reviews, filterFn){
+  const rv = (reviews||[]).filter(r=>!filterFn || filterFn(r)).map(r=>({__review:true, date:r.date, rv:r}));
+  if(!rv.length) return list;
+  const all = list.map((x, i)=>({x, i, d:(x.date||'')})).concat(rv.map((x, i)=>({x, i:-1-i, d:x.date||''})));
+  all.sort((a,b)=>b.d.localeCompare(a.d) || ((a.x.__review?0:1) - (b.x.__review?0:1)) || (a.i-b.i));
+  return all.map(z=>z.x);
+}
+function rvWrap(opts, withName){
+  return Object.assign({}, opts, {
+    row:(it, i)=> it && it.__review ? reviewMarkRow(it.rv, opts.cols||8, withName) : opts.row(it, i),
+    sum: opts.sum ? (l=>opts.sum(l.filter(x=>!x.__review))) : undefined,
+  });
+}
+
+/* ---------- كارت "آخر مراجعة" فوق صفحة العامل ---------- */
+function reviewSummaryCard(rv, sinceHtml, buttons){
+  if(!rv) return '';
+  return `<div class="rv-card">
+    <div class="rv-card-head">📌 آخر مراجعة حساب: <b>${rv.date}</b> (${dayName(rv.date)})</div>
+    <div class="rv-card-body">
+      <div><span>كان ${rv.balance>=0?'له':'عليه'}</span><b>${fmtMoney(Math.abs(rv.balance))}</b></div>
+      ${rv.paid?`<div><span>استلم وقتها</span><b>${fmtMoney(rv.paid)}</b></div>`:''}
+      <div class="rv-old"><span>الرصيد القديم المتفق عليه</span><b>${fmtMoney(Math.abs(rv.agreed))} ${rv.agreed>=0?'له':'عليه'}</b></div>
+      ${sinceHtml||''}
+    </div>
+    ${rv.note?`<div class="rv-note">📝 ${rv.note}</div>`:''}
+    <div class="rv-actions">${buttons||''}</div>
+  </div>`;
+}
+
+/* ---------- نافذة المراجعة ---------- */
+let accReviewState = {kind:null, id:null, name:''};
+function openAccountReviewForm(kind, id, name){
+  // kind: 'hr' (id = موظف) أو 'casual' (id = مشروع، name = العامل)
+  if(kind==='hr' && !canEdit('hr')) return;
+  if(kind==='casual' && !canEdit('projects')) return;
+  let title, balance;
+  if(kind==='hr'){ const h = DATA.hr.find(x=>x._id===id); if(!h) return; title = h.name; balance = employeeOwed(h); }
+  else { const p = DATA.projects.find(x=>x._id===id); if(!p) return; title = name+' — '+p.name; balance = casualWorkerNet(p, name); }
+  accReviewState = {kind, id, name: name||'', balance};
+  cbOverlay('accReviewOverlay', '📌 مراجعة حساب — '+title, `
+    <div style="font-size:12.5px; color:var(--text-dim); margin-bottom:10px;">لما تقعد مع العامل وتراجع حسابه: سجّل اللي اتفقتوا عليه هنا، وهيفضل علامة واضحة في يومياته وسلفه تفكّرك باليوم ده وتفاصيله.</div>
+    <div class="kpi ${balance>0?'alert':'ok'}" style="margin-bottom:12px;"><div class="kpi-label">رصيده حسب السيستم دلوقتي</div><div class="kpi-value">${fmtMoney(Math.abs(balance))} ${balance>=0?'له':'عليه'}</div></div>
+    <div class="field"><label>تاريخ المراجعة</label><input id="ar-date" type="date" value="${todayStr()}"></div>
+    <div class="field"><label>اتصرف له في القعدة دي (اختياري)</label><input id="ar-paid" type="number" min="0" step="any" placeholder="مثال: 600" oninput="arCalc()">
+      <div style="font-size:11.5px; color:var(--text-dim); margin-top:3px;">بيتسجل ${kind==='hr'?'سلفة':'سلفة للعامل'} وتتخصم من رصيده تلقائي.</div></div>
+    <div id="ar-paysrc-wrap" style="display:none;">${typeof paySourceHtml==='function' ? paySourceHtml('ar', '', '') : ''}</div>
+    <div class="kpi" style="margin-bottom:12px; border:2px solid var(--accent);"><div class="kpi-label">الباقي المتفق عليه (الرصيد القديم)</div><div class="kpi-value" id="ar-agreed"></div></div>
+    <div class="field"><label>ملاحظة (اختياري)</label><input id="ar-note" type="text" placeholder="مثال: اتفقنا يتصرف له الباقي آخر الشهر"></div>
+    <div style="display:flex; gap:8px; justify-content:flex-end;"><button class="btn secondary" onclick="cbClose('accReviewOverlay')">إلغاء</button><button class="btn" id="ar-save" onclick="saveAccountReview()">✓ حفظ المراجعة</button></div>
+  `);
+  arCalc();
+}
+function arCalc(){
+  const paid = Number(document.getElementById('ar-paid').value)||0;
+  const agreed = Math.round((accReviewState.balance - paid)*100)/100;
+  document.getElementById('ar-agreed').textContent = fmtMoney(Math.abs(agreed))+' '+(agreed>=0?'له':'عليه');
+  const w = document.getElementById('ar-paysrc-wrap'); if(w) w.style.display = paid>0 ? '' : 'none';
+}
+function saveAccountReview(){
+  const st = accReviewState;
+  const date = document.getElementById('ar-date').value;
+  const paid = Math.round((Number(document.getElementById('ar-paid').value)||0)*100)/100;
+  const note = document.getElementById('ar-note').value.trim();
+  if(!date){ alert('اختار تاريخ المراجعة'); return; }
+  if(paid<0){ alert('المبلغ غلط'); return; }
+  let ps = {paidFrom:'', chequeNo:''};
+  if(paid>0 && typeof readPaySource==='function'){ ps = readPaySource('ar', date, null); if(!ps) return; }
+  const rec = {date, balance: st.balance, paid, agreed: Math.round((st.balance-paid)*100)/100, note, by: currentUser ? currentUser.name : '', byId: myUserId()};
+  if(st.kind==='hr'){
+    const h = DATA.hr.find(x=>x._id===st.id); if(!h) return;
+    if(!Array.isArray(h.accountReviews)) h.accountReviews = [];
+    const n = (h.accountReviews.length ? Math.max(...h.accountReviews.map(x=>x._n||0)) : 0)+1;
+    rec.id = 'AR-'+h._id+'-'+n; rec._n = n;
+    if(paid>0){
+      if(!Array.isArray(h.payrollEntries)) h.payrollEntries = [];
+      const en = (h.payrollEntries.length ? Math.max(...h.payrollEntries.map(x=>x._n||0)) : 0)+1;
+      const e = {id:h._id+'-E'+en+'-'+Math.random().toString(36).slice(2,5), _n:en, date, type:'سلفة', amount:paid, note:'اتصرف وقت مراجعة الحساب', reviewId:rec.id, by:rec.by, byId:rec.byId};
+      if(typeof applyPaySource==='function') applyPaySource(e, ps);
+      h.payrollEntries.push(e); rec.entryId = e.id;
+    }
+    h.accountReviews.push(rec);
+    logAudit('مراجعة حساب', 'الموارد البشرية', h.name, 'الباقي '+fmtMoney(rec.agreed)+(paid?' — استلم '+fmtMoney(paid):''));
+  }else{
+    const p = DATA.projects.find(x=>x._id===st.id); if(!p) return;
+    if(!Array.isArray(p.casualReviews)) p.casualReviews = [];
+    const n = (p.casualReviews.length ? Math.max(...p.casualReviews.map(x=>x._n||0)) : 0)+1;
+    rec.id = 'CR-'+n+'-'+Math.random().toString(36).slice(2,5); rec._n = n; rec.name = st.name;
+    if(paid>0){
+      const al = casualAdvList(p);
+      const an = (al.length ? Math.max(...al.map(x=>x._n||0)) : 0)+1;
+      const a = {id:'CA-'+an+'-'+Math.random().toString(36).slice(2,6), _n:an, date, name:st.name, amount:paid, note:'اتصرف وقت مراجعة الحساب', reviewId:rec.id, by:rec.by, byId:rec.byId};
+      if(typeof applyPaySource==='function') applyPaySource(a, ps);
+      al.push(a); rec.advId = a.id;
+    }
+    p.casualReviews.push(rec);
+    logAudit('مراجعة حساب', 'عمالة مؤقتة', p.name, st.name+' — الباقي '+fmtMoney(rec.agreed)+(paid?' — استلم '+fmtMoney(paid):''));
+  }
+  generateAutoEntries();
+  saveData();
+  cbClose('accReviewOverlay');
+  renderPage();
+  showToast('اتسجلت مراجعة الحساب ✓', 'good');
+  setTimeout(()=>{ if(confirm('تطبع إيصال المراجعة عشان العامل يبصم عليه؟')) printAccountReview(st.kind, st.id, rec.id); }, 250);
+}
+function deleteAccountReview(kind, id, rvId){
+  if(!isAdmin()) return;
+  openConfirmModal('حذف مراجعة الحساب دي؟'+'\nلو اتصرف فيها مبلغ، السلفة المرتبطة بيها هتتمسح كمان.', ()=>{
+    if(kind==='hr'){
+      const h = DATA.hr.find(x=>x._id===id); if(!h) return;
+      const rv = (h.accountReviews||[]).find(x=>x.id===rvId);
+      h.accountReviews = (h.accountReviews||[]).filter(x=>x.id!==rvId);
+      if(rv && rv.entryId) h.payrollEntries = (h.payrollEntries||[]).filter(e=>!(e.id===rv.entryId && !e.settled));
+    }else{
+      const p = DATA.projects.find(x=>x._id===id); if(!p) return;
+      const rv = (p.casualReviews||[]).find(x=>x.id===rvId);
+      p.casualReviews = (p.casualReviews||[]).filter(x=>x.id!==rvId);
+      if(rv && rv.advId){ const a = casualAdvList(p).find(x=>x.id===rv.advId); if(a && casualAdvLeft(p, a) >= (Number(a.amount)||0)-0.004) p.casualAdvances = casualAdvList(p).filter(x=>x!==a); }
+    }
+    logAudit('حذف', 'مراجعة حساب', rvId);
+    generateAutoEntries();
+    saveData();
+    renderPage();
+  });
+}
+function printAccountReview(kind, id, rvId){
+  let rv, who, extra = '';
+  if(kind==='hr'){ const h = DATA.hr.find(x=>x._id===id); if(!h) return; rv = (h.accountReviews||[]).find(x=>x.id===rvId); who = h.name; extra = h.role||''; }
+  else { const p = DATA.projects.find(x=>x._id===id); if(!p) return; rv = (p.casualReviews||[]).find(x=>x.id===rvId); who = rv ? rv.name : ''; extra = 'عامل مؤقت — مشروع '+p.name; }
+  if(!rv) return;
+  const big = 'font-size:22px; font-weight:900;';
+  const row = (l, v, st)=>`<tr><td style="padding:10px; border:1px solid #999; font-size:16px; width:45%;">${l}</td><td style="padding:10px; border:1px solid #999; ${st||'font-size:18px; font-weight:700;'}">${v}</td></tr>`;
+  const body = `
+    <table style="width:100%; border-collapse:collapse; margin-bottom:14px;"><tbody>
+      ${row('اسم العامل', who)}
+      ${extra ? row('البيان', extra, 'font-size:15px;') : ''}
+      ${row('تاريخ المراجعة', dateDayInline(rv.date))}
+      ${row('كان '+(rv.balance>=0?'له':'عليه')+' حسب الحساب', fmtMoney(Math.abs(rv.balance)))}
+      ${rv.paid ? row('استلم في نفس اليوم', fmtMoney(rv.paid)) : ''}
+      ${row('<b>الباقي '+(rv.agreed>=0?'له':'عليه')+' (متفق عليه)</b>', fmtMoney(Math.abs(rv.agreed)), big)}
+    </tbody></table>
+    ${typeof tafqeetLine==='function' ? tafqeetLine(Math.abs(rv.agreed), 'الباقي '+(rv.agreed>=0?'له':'عليه')+' فقط وقدره') : ''}
+    ${rv.note ? `<div style="margin-top:10px; font-size:14px;">ملاحظة: ${rv.note}</div>` : ''}
+    <div style="margin-top:14px; font-size:14px; color:#111;">أقر أنا الموقع أدناه بأنه تمت مراجعة حسابي حتى تاريخه، وأن الباقي ${rv.agreed>=0?'لي':'عليّ'} هو المبلغ الموضح أعلاه، وأي حساب بعد هذا التاريخ هو حساب جديد.</div>
+    <div style="display:flex; justify-content:space-between; gap:20px; margin-top:40px; font-size:14px; color:#111;">
+      <div style="text-align:center;">توقيع / بصمة العامل<div style="width:120px; height:90px; border:1px dashed #999; margin:8px auto 0;"></div></div>
+      <div style="text-align:center;">المحاسب<div style="margin-top:60px;">....................</div></div>
+    </div>`;
+  openPrintDocument('إيصال مراجعة حساب — '+who, dateDayInline(rv.date), body);
+}
+/* ---------- قسم المراجعات في صفحة الموظف/العامل ---------- */
+function hrReviewBlock(h){
+  const list = (h.accountReviews||[]).slice().sort((a,b)=>(b.date||'').localeCompare(a.date||'') || (b._n||0)-(a._n||0));
+  if(!list.length) return '';
+  const lr = list[0];
+  const att = (h.attendance||[]).filter(a=>(a.date||'') > lr.date);
+  const units = att.reduce((s,a)=>s+attendanceUnits(a),0);
+  const cost = h.employeeType==='يومي' ? att.reduce((s,a)=>s+(attendanceUnits(a)?attendanceCost(h,a):0),0) : 0;
+  const adv = (h.payrollEntries||[]).filter(e=>(e.date||'') > lr.date && e.type==='سلفة').reduce((s,e)=>s+(Number(e.amount)||0),0);
+  const now = employeeOwed(h);
+  const since = `<div class="rv-since"><span>من بعد المراجعة</span><b>${fmtUnits(units)} يوم${cost?' = '+fmtMoney(cost):''}${adv?' — سلف '+fmtMoney(adv):''}</b></div>
+    <div class="rv-now"><span>رصيده دلوقتي (القديم + الجديد)</span><b>${fmtMoney(Math.abs(now))} ${now>=0?'له':'عليه'}</b></div>`;
+  const btns = `<button class="btn secondary small" onclick="printAccountReview('hr','${h._id}','${lr.id}')">🖨 إيصال المراجعة</button>${isAdmin()?`<button class="btn danger small" onclick="deleteAccountReview('hr','${h._id}','${lr.id}')">حذف</button>`:''}`;
+  return reviewSummaryCard(lr, since, btns) + (list.length>1 ? `<details style="margin:-10px 0 22px;"><summary style="cursor:pointer; font-size:12.5px; color:var(--accent);">كل مراجعات الحساب (${list.length})</summary>
+    <div class="table-wrap" style="margin-top:6px;"><div class="table-scroll"><table><thead><tr><th>التاريخ</th><th>كان</th><th>استلم</th><th>الباقي المتفق عليه</th><th>ملاحظة</th><th></th></tr></thead><tbody>
+    ${list.map(r=>`<tr><td>${dateDay(r.date)}</td><td>${fmtMoney(Math.abs(r.balance))} ${r.balance>=0?'له':'عليه'}</td><td>${r.paid?fmtMoney(r.paid):'—'}</td><td style="font-weight:700;">${fmtMoney(Math.abs(r.agreed))} ${r.agreed>=0?'له':'عليه'}</td><td>${r.note||'—'}</td>
+      <td class="row-actions"><button class="btn secondary small" onclick="printAccountReview('hr','${h._id}','${r.id}')">🖨</button>${isAdmin()?`<button class="btn danger small" onclick="deleteAccountReview('hr','${h._id}','${r.id}')">حذف</button>`:''}</td></tr>`).join('')}
+    </tbody></table></div></div></details>` : '');
 }
 
 /* ================= فلترة عامة لكل الجداول =================
