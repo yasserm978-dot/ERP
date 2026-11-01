@@ -1532,7 +1532,7 @@ const q = v=>encodeURIComponent(v);
 
 /* ---------- تحميل ومزامنة البيانات ---------- */
 const SYNC_COLLECTIONS = ['projects','hr','finance','contracts','assets','subs','ledger','generalExpenses','collections','purchases','materials','quotations','boq','reminders','auditLog','suppliers','cashboxes','extraWorks'];
-const SYNC_SETTINGS = ['revenueAccounts','expenseAccounts','capital','overheadAllocationBasis','projectStatuses','procedureTypes','contractTypes','materialCategories','alertRules','alertLog','contractCalcMethods','assetTypes','assetExpenseKinds','companyInfo','securitySettings'];
+const SYNC_SETTINGS = ['revenueAccounts','expenseAccounts','capital','overheadAllocationBasis','projectStatuses','procedureTypes','contractTypes','materialCategories','alertRules','alertLog','contractCalcMethods','assetTypes','assetExpenseKinds','companyInfo','securitySettings','bankAccount'];
 // إعدادات حساسة (زي رمز واتساب) — بتتخزن في جدول المدير بس يقدر يقراه
 const ADMIN_SETTINGS = ['whatsappSettings','userPins'];
 function settingsTable(key){ return ADMIN_SETTINGS.includes(key) ? 'erp_admin_settings' : 'erp_settings'; }
@@ -2182,6 +2182,7 @@ function normalizeData(){
   ['أجور ومرتبات','سلف الموظفين','مشتريات من الموردين','مصروفات مقاولي الباطن','أجور العمالة','مصاريف تحويل أموال'].forEach(acc=>{ if(!DATA.expenseAccounts.includes(acc)) DATA.expenseAccounts.push(acc); });
   if(!Array.isArray(DATA.collections)) DATA.collections = [];
   if(DATA.capital===undefined || DATA.capital===null) DATA.capital = '0';
+  if(!DATA.bankAccount || typeof DATA.bankAccount!=='object') DATA.bankAccount = {name:'البنك', openingBalance:0, openingDate:''};
   if(!DATA.overheadAllocationBasis) DATA.overheadAllocationBasis = 'equal';
   if(!Array.isArray(DATA.users)) DATA.users = [];
   if(!Array.isArray(DATA.projectStatuses)) DATA.projectStatuses = [
@@ -7938,12 +7939,14 @@ function renderAccountingPage(){
     {key:'income', label:'قائمة الدخل والأرباح والخسائر'},
     {key:'trial', label:'ميزان المراجعة'},
     {key:'balance', label:'المركز المالي'},
+    {key:'acst', label:'📒 كشوف الحسابات'},
   ];
   let body = '';
   if(accountingTab==='ledger') body = renderLedgerTab();
   else if(accountingTab==='general') body = renderGeneralTab();
   else if(accountingTab==='income') body = renderIncomeTab();
   else if(accountingTab==='trial') body = renderTrialTab();
+  else if(accountingTab==='acst') body = renderAcctStatementTab();
   else body = renderBalanceTab();
 
   return `
@@ -7964,7 +7967,7 @@ function renderAccountingPage(){
 }
 const ACCOUNTING_TAB_LABELS = {
   ledger:'قيود الإيرادات والمصروفات', general:'المصاريف الثابتة والعامة',
-  income:'قائمة الدخل والأرباح والخسائر', trial:'ميزان المراجعة', balance:'المركز المالي',
+  income:'قائمة الدخل والأرباح والخسائر', trial:'ميزان المراجعة', balance:'المركز المالي', acst:'كشوف الحسابات',
 };
 function printAccountingTab(){
   const title = ACCOUNTING_TAB_LABELS[accountingTab] || 'تقرير مالي';
@@ -7972,6 +7975,7 @@ function printAccountingTab(){
   if(accountingTab==='general') return printGeneralTabDoc();
   if(accountingTab==='income') return printIncomeTabDoc();
   if(accountingTab==='trial') return printTrialTabDoc();
+  if(accountingTab==='acst') return printAcctStatementDoc();
   return printBalanceTabDoc();
 }
 function printLedgerTabDoc(){
@@ -10468,7 +10472,7 @@ function renderCashboxPage(){
             <td style="font-weight:700;">${b.name}</td>
             <td>${b.custodian||'—'}</td>
             <td><span class="badge b-neutral">${b.kind||'عهدة'}</span></td>
-            <td style="font-weight:700; color:${bal<0?'var(--bad)':'inherit'};">${fmtMoney(bal)}</td>
+            <td style="font-weight:700; color:${bal<0?'var(--bad)':'inherit'};">${fmtMoney(bal)}${bal<-0.004?' <span class="badge b-bad">🚨 بالسالب</span>':(Math.abs(bal)<=0.004?' <span class="badge b-warn">خلصت</span>':'')}</td>
             <td>${fmtMoney(cur?cur.spends:0)}</td>
             <td>${openM ? (openM<nowM ? `<span class="badge b-warn">${cbMonthLabel(openM)} — محتاج إقفال</span>` : cbMonthLabel(openM)) : '—'}</td>
           </tr>`;
@@ -10510,6 +10514,7 @@ function renderCashboxDetail(id){
         ${(editable || custodian) ? `<button class="btn" onclick="openCashEntryForm('${b._id}','مصروف')">+ صرف من العهدة</button>` : ''}
         ${editable && openM ? `<button class="btn secondary" onclick="openCashCloseForm('${b._id}')">🔒 إقفال ${cbMonthLabel(openM)}</button>` : ''}
         <button class="btn secondary" onclick="printCashboxMonth('${b._id}','${viewM}')">🖨 كشف الشهر</button>
+        ${(typeof canView==='function' && canView('accounting')) ? `<button class="btn secondary" onclick="acstOpen('box:${b._id}')">📒 كشف حساب كامل</button>` : ''}
         ${admin ? `<button class="btn secondary small" onclick="openCashboxForm('${b._id}')">تعديل</button>
         <button class="btn danger small" onclick="deleteCashbox('${b._id}')">حذف</button>` : ''}
       </div>
@@ -10520,7 +10525,8 @@ function renderCashboxDetail(id){
       <div class="kpi"><div class="kpi-label">مصروفات ${cbMonthLabel(viewM)}</div><div class="kpi-value">${fmtMoney(mv.spends)}</div></div>
       <div class="kpi"><div class="kpi-label">حالة الشهر</div><div style="margin-top:6px; font-weight:700;">${mv.closing ? '🔒 مقفول — '+CASH_ACTIONS[mv.closing.action] : '🔓 مفتوح'}</div></div>
     </div>
-    ${bal<0 ? `<div style="padding:10px 14px; border-radius:6px; margin-bottom:14px; font-size:13px; background:rgba(193,84,60,.12); color:var(--bad);">⚠ الرصيد بالسالب: المسؤول عن العهدة صرف من جيبه أكتر من اللي استلمه — محتاج تغذية أو تسوية.</div>` : ''}
+    ${bal<-0.004 ? `<div style="padding:12px 14px; border-radius:6px; margin-bottom:14px; font-size:14px; font-weight:700; background:rgba(193,84,60,.16); border:1px solid var(--bad); color:var(--bad);">🚨 العهدة خلصت وبيتصرف بالسالب: المسؤول عن العهدة صرف من جيبه ${fmtMoney(-bal)} زيادة عن اللي استلمه — محتاجة تغذية أو تسوية.</div>`
+      : (Math.abs(bal)<=0.004 ? `<div style="padding:12px 14px; border-radius:6px; margin-bottom:14px; font-size:14px; font-weight:700; background:rgba(214,158,46,.14); border:1px solid var(--warn); color:var(--warn);">⚠ العهدة خلصت — الرصيد صفر. أي صرف جديد هيبقى بالسالب (من جيب المسؤول) لحد ما تتغذى.</div>` : '')}
 
     <div class="toolbar" style="gap:8px; align-items:center;">
       <label style="font-size:12.5px; color:var(--text-dim);">الشهر:</label>
@@ -11015,6 +11021,21 @@ function saveCashEntry(){
   const isIn = cashEntryState.type==='تغذية';
   const fee = isIn ? 0 : readCashFee();
   const empMode = (!isIn && !cashEntryState.editId) ? cashEmpMode() : '';
+  if(!isIn && !cashEntryState.negOk){
+    let back = 0;
+    if(cashEntryState.editId){
+      const old = b.entries.find(x=>x.id===cashEntryState.editId);
+      if(old) back += Number(old.amount)||0;
+      const of = cashFeeOf(b, cashEntryState.editId);
+      if(of) back += Number(of.amount)||0;
+    }
+    const curBal = round2(cashboxCurrentBalance(b) + back);
+    const after = round2(curBal - amount - fee);
+    if(after < -0.004){
+      openConfirmModal((curBal<=0.004 ? '🚨 العهدة خلصت بالفعل!' : '⚠ العهدة هتخلص!')+'\n\nرصيد «'+b.name+'» دلوقتي: '+fmtMoney(curBal)+'\nالصرف ده: '+fmtMoney(amount+fee)+'\nالرصيد بعد الصرف: '+fmtMoney(after)+' (بالسالب)\n\nيعني '+(b.custodian||'المسؤول عن العهدة')+' هيصرف من جيبه '+fmtMoney(-after)+' لحد ما العهدة تتغذى.\nتكمل التسجيل؟', ()=>{ cashEntryState.negOk = true; window._cbNegAckBox = b._id; saveCashEntry(); });
+      return;
+    }
+  }
   if(empMode==='casual'){
     const c = saveCashCasualPayment(b, date, description);
     if(!c) return;
@@ -11398,6 +11419,7 @@ const GS_REPORTS = [
   {tab:'income', t:'قائمة الدخل والأرباح والخسائر', w:'تقرير الارباح الخسائر قائمه الدخل صافي الربح'},
   {tab:'trial', t:'ميزان المراجعة', w:'تقرير ميزان مراجعه'},
   {tab:'balance', t:'المركز المالي', w:'تقرير الميزانيه العموميه المركز المالي'},
+  {tab:'acst', t:'كشوف الحسابات', w:'كشف حساب البنك الخزنه الخزينه العهده الاجور المرتبات العماله الحسابات'},
 ];
 function gsGo(page, fn, hl){
   return ()=>{
@@ -12141,7 +12163,7 @@ function paySourceHtml(prefix, cur, chequeNo){
   return `<div class="field"><label>اتصرف منين؟</label>
     <select id="${prefix}-paysrc" onchange="document.getElementById('${prefix}-cheque-wrap').style.display = this.value==='cheque' ? 'block' : 'none'">
       <option value="">— مش محدد —</option>
-      ${boxes.map(b=>`<option value="box:${b._id}" ${cur==='box:'+b._id?'selected':''}>💼 ${b.name}${b.custodian?' ('+b.custodian+')':''} — الرصيد ${fmtMoney(cashboxCurrentBalance(b))}</option>`).join('')}
+      ${boxes.map(b=>{ const bb = cashboxCurrentBalance(b); return `<option value="box:${b._id}" ${cur==='box:'+b._id?'selected':''}>💼 ${b.name}${b.custodian?' ('+b.custodian+')':''} — الرصيد ${fmtMoney(bb)}${bb<-0.004?' ⚠ بالسالب':(Math.abs(bb)<=0.004?' ⚠ خلصت':'')}</option>`; }).join('')}
       ${!known ? `<option value="${cur}" selected>${paySourceLabel({paidFrom:cur})}</option>` : ''}
       <option value="bank" ${cur==='bank'?'selected':''}>${PAY_METHOD_LABELS.bank}</option>
       <option value="cheque" ${cur==='cheque'?'selected':''}>${PAY_METHOD_LABELS.cheque}</option>
@@ -12196,8 +12218,8 @@ function applyPaySource(rec, ps){
 }
 
 /* الحركات اللي اتصرفت من العهدة من شاشات تانية (سلف، رواتب، مقاولين، موردين، مصروفات...) — للعرض والرصيد بس */
-function cashboxLinkedOutflows(b){
-  const key = 'box:'+b._id;
+function cashboxLinkedOutflows(b, keyOverride){
+  const key = keyOverride || 'box:'+b._id;
   const out = [];
   const add = (rec, date, amount, description, account, project, origin, emp, sub, casual)=>{
     if(!rec || rec.paidFrom!==key) return;
@@ -14990,6 +15012,325 @@ window.addEventListener('popstate', ev=>{
   if(typeof orig!=='function' || orig.__nav) return;
   const wrapped = function(){ const r = orig.apply(this, arguments); try{ navAfterRender(); }catch(e){} try{ if(typeof tfAttachAll==='function') tfAttachAll(); }catch(e){} return r; };
   wrapped.__nav = true;
+  renderPage = wrapped;
+})();
+</script>
+<script>
+/* ================= كشوف الحسابات: كشف حساب منفصل لكل حساب =================
+   الخزائن والعهد (كل واحدة لوحدها)، البنك (تحويلات + شيكات)، مجموعات (الأجور والعمالة، مقاولي الباطن، المشتريات...)،
+   وكل حساب من حسابات الأستاذ لوحده — بحركة بالتاريخ، مدين / دائن، ورصيد جاري، ورصيد أول وآخر المدة. */
+let acstState = {acc:'', from:'', to:'', project:'', view:'detail'};
+const ACST_GROUPS = [
+  {key:'grp:wages', label:'👷 الأجور والعمالة (مرتبات + يوميات + سلف + عمالة مؤقتة)', test:a=>!/^مقاولي الباطن/.test(a) && /أجور|مرتب|سلف|عمالة|العمال|يومي/.test(a)},
+  {key:'grp:subs', label:'🤝 مقاولي الباطن (كل التخصصات)', test:a=>/^مقاولي الباطن/.test(a)},
+  {key:'grp:materials', label:'🧱 المشتريات والمواد', test:a=>/مشتريات|مواد/.test(a)},
+  {key:'grp:assets', label:'🚜 الصيانة والمعدات', test:a=>/صيانة|معدات/.test(a)},
+  {key:'grp:revenue', label:'💰 كل الإيرادات', type:'إيراد'},
+  {key:'grp:expense', label:'📉 كل المصروفات', type:'مصروف'},
+];
+function acstBankInfo(){
+  const b = DATA.bankAccount || {};
+  return {openingBalance:Number(b.openingBalance)||0, openingDate:b.openingDate||'', name:b.name||'البنك'};
+}
+function acstLedgerAccounts(){
+  const m = new Map();
+  (DATA.ledger||[]).forEach(e=>{
+    if(!e.account) return;
+    if(!m.has(e.account)) m.set(e.account, {name:e.account, type:e.type, count:0});
+    m.get(e.account).count++;
+  });
+  return Array.from(m.values()).sort((a,b)=> a.type===b.type ? a.name.localeCompare(b.name,'ar') : (a.type==='إيراد'?-1:1));
+}
+function acstMonthEnd(m){
+  const y = Number(m.slice(0,4)), mo = Number(m.slice(5,7));
+  return m+'-'+String(new Date(y, mo, 0).getDate()).padStart(2,'0');
+}
+function acstSrcLabel(e){ return e.source ? 'تلقائي' : 'يدوي'; }
+
+/* بيرجع {title, subtitle, nature:'debit'|'credit', isCash, rows:[{date,desc,project,debit,credit,ord,origin}]} */
+function acstBuild(acc){
+  if(!acc) return null;
+  // ---- خزينة / عهدة ----
+  if(acc.indexOf('box:')===0){
+    const b = (DATA.cashboxes||[]).find(x=>x._id===acc.slice(4));
+    if(!b || (typeof canSeeCashbox==='function' && !canSeeCashbox(b))) return null;
+    ensureCashboxShape(b);
+    const rows = [];
+    if(Number(b.openingBalance)) rows.push({date:b.openingDate, desc:'رصيد افتتاحي للعهدة', debit:Math.max(0,Number(b.openingBalance)), credit:Math.max(0,-Number(b.openingBalance)), ord:0, origin:'افتتاحي'});
+    cashboxAllEntries(b).forEach(e=>{
+      const amt = Number(e.amount)||0;
+      if(!amt || !e.date) return;
+      if(e.type==='تغذية'){
+        rows.push({date:e.date, desc:'تغذية من '+(e.source||'—')+(e.description?' — '+e.description:''), project:'', debit:amt, credit:0, ord:1, origin:'تغذية'});
+      }else{
+        rows.push({date:e.date, desc:(e.linked ? e.description : ((e.isFee?'مصاريف تحويل':'مصروف')+(e.description?' — '+e.description:'')+(e.ref?' — إيصال '+e.ref:'')))+(e.account?' ['+e.account+']':''), project:e.project||'', debit:0, credit:amt, ord:2, origin:e.linked ? (e.origin||'مربوط') : 'مصروف عهدة'});
+      }
+    });
+    (b.closings||[]).forEach(c=>{
+      const amt = Number(c.amount)||0;
+      if(c.action==='carry' || !amt) return;
+      const d = acstMonthEnd(c.month);
+      const label = c.action==='bank' ? 'إقفال '+cbMonthLabel(c.month)+' — توريد للبنك' : 'إقفال '+cbMonthLabel(c.month)+' — تسوية حتى الصفر';
+      rows.push({date:d, desc:label+(c.date&&c.date!==d?' (اتعمل '+c.date+')':'')+(c.note?' — '+c.note:''), project:'', debit:amt<0?-amt:0, credit:amt>0?amt:0, ord:9, origin:'إقفال'});
+    });
+    return {title:'كشف حساب '+(b.kind||'عهدة')+' — '+b.name, subtitle:b.custodian?('المسؤول: '+b.custodian):'', nature:'debit', isCash:true, rows};
+  }
+  // ---- البنك ----
+  if(acc==='bank'){
+    const bi = acstBankInfo();
+    const rows = [];
+    if(bi.openingBalance) rows.push({date:bi.openingDate||'0000-00-00', desc:'رصيد افتتاحي للبنك', debit:Math.max(0,bi.openingBalance), credit:Math.max(0,-bi.openingBalance), ord:0, origin:'افتتاحي'});
+    (DATA.collections||[]).forEach(c=>{
+      if(!/بنك|شيك/.test(c.method||'')) return;
+      const amt = Number(c.amount)||0;
+      if(!amt || !c.date) return;
+      rows.push({date:c.date, desc:'تحصيل '+c.method+' — '+(c.project||'')+(c.note?' — '+c.note:''), project:c.project||'', debit:amt, credit:0, ord:1, origin:'تحصيلات'});
+    });
+    (DATA.cashboxes||[]).forEach(b=>{
+      (b.closings||[]).forEach(c=>{
+        if(c.action!=='bank' || !(Number(c.amount)>0)) return;
+        rows.push({date:acstMonthEnd(c.month), desc:'توريد من '+b.name+' — إقفال '+cbMonthLabel(c.month), project:'', debit:Number(c.amount), credit:0, ord:9, origin:'توريد عهدة'});
+      });
+      (b.entries||[]).forEach(e=>{
+        if(e.type!=='تغذية' || e.fromBox || (e.source||'')!=='البنك') return;
+        const amt = Number(e.amount)||0;
+        if(!amt || !e.date) return;
+        rows.push({date:e.date, desc:'تغذية '+b.name+(b.custodian?' ('+b.custodian+')':'')+(e.description?' — '+e.description:''), project:'', debit:0, credit:amt, ord:2, origin:'تغذية عهدة'});
+      });
+    });
+    ['bank','cheque'].forEach(k=>cashboxLinkedOutflows({_id:'__'+k+'__'}, k).forEach(e=>{
+      rows.push({date:e.date, desc:(k==='cheque'?'🧾 شيك'+(e.chequeNo?' رقم '+e.chequeNo:'')+' — ':'🏦 تحويل — ')+e.description+(e.account?' ['+e.account+']':''), project:e.project||'', debit:0, credit:e.amount, ord:2, origin:e.origin||''}); }));
+    return {title:'كشف حساب '+bi.name, subtitle:'التحويلات البنكية والشيكات (تحصيلات، توريدات العهد، والمدفوعات اللي اتسجلت "من البنك" أو بشيك)', nature:'debit', isCash:true, bank:true, rows};
+  }
+  // ---- مجموعة حسابات / حساب أستاذ ----
+  let filter, title, nature='debit', grouped=false;
+  const g = ACST_GROUPS.find(x=>x.key===acc);
+  if(g){
+    grouped = true;
+    title = 'كشف حساب '+g.label.replace(/^\S+\s/, '').replace(/\s*\(.*\)$/, '');
+    if(g.type){ filter = e=>e.type===g.type; nature = g.type==='إيراد' ? 'credit' : 'debit'; }
+    else filter = e=>e.type==='مصروف' && g.test(e.account||'');
+  }else if(acc.indexOf('acc:')===0){
+    const name = acc.slice(4);
+    filter = e=>e.account===name;
+    title = 'كشف حساب — '+name;
+    const anyRev = (DATA.ledger||[]).some(e=>e.account===name && e.type==='إيراد');
+    nature = anyRev ? 'credit' : 'debit';
+  }else return null;
+  const rows = (DATA.ledger||[]).filter(filter).map(e=>{
+    const amt = Number(e.amount)||0;
+    const isRev = e.type==='إيراد';
+    // المصروف مدين، الإيراد دائن (والمبلغ السالب زي الخصومات بيتعكس)
+    let debit = 0, credit = 0;
+    if(isRev){ if(amt>=0) credit = amt; else debit = -amt; }
+    else { if(amt>=0) debit = amt; else credit = -amt; }
+    return {date:e.date||'', desc:(e.description||'—')+(grouped?' ['+e.account+']':''), project:e.project||'', debit, credit, ord:1, origin:acstSrcLabel(e), createdAt:e.createdAt||''};
+  });
+  const accounts = grouped ? Array.from(new Set((DATA.ledger||[]).filter(filter).map(e=>e.account))) : null;
+  return {title, subtitle: accounts && accounts.length ? 'يشمل: '+accounts.join('، ') : '', nature, isCash:false, rows};
+}
+
+/* بيطبق الفلاتر ويحسب رصيد أول المدة والرصيد الجاري */
+function acstCompute(acc){
+  const r = acstBuild(acc);
+  if(!r) return null;
+  const sign = r.nature==='credit' ? -1 : 1;
+  const f = acstState;
+  let rows = r.rows.filter(x=>x.debit || x.credit);
+  if(f.project) rows = rows.filter(x=>x.project===f.project);
+  rows.sort((a,b)=> (a.date||'').localeCompare(b.date||'') || (a.ord-b.ord) || (a.createdAt||'').localeCompare(b.createdAt||''));
+  let opening = 0;
+  const before = f.from ? rows.filter(x=>(x.date||'')<f.from) : [];
+  before.forEach(x=>{ opening += sign*(x.debit-x.credit); });
+  let list = rows.filter(x=>(!f.from || (x.date||'')>=f.from) && (!f.to || (x.date||'')<=f.to));
+  let bal = opening, td = 0, tc = 0;
+  list = list.map(x=>{ bal = round2(bal + sign*(x.debit-x.credit)); td += x.debit; tc += x.credit; return Object.assign({}, x, {balance:bal}); });
+  return Object.assign(r, {list, opening:round2(opening), totalDebit:round2(td), totalCredit:round2(tc), closing:round2(bal)});
+}
+function acstMonthly(res){
+  const m = new Map();
+  res.list.forEach(x=>{
+    const k = (x.date||'').slice(0,7) || '—';
+    if(!m.has(k)) m.set(k, {month:k, debit:0, credit:0, count:0, balance:0});
+    const o = m.get(k); o.debit += x.debit; o.credit += x.credit; o.count++; o.balance = x.balance;
+  });
+  return Array.from(m.values());
+}
+function acstBalText(v, isCash, nature){
+  if(isCash) return fmtMoney(v);
+  if(Math.abs(v)<0.005) return fmtMoney(0);
+  return fmtMoney(Math.abs(v))+(v>=0 ? (nature==='credit'?' دائن':' مدين') : (nature==='credit'?' مدين':' دائن'));
+}
+function acstOptionsHtml(cur){
+  const boxes = typeof visibleCashboxes==='function' ? visibleCashboxes() : (DATA.cashboxes||[]);
+  const accs = acstLedgerAccounts();
+  const o = (v, l)=>`<option value="${v}" ${cur===v?'selected':''}>${l}</option>`;
+  return `<option value="">— اختار الحساب —</option>
+    <optgroup label="النقدية">
+      ${o('bank', '🏦 '+acstBankInfo().name+' (تحويلات وشيكات)')}
+      ${boxes.map(b=>o('box:'+b._id, '💼 '+b.name+(b.custodian?' ('+b.custodian+')':'')+' — '+(b.kind||'عهدة'))).join('')}
+    </optgroup>
+    <optgroup label="مجموعات حسابات">${ACST_GROUPS.map(g=>o(g.key, g.label)).join('')}</optgroup>
+    <optgroup label="حسابات الإيرادات">${accs.filter(a=>a.type==='إيراد').map(a=>o('acc:'+a.name, a.name+' ('+a.count+')')).join('')}</optgroup>
+    <optgroup label="حسابات المصروفات">${accs.filter(a=>a.type!=='إيراد').map(a=>o('acc:'+a.name, a.name+' ('+a.count+')')).join('')}</optgroup>`;
+}
+function acstSet(k, v){ acstState[k] = v; renderPage(); }
+function acstOpen(acc){ acstState.acc = acc; accountingTab = 'acst'; if(typeof goTo==='function' && currentPage!=='accounting') goTo('accounting'); else renderPage(); }
+
+function renderAcctStatementTab(){
+  const f = acstState;
+  const projects = (DATA.projects||[]).map(p=>p.name);
+  const res = f.acc ? acstCompute(f.acc) : null;
+  const admin = typeof isAdmin==='function' && isAdmin();
+  const bi = acstBankInfo();
+  const quick = [
+    ['bank','🏦 البنك'],
+    ...((typeof visibleCashboxes==='function' ? visibleCashboxes() : []).slice(0,6).map(b=>['box:'+b._id,'💼 '+b.name])),
+    ['grp:wages','👷 الأجور والعمالة'], ['grp:subs','🤝 مقاولي الباطن'], ['grp:materials','🧱 المشتريات'], ['grp:revenue','💰 الإيرادات'],
+  ];
+  const filters = `
+    <div class="table-wrap" style="padding:12px 14px; margin-bottom:14px;">
+      <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px;">
+        ${quick.map(([k,l])=>`<button class="btn ${f.acc===k?'':'secondary'} small" onclick="acstSet('acc','${k}')">${l}</button>`).join('')}
+      </div>
+      <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:10px; align-items:end;">
+        <div class="field" style="margin:0; grid-column:1/-1;"><label>الحساب</label><select id="acst-acc" onchange="acstSet('acc', this.value)">${acstOptionsHtml(f.acc)}</select></div>
+        <div class="field" style="margin:0;"><label>من تاريخ</label><input id="acst-from" type="date" value="${f.from}" onchange="acstSet('from', this.value)"></div>
+        <div class="field" style="margin:0;"><label>إلى تاريخ</label><input id="acst-to" type="date" value="${f.to}" onchange="acstSet('to', this.value)"></div>
+        <div class="field" style="margin:0;"><label>المشروع</label><select id="acst-project" onchange="acstSet('project', this.value)"><option value="">كل المشاريع</option>${projects.map(p=>`<option ${f.project===p?'selected':''}>${p}</option>`).join('')}</select></div>
+        <div class="field" style="margin:0;"><label>طريقة العرض</label><select id="acst-view" onchange="acstSet('view', this.value)"><option value="detail" ${f.view!=='monthly'?'selected':''}>تفصيلي (كل حركة)</option><option value="monthly" ${f.view==='monthly'?'selected':''}>تجميع شهري</option></select></div>
+      </div>
+      ${(f.from||f.to||f.project) ? `<div style="margin-top:8px;"><button class="btn secondary small" onclick="acstState.from='';acstState.to='';acstState.project='';renderPage()">✕ مسح الفلاتر</button></div>` : ''}
+    </div>`;
+  if(!f.acc) return filters + `<div class="table-wrap"><div class="empty-state">اختار حساب من فوق عشان يظهر كشف حسابه — البنك، أي خزينة أو عهدة، الأجور والعمالة، أو أي حساب من حسابات الأستاذ.</div></div>`;
+  if(!res) return filters + `<div class="table-wrap"><div class="empty-state">الحساب ده مش متاح</div></div>`;
+  const neg = res.isCash && res.closing < -0.004;
+  const kpis = `<div class="kpi-grid" style="margin-bottom:14px;">
+      <div class="kpi"><div class="kpi-label">رصيد أول المدة</div><div class="kpi-value">${acstBalText(res.opening, res.isCash, res.nature)}</div></div>
+      <div class="kpi"><div class="kpi-label">${res.isCash?'إجمالي الداخل (مدين)':'إجمالي المدين'}</div><div class="kpi-value" style="color:var(--good);">${fmtMoney(res.totalDebit)}</div></div>
+      <div class="kpi"><div class="kpi-label">${res.isCash?'إجمالي الخارج (دائن)':'إجمالي الدائن'}</div><div class="kpi-value" style="color:var(--bad);">${fmtMoney(res.totalCredit)}</div></div>
+      <div class="kpi ${neg?'alert':'ok'}"><div class="kpi-label">${res.isCash?'الرصيد آخر المدة':'الرصيد'}</div><div class="kpi-value">${acstBalText(res.closing, res.isCash, res.nature)}</div></div>
+    </div>`;
+  const bankNote = res.bank ? `<div style="font-size:12px; color:var(--text-dim); margin-bottom:10px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+      <span>رصيد البنك الافتتاحي: <b>${fmtMoney(bi.openingBalance)}</b>${bi.openingDate?' بتاريخ '+bi.openingDate:''} — التحصيلات بتظهر هنا لو نوعها "تحويل بنكي" أو "شيك"، والمدفوعات لو اتسجل إنها اتصرفت "تحويل بنكي" أو "شيك".</span>
+      ${admin ? `<button class="btn secondary small" onclick="openBankAccountForm()">⚙ رصيد البنك الافتتاحي</button>` : ''}</div>` : '';
+  const head = `<div class="section-title" style="margin:0 0 4px;">${res.title}</div>${res.subtitle?`<div style="font-size:12px; color:var(--text-dim); margin-bottom:10px;">${res.subtitle}</div>`:''}`;
+  let table;
+  if(f.view==='monthly'){
+    const ms = acstMonthly(res);
+    table = `<div class="table-wrap"><div class="table-scroll"><table>
+      <thead><tr><th>الشهر</th><th>عدد الحركات</th><th>مدين</th><th>دائن</th><th>الرصيد آخر الشهر</th></tr></thead>
+      <tbody>
+        <tr style="background:var(--surface-2);"><td colspan="4" style="font-weight:700;">رصيد أول المدة</td><td style="font-weight:700;">${acstBalText(res.opening, res.isCash, res.nature)}</td></tr>
+        ${ms.map(m=>`<tr><td>${m.month==='—'?'—':cbMonthLabel(m.month)}</td><td>${m.count}</td><td>${m.debit?fmtMoney(m.debit):'—'}</td><td>${m.credit?fmtMoney(m.credit):'—'}</td><td style="font-weight:700; color:${res.isCash&&m.balance<0?'var(--bad)':'inherit'};">${acstBalText(m.balance, res.isCash, res.nature)}</td></tr>`).join('') || '<tr><td colspan="5" style="text-align:center;">مفيش حركات في الفترة دي</td></tr>'}
+        <tr style="background:var(--surface-2); font-weight:900;"><td colspan="2">الإجمالي</td><td>${fmtMoney(res.totalDebit)}</td><td>${fmtMoney(res.totalCredit)}</td><td>${acstBalText(res.closing, res.isCash, res.nature)}</td></tr>
+      </tbody></table></div></div>`;
+  }else{
+    table = `<div class="table-wrap"><div class="table-scroll"><table id="acst-table">
+      <thead><tr><th>التاريخ</th><th>البيان</th><th>المشروع</th><th>${res.isCash?'داخل (مدين)':'مدين'}</th><th>${res.isCash?'خارج (دائن)':'دائن'}</th><th>الرصيد</th><th>المصدر</th></tr></thead>
+      <tbody>
+        <tr style="background:var(--surface-2);"><td>${f.from||'—'}</td><td colspan="4" style="font-weight:700;">رصيد أول المدة</td><td style="font-weight:700;">${acstBalText(res.opening, res.isCash, res.nature)}</td><td></td></tr>
+        ${res.list.map(x=>`<tr>
+          <td>${typeof dateDay==='function' ? dateDay(x.date) : (x.date||'—')}</td><td>${x.desc}</td><td>${x.project||'—'}</td>
+          <td style="color:var(--good);">${x.debit?fmtMoney(x.debit):'—'}</td><td style="color:var(--bad);">${x.credit?fmtMoney(x.credit):'—'}</td>
+          <td style="font-weight:700; color:${res.isCash&&x.balance<0?'var(--bad)':'inherit'};">${acstBalText(x.balance, res.isCash, res.nature)}</td>
+          <td><span class="badge b-neutral">${x.origin||''}</span></td></tr>`).join('') || '<tr><td colspan="7" style="text-align:center;">مفيش حركات في الفترة دي</td></tr>'}
+        <tr style="background:var(--surface-2); font-weight:900;"><td colspan="3">الإجمالي (${res.list.length} حركة)</td><td>${fmtMoney(res.totalDebit)}</td><td>${fmtMoney(res.totalCredit)}</td><td>${acstBalText(res.closing, res.isCash, res.nature)}</td><td></td></tr>
+      </tbody></table></div></div>`;
+  }
+  return filters + head + bankNote + kpis + table;
+}
+function printAcctStatementDoc(){
+  const f = acstState;
+  const res = f.acc ? acstCompute(f.acc) : null;
+  if(!res){ alert('اختار الحساب الأول'); return; }
+  const period = (f.from||f.to) ? ('الفترة: '+(f.from||'البداية')+' إلى '+(f.to||'اليوم')) : 'كل الفترات';
+  const sub = [res.subtitle, period, f.project?('المشروع: '+f.project):''].filter(Boolean).join(' — ');
+  const cards = statCardsRow([
+    statCard('رصيد أول المدة', acstBalText(res.opening, res.isCash, res.nature)),
+    statCard(res.isCash?'إجمالي الداخل':'إجمالي المدين', fmtMoney(res.totalDebit), '#27ae60'),
+    statCard(res.isCash?'إجمالي الخارج':'إجمالي الدائن', fmtMoney(res.totalCredit), '#c0392b'),
+    statCard('الرصيد آخر المدة', acstBalText(res.closing, res.isCash, res.nature), res.isCash&&res.closing<0?'#c0392b':'#2c3e50'),
+  ]);
+  let body;
+  if(f.view==='monthly'){
+    const ms = acstMonthly(res);
+    body = buildStatementTable(['الشهر','عدد الحركات','مدين','دائن','الرصيد'],
+      `<tr><td colspan="4"><b>رصيد أول المدة</b></td><td><b>${acstBalText(res.opening, res.isCash, res.nature)}</b></td></tr>`
+      + ms.map(m=>`<tr><td>${m.month==='—'?'—':cbMonthLabel(m.month)}</td><td>${m.count}</td><td>${m.debit?fmtMoney(m.debit):'—'}</td><td>${m.credit?fmtMoney(m.credit):'—'}</td><td>${acstBalText(m.balance, res.isCash, res.nature)}</td></tr>`).join('')
+      + `<tr style="font-weight:900;"><td colspan="2">الإجمالي</td><td>${fmtMoney(res.totalDebit)}</td><td>${fmtMoney(res.totalCredit)}</td><td>${acstBalText(res.closing, res.isCash, res.nature)}</td></tr>`);
+  }else{
+    body = buildStatementTable(['التاريخ','البيان','المشروع','مدين','دائن','الرصيد'],
+      `<tr><td>${f.from||'—'}</td><td colspan="4"><b>رصيد أول المدة</b></td><td><b>${acstBalText(res.opening, res.isCash, res.nature)}</b></td></tr>`
+      + res.list.map(x=>`<tr><td>${typeof dateDay==='function' ? dateDay(x.date) : (x.date||'—')}</td><td>${x.desc}</td><td>${x.project||'—'}</td><td>${x.debit?fmtMoney(x.debit):'—'}</td><td>${x.credit?fmtMoney(x.credit):'—'}</td><td>${acstBalText(x.balance, res.isCash, res.nature)}</td></tr>`).join('')
+      + `<tr style="font-weight:900;"><td colspan="3">الإجمالي (${res.list.length} حركة)</td><td>${fmtMoney(res.totalDebit)}</td><td>${fmtMoney(res.totalCredit)}</td><td>${acstBalText(res.closing, res.isCash, res.nature)}</td></tr>`);
+  }
+  openPrintDocument(res.title, sub, cards + body);
+}
+/* رصيد البنك الافتتاحي (المدير بس) */
+function openBankAccountForm(){
+  if(!isAdmin()) return;
+  const bi = acstBankInfo();
+  cbOverlay('bankAccOverlay', '🏦 بيانات حساب البنك', `
+    <div class="field"><label>اسم الحساب / البنك</label><input id="bank-name" type="text" value="${bi.name}"></div>
+    <div class="field"><label>الرصيد الافتتاحي</label><input id="bank-opening" type="number" step="any" value="${bi.openingBalance||''}" placeholder="0"></div>
+    <div class="field"><label>بتاريخ</label><input id="bank-date" type="date" value="${bi.openingDate||''}"></div>
+    <div style="font-size:12px; color:var(--text-dim); margin-bottom:10px;">الرصيد الافتتاحي = اللي كان في البنك قبل ما تبدأ تسجل الحركات على السيستم.</div>
+    <div style="display:flex; gap:8px; justify-content:flex-end;"><button class="btn secondary" onclick="cbClose('bankAccOverlay')">إلغاء</button><button class="btn" onclick="saveBankAccount()">حفظ</button></div>`);
+}
+function saveBankAccount(){
+  if(!isAdmin()) return;
+  const name = document.getElementById('bank-name').value.trim() || 'البنك';
+  const openingBalance = round2(Number(document.getElementById('bank-opening').value)||0);
+  const openingDate = document.getElementById('bank-date').value || '';
+  if(openingBalance && !openingDate){ alert('حدد تاريخ الرصيد الافتتاحي'); return; }
+  DATA.bankAccount = {name, openingBalance, openingDate};
+  logAudit('تعديل', 'حساب البنك', name, 'رصيد افتتاحي '+fmtMoney(openingBalance)+(openingDate?' بتاريخ '+openingDate:''));
+  saveData();
+  cbClose('bankAccOverlay');
+  renderPage();
+}
+
+/* ================= تحذير: العهدة خلصت والصرف بقى بالسالب =================
+   بعد أي حفظ: لو عهدة رصيدها نزل تحت الصفر (أو زاد سالبها) بيظهر تنبيه — من أي شاشة اتصرف منها (سلف، مرتبات، مقاولين، موردين...). */
+let _cbNegSnap = null;
+function cbNegSnapshot(){
+  const m = {};
+  (DATA.cashboxes||[]).forEach(b=>{ try{ m[b._id] = cashboxCurrentBalance(b); }catch(e){} });
+  return m;
+}
+function cbNegCheck(){
+  if(!DATA || !Array.isArray(DATA.cashboxes) || !DATA.cashboxes.length){ _cbNegSnap = {}; return; }
+  const now = cbNegSnapshot();
+  if(_cbNegSnap){
+    const hits = [];
+    DATA.cashboxes.forEach(b=>{
+      const prev = _cbNegSnap[b._id], cur = now[b._id];
+      if(prev===undefined || cur===undefined) return;
+      if(window._cbNegAckBox===b._id) return; // اتأكد عليه قبل الحفظ
+      if(cur < -0.004 && cur < prev - 0.004 && (typeof canSeeCashbox!=='function' || canSeeCashbox(b))) hits.push({b, prev, cur});
+    });
+    if(hits.length && typeof showToast==='function'){
+      const h = hits[0];
+      showToast((h.prev > 0.004 ? '⚠ عهدة '+h.b.name+' خلصت! ' : '⚠ عهدة '+h.b.name+' بالسالب! ')+'الرصيد دلوقتي '+fmtMoney(h.cur)+' — المسؤول بيصرف من جيبه، محتاجة تغذية.', 'bad');
+    }
+  }
+  _cbNegSnap = now;
+  window._cbNegAckBox = null;
+}
+(function(){
+  const orig = window.saveData;
+  if(typeof orig!=='function' || orig.__neg) return;
+  const wrapped = function(){ const r = orig.apply(this, arguments); try{ if(currentUser) cbNegCheck(); }catch(e){} return r; };
+  wrapped.__neg = true;
+  saveData = wrapped;
+})();
+(function(){
+  const orig = window.renderPage;
+  if(typeof orig!=='function' || orig.__negSnap) return;
+  const wrapped = function(){ const r = orig.apply(this, arguments); try{ if(currentUser) _cbNegSnap = cbNegSnapshot(); }catch(e){} return r; };
+  Object.keys(orig).forEach(k=>{ wrapped[k] = orig[k]; });
+  wrapped.__negSnap = true;
   renderPage = wrapped;
 })();
 </script>
