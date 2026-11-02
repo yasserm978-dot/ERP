@@ -241,6 +241,8 @@ tr.gs-flash > td{animation:gsFlashAnim 2.6s ease;}
 @keyframes gsFlashAnim{0%,45%{background:var(--accent-dim); color:#1D2125;} 100%{background:transparent;}}
 @media(max-width:560px){ .user-bar > span:last-child{flex-wrap:wrap; justify-content:flex-end;} #gsTopWrap{order:-1; flex-basis:100%;} #gsTopWrap .gs-input{width:100%;} }
 input[type="date"], input[type="month"], input[type="datetime-local"]{direction:ltr; text-align:right;}
+/* موبايل أندرويد: التاريخ بيتعرض كنص عربي فيه علامات اتجاه مخفية فبيتلخبط (022026/11/) — نعرضه بالترتيب الحرفي */
+input[type="date"]::-webkit-date-and-time-value, input[type="month"]::-webkit-date-and-time-value, input[type="datetime-local"]::-webkit-date-and-time-value{direction:ltr; unicode-bidi:bidi-override; text-align:right;}
 .tf-bar{display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:0 0 6px;}
 .tf-body{flex-wrap:wrap; gap:6px; align-items:center; width:100%; padding:8px; background:var(--surface-2); border-radius:8px;}
 .tf-body input, .tf-body select{background:var(--surface); border:1px solid var(--border); color:var(--text); padding:6px 8px; border-radius:6px; font-family:inherit; font-size:12.5px; max-width:100%;}
